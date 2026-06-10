@@ -13,6 +13,8 @@ __ROUTES__
 
 [vars]
 SES_REGION = "eu-west-1"
+# Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
+SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"
 
 # Rate-limiter KV namespace. Create yours: wrangler kv namespace create RATE_LIMIT (+ --preview),
 # then put the ids in .env as MAILSTACK_KV_ID / MAILSTACK_KV_PREVIEW_ID.

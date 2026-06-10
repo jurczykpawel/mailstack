@@ -28,6 +28,7 @@ if (existsSync(envFile)) {
 const kvId = env.MAILSTACK_KV_ID || "PLACEHOLDER_KV_ID";
 const kvPreview = env.MAILSTACK_KV_PREVIEW_ID || "PLACEHOLDER_KV_PREVIEW_ID";
 const route = (env.MAILSTACK_ROUTE || "").trim();
+const sellfBrand = (env.SELLF_DEFAULT_BRAND || "acme").trim();
 
 const routesBlock = route
   ? `routes = [\n  { pattern = "${route}", custom_domain = true },\n]`
@@ -36,7 +37,8 @@ const routesBlock = route
 const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("__ROUTES__", routesBlock)
   .replaceAll("${MAILSTACK_KV_ID}", kvId)
-  .replaceAll("${MAILSTACK_KV_PREVIEW_ID}", kvPreview);
+  .replaceAll("${MAILSTACK_KV_PREVIEW_ID}", kvPreview)
+  .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand);
 
 writeFileSync(resolve(root, "wrangler.toml"), out);
 
