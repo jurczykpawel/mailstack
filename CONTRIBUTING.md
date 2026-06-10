@@ -6,11 +6,11 @@
 git clone <repo>
 cd mailstack
 npm install          # also runs `prepare` which initializes husky
-npm run setup        # copies example configs to real locations
+npm run setup        # generates wrangler.toml from .env + copies brand/logo examples
 ```
 
-Now edit `src/brands.ts` with at least one brand (the example has `acme` and `demo`),
-and fill in `wrangler.toml` with your KV ids.
+Now copy `.env.example` to `.env` and fill in your KV ids (+ optional custom domain), then
+edit `src/brands.ts` with at least one brand (the example has `acme` and `demo`).
 
 For local dev, copy `.dev.vars.example` to `.dev.vars` and fill in the secrets:
 
@@ -22,14 +22,15 @@ npm run dev
 
 ## How config works
 
-Two files are gitignored because they contain private/business data:
+Deployment config is generated (gitignored), so nothing private is committed:
 
-| File | Created from |
+| Generated file | Created from |
 |---|---|
+| `wrangler.toml` | `wrangler.template.toml` + `.env` (`MAILSTACK_*` vars) |
 | `src/brands.ts` | `src/brands.example.ts` |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` |
 
-`wrangler.toml` is committed (no secrets — just KV ids + your domain); edit it directly.
+Configure via `.env` (KV ids + domain) and `src/brands.ts` — not the generated files.
 
 `npm run setup` (also runs automatically before `dev`, `test`, `typecheck`, `deploy`)
 copies each example to the real location if the real file is absent. Never edit the

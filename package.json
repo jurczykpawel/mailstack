@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "node scripts/ensure-config.mjs",
+    "setup": "node scripts/ensure-config.mjs && node scripts/gen-wrangler.mjs",
     "prepare": "husky",
     "predev": "npm run setup",
     "dev": "wrangler dev",

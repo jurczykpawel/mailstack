@@ -1,231 +1,274 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/your-org/mailstack/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/mailstack/actions/workflows/ci.yml)
+[![CI](https://github.com/jurczykpawel/mailstack/actions/workflows/ci.yml/badge.svg)](https://github.com/jurczykpawel/mailstack/actions/workflows/ci.yml)
 
 # mailstack
 
-A self-hostable **form-to-email and transactional email sender** running on a single
-Cloudflare Worker. Post a JSON payload from your browser form or server; mailstack
-validates it, renders a branded HTML email, and delivers it via **Amazon SES**.
+**Your own email-sending service — a free, self-hosted alternative to Web3Forms / Formspree.**
 
-Multi-tenant by design: each brand has its own sender address, fixed recipient list,
-origin allowlist, and visual theme. Public submissions are gated by Cloudflare Turnstile,
-a honeypot, origin enforcement, and a KV-backed rate limiter. Server-to-server sends use
-a bearer token and bypass the browser-only checks. An optional Sellf webhook adapter
-converts e-commerce events (purchase, refund, waitlist, etc.) into branded transactional
-emails without extra code.
+Put mailstack between your website's contact form (or your app) and your inbox. It catches the
+submission, blocks spam, and sends you a clean, branded email. You run it on your own free
+Cloudflare account and it sends through Amazon's email service — so there are **no monthly fees**
+and your data only ever passes through accounts **you** control.
 
-## Features
+## What it does, in plain words
 
-- **Multi-brand**: any number of tenants in one Worker; brand resolved from `?brand=` or
-  the request `Origin`.
-- **Anti-relay**: recipient is always the server-side `brand.to` — the request body can
-  never redirect mail.
-- **Two modes**: public (Turnstile + origin + honeypot + rate limit) and trusted
-  (Bearer token, for server-to-server sends).
-- **Template types**: `contact` (public), `welcome`, `received`, `payment`, `notice` —
-  all sharing one per-brand branded layout.
-- **Auto-reply**: optional confirmation back to the form submitter, dispatched
-  non-blocking via `ctx.waitUntil`.
-- **Sellf webhook adapter**: maps `purchase.completed`, `refund.issued`, `waitlist.signup`,
-  `lead.captured`, `access.expired` to branded emails; unknown events are silently acked.
-- **No database**: rate limit in KV, everything else stateless.
-- **Secret scanning**: TruffleHog pre-commit hook + CI gate.
+1. Someone fills in the contact form on your website.
+2. mailstack checks they're a real person (an invisible spam check) and that the request really
+   came from your site.
+3. It builds a tidy email and sends it to your inbox.
+4. *(Optional)* it sends the visitor an automatic "thanks, we got your message" reply.
 
-## Quick start
+You can also call it from your own app to send things like **"payment confirmed"** or
+**"welcome"** emails. One mailstack can serve **several websites/brands** at once, each with its
+own sender address and look.
 
-```bash
-# 1. Install dependencies
-npm install
+## How it works
 
-# 2. Bootstrap business config (brands.ts, assets/logo.ts) — wrangler.toml is already in the repo
-npm run setup
-
-# 3. Edit your brand(s)
-$EDITOR src/brands.ts
-
-# 4. Edit deployment config
-$EDITOR wrangler.toml
-
-# 5. Create KV namespace for rate limiting
-wrangler kv namespace create RATE_LIMIT
-wrangler kv namespace create RATE_LIMIT --preview
-# Paste the output ids into wrangler.toml
-
-# 6. Set secrets
-wrangler secret put SES_ACCESS_KEY_ID
-wrangler secret put SES_SECRET_ACCESS_KEY
-wrangler secret put TURNSTILE_SECRET
-wrangler secret put API_KEY
-
-# 7. Deploy
-npm run deploy
+```
+ Your website form ──▶ mailstack (runs on Cloudflare) ──▶ your inbox
+                          │  ✓ real person?  (Cloudflare Turnstile)
+                          │  ✓ from your site? (allow-list)
+                          └─ sends a branded email via Amazon SES
 ```
 
-## Config
+You don't run or maintain a server — Cloudflare runs the little program (a "Worker") for you.
 
-`wrangler.toml` is committed — it holds no secrets, just KV ids and your domain (edit it for
-your deployment). Your **business** config is gitignored and bootstrapped from a committed
-example, so the public repo never leaks private data:
+## What you'll need
 
-| Real file (gitignored) | Example template | Purpose |
+Everything below has a free tier. For a normal contact form you'll likely never pay a cent.
+
+| You need | What it's for | Cost |
 |---|---|---|
-| `src/brands.ts` | `src/brands.example.ts` | Brand registry (sender, recipients, theme) |
-| `src/assets/logo.ts` | `src/assets/logo.example.ts` | Brand logo PNG (base64) |
+| A **terminal** + **Node.js** (v20+) | to set up & deploy (copy-paste commands) | free |
+| A free **Cloudflare** account | runs mailstack + the spam check | free |
+| An **Amazon (AWS)** account | actually sends the emails (Amazon SES) | ~free at low volume |
+| ~30–45 minutes, once | first-time setup | — |
+| *(optional)* your own **domain** | a nicer URL + sending "from yourname.com" | — |
 
-`npm run setup` copies each example to the real location if it's missing (it also runs before
-`dev`/`test`/`typecheck`/`deploy`). Edit the real files — **never the `.example` ones**.
-Secrets live in no file at all — set them with `wrangler secret put` (see Quick start).
+> **Not a developer?** You'll still open a terminal and paste a handful of commands — that's
+> unavoidable for a self-hosted tool — but every step below is spelled out and explained.
 
-### Adding a brand
+---
 
-Edit `src/brands.ts` and append an entry:
+## Setup — step by step
 
+### 1) Install Node.js and get the code
+- Install **Node.js** (the "LTS" version) from [nodejs.org](https://nodejs.org).
+- Get this project: on GitHub click **Code → Download ZIP** (or run `git clone <repo-url>`),
+  unzip it, and open a **terminal** in that folder.
+- Install the project's bits:
+  ```bash
+  npm install
+  ```
+
+### 2) Create a free Cloudflare account
+- Sign up at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) (free).
+- Connect your computer to it:
+  ```bash
+  npx wrangler login
+  ```
+  This opens your browser — click **Allow**. (`wrangler` is Cloudflare's command-line tool; it
+  was installed by `npm install`.)
+
+### 3) Set up Amazon SES — this is what actually sends the emails
+SES (Simple Email Service) is Amazon's email service. We use it so your emails reach inboxes
+instead of the spam folder, for a tiny cost.
+
+1. Create a free account at [aws.amazon.com](https://aws.amazon.com).
+2. In the AWS console, open **Amazon SES** and choose a **region** near you (e.g. *Europe
+   (Ireland) — eu-west-1*). Note which one — you'll need it in step 5.
+3. **Verify the address your emails will come FROM** (e.g. `hello@yourdomain.com`, or even a
+   Gmail address to start): SES → **Identities** → **Create identity** → enter the email → SES
+   sends you a confirmation link → click it. *(Advanced: verify a whole domain to send from any
+   address on it.)*
+4. New SES accounts start in **"sandbox" mode** — they can only send *to* addresses you've also
+   verified. For a contact form that emails **your own inbox**, just verify your inbox too and
+   you're good to go. To email *anyone* (e.g. customers), open **Account dashboard → Request
+   production access** (a short form, usually approved within a day).
+5. **Create a sending key**: AWS console → **IAM** → **Users** → **Create user** → attach the
+   policy **AmazonSESFullAccess** → open the user → **Security credentials → Create access key**.
+   Copy the **Access key ID** and **Secret access key** somewhere safe (you'll paste them in
+   step 7).
+
+### 4) Create the spam check (Cloudflare Turnstile — free, invisible)
+- Cloudflare dashboard → **Turnstile → Add widget**.
+- Add your website's domain(s), and add `localhost` so you can test locally.
+- Create it, then copy the **Site key** (public — goes on your web page) and the **Secret key**
+  (private — goes in step 7).
+
+### 5) Create the rate-limit storage, then fill in `.env`
+This caps how often someone can submit, to stop abuse.
+```bash
+wrangler kv namespace create RATE_LIMIT
+wrangler kv namespace create RATE_LIMIT --preview
+```
+Each command prints an **id** — copy both. Then create your settings file:
+```bash
+cp .env.example .env
+```
+Open **`.env`** and paste the two ids (leave the domain empty for now):
+```
+MAILSTACK_KV_ID=<the first id>
+MAILSTACK_KV_PREVIEW_ID=<the second id>
+MAILSTACK_ROUTE=
+```
+
+### 6) Describe your "brand" (who the email is from and to)
+Open **`src/brands.ts`**. There's an example called `acme` — change it to yours:
 ```ts
 acme: {
   id: "acme",
-  name: "Acme Inc.",
-  from: "Acme Inc. <hello@acme.example>",   // verified SES sender
-  to: ["inbox@acme.example"],               // fixed recipient — never overrideable
-  allowedOrigins: [
-    "https://acme.example",
-    "https://www.acme.example",
-    "http://localhost:4321",
-  ],
+  name: "My Website",
+  from: "My Website <hello@yourdomain.com>",   // MUST be the address you verified in SES (step 3)
+  to: ["me@yourdomain.com"],                    // where contact-form submissions land
+  allowedOrigins: ["https://yourwebsite.com"],  // your site's web address
   subjectPrefix: "New message from",
-  autoReply: true,                          // send confirmation to the submitter
-  theme: {
-    accent: "#0064BC",
-    accent2: "#A8D603",
-    logoUrl: "https://mail.example.com/brand/logo.png",
-    siteUrl: "https://acme.example",
-    address: "123 Example Street, City",
-    phone: "+00 000 000 000",
-  },
+  autoReply: true,                              // auto "thanks" reply to the visitor (optional)
+  theme: { accent: "#0064BC", siteUrl: "https://yourwebsite.com" },
 },
 ```
+You can rename `acme` to anything (e.g. `mysite`). Remember that id — you'll use it when you
+connect your form in step 9.
 
-Redeploy after editing. No code changes needed elsewhere.
-
-## API
-
-### `GET /health`
-
-Liveness check.
-
-```json
-{ "ok": true, "service": "mailstack" }
-```
-
-### `OPTIONS /v1/send`
-
-CORS preflight. Returns `204` + CORS headers when the `Origin` is allowed for the brand,
-`403` otherwise.
-
-### `POST /v1/send`
-
-Main send handler. Always returns `{ success: boolean, message?: string }`.
-
-**Control keys** (stripped before rendering):
-
-| Key | Description |
-|---|---|
-| `brand` | **required** — brand id |
-| `cf-turnstile-response` | Cloudflare Turnstile token (public mode) |
-| `botcheck` | honeypot — must be absent or empty |
-| `subject` | subject override (trusted mode only) |
-| `to` | recipient override (trusted mode only, validated) |
-| `replyTo` | Reply-To override (trusted mode only, validated) |
-| `template` | template type (trusted mode only; public is always `contact`) |
-| `autoreply` | per-request auto-reply toggle (`1`/`true` or `0`/`false`) |
-
-Everything else is treated as a content field (`name`, `email`, `message`, etc.).
-
-**Public mode** (no bearer): enforces Origin allowlist, honeypot, Turnstile, rate limit,
-fixed recipient.
-
-**Trusted mode** (`Authorization: Bearer <API_KEY>`): skips browser checks; allows
-`template`, `subject`, `to`, `replyTo` overrides.
-
+### 7) Add your secret keys (kept safely in Cloudflare, never in any file)
 ```bash
-# Public form submission
-curl -X POST https://mail.example.com/v1/send \
-  -H 'content-type: application/json' \
-  -H 'origin: https://acme.example' \
-  -d '{
-    "brand": "acme",
-    "name": "Jane Smith",
-    "email": "jane@example.com",
-    "message": "Hello!",
-    "cf-turnstile-response": "<token-from-widget>"
-  }'
+npm run setup                               # prepares your config from .env
 
-# Trusted transactional send (payment receipt)
-curl -X POST https://mail.example.com/v1/send \
-  -H 'content-type: application/json' \
-  -H "authorization: Bearer $MAILSTACK_API_KEY" \
+wrangler secret put SES_ACCESS_KEY_ID       # paste the AWS Access key ID (step 3)
+wrangler secret put SES_SECRET_ACCESS_KEY   # paste the AWS Secret access key
+wrangler secret put TURNSTILE_SECRET        # paste the Turnstile Secret key (step 4)
+wrangler secret put API_KEY                 # a long random password (for app-to-app sends)
+```
+Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
+
+### 8) Deploy 🚀
+```bash
+npm run deploy
+```
+Cloudflare gives you a URL like `https://mailstack.<your-name>.workers.dev`. Check it works:
+```bash
+curl https://mailstack.<your-name>.workers.dev/health
+# → {"ok":true,"service":"mailstack"}
+```
+That's your live email service.
+
+### 9) Connect your website form
+Add the spam widget and point the form at mailstack. A minimal example:
+```html
+<form id="contact">
+  <input name="name" required placeholder="Your name">
+  <input name="email" type="email" required placeholder="Your email">
+  <textarea name="message" required placeholder="Message"></textarea>
+
+  <!-- Cloudflare Turnstile spam check (use your Site key) -->
+  <div class="cf-turnstile" data-sitekey="YOUR_TURNSTILE_SITE_KEY"></div>
+  <button>Send</button>
+</form>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+  document.getElementById("contact").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    data.brand = "acme"; // your brand id from step 6
+    data["cf-turnstile-response"] = e.target.querySelector("[name=cf-turnstile-response]").value;
+    const res = await fetch("https://mailstack.<your-name>.workers.dev/v1/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    alert((await res.json()).success ? "Sent — thank you!" : "Something went wrong.");
+  });
+</script>
+```
+Submissions now arrive in your inbox. 🎉
+
+---
+
+## Sending emails from your app (payments, welcome, etc.)
+
+For server-to-server emails (no spam check needed), call the same endpoint with your `API_KEY`
+and pick a template:
+```bash
+curl -X POST https://mailstack.<your-name>.workers.dev/v1/send \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer YOUR_API_KEY" \
   -d '{
     "brand": "acme",
     "template": "payment",
     "to": "buyer@example.com",
     "name": "Jane Smith",
-    "amount": "49.99",
-    "currency": "USD",
-    "item": "Pro Plan",
-    "orderId": "ORD-1001"
+    "amount": "49.99", "currency": "USD", "item": "Pro Plan", "orderId": "ORD-1001"
   }'
 ```
+Built-in templates: `payment`, `welcome`, `received`, `notice` (and `contact` for forms).
 
-### `POST /v1/hooks/sellf`
+## What it costs
+- **Cloudflare** (Workers, KV, Turnstile): generous free tiers — 100,000 Worker requests/day.
+- **Amazon SES**: about **$0.10 per 1,000 emails** (often with a free monthly allowance). A
+  contact form will almost certainly stay free.
 
-Sellf webhook adapter. Bearer-only. Optional `?brand=<id>` (defaults to the first brand
-or the `SELLF_DEFAULT_BRAND` var). Maps Sellf events to branded emails; unmapped events
-and invalid/missing recipients are acked without sending (so Sellf does not retry).
+## Updating it later
+Change a setting (edit `.env` or `src/brands.ts`) and run `npm run deploy` again. That's the
+*entire* maintenance — there's no server to patch or keep running.
 
-## Templates
+## Troubleshooting
+- **Email not arriving?** You're probably still in SES "sandbox" — verify the recipient address
+  (or request production access). Also check your spam folder.
+- **"verification failed"?** The Turnstile widget wasn't solved, or your Site/Secret keys don't match.
+- **"origin not allowed"?** Add your site's address to `allowedOrigins` in `src/brands.ts`, redeploy.
+- **"send failed"?** Your `from` address isn't verified in SES, or the SES region doesn't match
+  where you verified it (set it in `.env` is for KV; the region is in `wrangler.template.toml` →
+  `SES_REGION`).
 
-| `template` | Purpose | Public? |
+---
+
+# Reference (for developers)
+
+### Highlights
+- **Multi-brand** — many tenants in one Worker; brand from `?brand=` or the request `Origin`.
+- **Anti-relay** — the recipient is always the server-side `brand.to`; the request body can never redirect mail.
+- **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
+- **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`; one branded layout.
+- **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
+- **Sellf webhook adapter** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
+- **No database** — rate limit in KV, everything else stateless. **Secret scanning** in pre-commit + CI.
+
+### Config files
+Nothing deployment-specific is committed — `npm run setup` (also run before `dev`/`deploy`/`test`/
+`typecheck`) generates it from committed templates:
+
+| Generated (gitignored) | From | Holds |
 |---|---|---|
-| `contact` | Contact-form submission | Yes |
-| `welcome` | Onboarding / welcome | No |
-| `received` | Submission acknowledgement | No |
-| `payment` | Payment confirmation | No |
-| `notice` | Generic catch-all | No |
+| `wrangler.toml` | `wrangler.template.toml` + `.env` | KV ids + custom domain (`MAILSTACK_*` vars) |
+| `src/brands.ts` | `src/brands.example.ts` | Brand registry (sender, recipients, theme) |
+| `src/assets/logo.ts` | `src/assets/logo.example.ts` | Brand logo PNG (base64) |
 
-### Adding a template
+Configure via **`.env`** and **`src/brands.ts`**; secrets via `wrangler secret put`. Full
+deployment notes and architecture: see [AGENTS.md](AGENTS.md).
 
-1. Create `src/templates/types/<id>.ts` exporting a `TemplateDef`.
-2. Register it in `src/templates/index.ts`.
-3. Add a test in `test/template-types.test.ts`.
+### API (summary)
+- `GET /health` → `{ ok: true }`.
+- `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
+  keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
+  `template`/`autoreply` (trusted only). Everything else is email content.
+- `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer-only). See [AGENTS.md](AGENTS.md).
 
-## Security model
+### Security model
+Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
+closed) · honeypot · fixed recipient / anti-relay · KV rate limit (8/hour per brand+IP) ·
+constant-time bearer compare · all field values HTML-escaped · 64 KB / ~40 fields / 5000
+chars-per-value guards · no secrets in code.
 
-- **Origin allowlist**: only listed origins may submit; CORS reflects the exact origin,
-  never `*`.
-- **Turnstile**: every public submission verified server-side; fails closed.
-- **Honeypot**: silently swallowed; looks like success to bots.
-- **Fixed recipient / anti-relay**: `brand.to` is server-side only; body `to`/`from` are
-  ignored in public mode.
-- **Rate limit**: KV fixed window — 8 requests/hour per brand+IP.
-- **Bearer token**: constant-time comparison.
-- **Output escaping**: all field values HTML-escaped before rendering.
-- **Size guards**: body capped at 64 KB, ~40 fields, 5000 chars/value.
-- **No secrets in code**: SES/Turnstile/API credentials read from `env` at runtime.
+### Secret scanning
+TruffleHog runs as a pre-commit hook (`.husky/pre-commit`, skips gracefully if not installed)
+and in CI (`.github/workflows/secret-scan.yml`, always enforced). Install locally:
+`brew install trufflehog`.
 
-## Secret scanning
-
-TruffleHog runs as a pre-commit hook (see `.husky/pre-commit`) and in CI
-(`.github/workflows/secret-scan.yml`). The pre-commit hook skips gracefully if
-`trufflehog` is not installed locally, but CI always enforces it.
-
-Install locally: `brew install trufflehog`
-
-## Local development
-
+### Local development
 ```bash
-cp .dev.vars.example .dev.vars   # fill in the secret values
-npm run dev                       # wrangler dev with KV preview
+cp .dev.vars.example .dev.vars   # fill in the secret values for local runs
+npm run dev                       # wrangler dev
 ```
 
-## License
-
-MIT. See [LICENSE](LICENSE).
+### Contributing & license
+See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under **MIT** — see [LICENSE](LICENSE).

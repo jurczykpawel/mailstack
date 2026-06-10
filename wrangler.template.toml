@@ -1,0 +1,25 @@
+# Template for wrangler.toml — committed. DO NOT put real ids/domains/secrets here.
+# `npm run setup` (and predev/predeploy) generates wrangler.toml from this file by
+# substituting env vars from your gitignored .env (see .env.example):
+#   MAILSTACK_KV_ID, MAILSTACK_KV_PREVIEW_ID, MAILSTACK_ROUTE
+name = "mailstack"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain — emitted only when MAILSTACK_ROUTE is set; otherwise the default
+# *.workers.dev URL is used. The domain's zone must be in the same Cloudflare account.
+__ROUTES__
+
+[vars]
+SES_REGION = "eu-west-1"
+
+# Rate-limiter KV namespace. Create yours: wrangler kv namespace create RATE_LIMIT (+ --preview),
+# then put the ids in .env as MAILSTACK_KV_ID / MAILSTACK_KV_PREVIEW_ID.
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "${MAILSTACK_KV_ID}"
+preview_id = "${MAILSTACK_KV_PREVIEW_ID}"
+
+# SECRETS — never in any file. Set with `wrangler secret put <NAME>`:
+#   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY, TURNSTILE_SECRET, API_KEY
