@@ -22,13 +22,14 @@ npm run dev
 
 ## How config works
 
-Three files are gitignored because they contain deployment-specific or private data:
+Two files are gitignored because they contain private/business data:
 
 | File | Created from |
 |---|---|
 | `src/brands.ts` | `src/brands.example.ts` |
-| `wrangler.toml` | `wrangler.example.toml` |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` |
+
+`wrangler.toml` is committed (no secrets — just KV ids + your domain); edit it directly.
 
 `npm run setup` (also runs automatically before `dev`, `test`, `typecheck`, `deploy`)
 copies each example to the real location if the real file is absent. Never edit the

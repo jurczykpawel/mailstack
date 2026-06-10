@@ -14,9 +14,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
+// Only business-specific config is gitignored + bootstrapped here. wrangler.toml is
+// committed (it holds no secrets — just KV ids + your domain).
 const pairs = [
   { src: "src/brands.example.ts", dst: "src/brands.ts" },
-  { src: "wrangler.example.toml", dst: "wrangler.toml" },
   { src: "src/assets/logo.example.ts", dst: "src/assets/logo.ts" },
 ];
 

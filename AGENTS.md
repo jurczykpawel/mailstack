@@ -366,9 +366,9 @@ npm run deploy      # wrangler deploy
 
 ## TODO (infra/deploy)
 
-- Run `npm run setup` to create `src/brands.ts`, `wrangler.toml`, `src/assets/logo.ts` from the example files.
+- Run `npm run setup` to create `src/brands.ts` and `src/assets/logo.ts` from the example files (`wrangler.toml` is committed — edit it directly).
 - Edit `src/brands.ts` with your real brand(s).
-- Fill `wrangler.toml` KV `id` / `preview_id` after creating the namespace.
+- Edit `wrangler.toml`: replace the KV `id` / `preview_id` (after `wrangler kv namespace create RATE_LIMIT`) and the custom-domain `routes` (or remove them) with your own.
 - Set the four secrets (`SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `TURNSTILE_SECRET`, `API_KEY`).
 - Verify SES senders (domain/email identity for each `from` address) and leave the SES sandbox.
 - Add a custom domain/route for the Worker.

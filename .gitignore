@@ -6,8 +6,8 @@ dist/
 .DS_Store
 priv/
 
-# Real deployment config (gitignored — copy from *.example files via `npm run setup`)
+# Business config (gitignored — bootstrapped from *.example via `npm run setup`).
+# wrangler.toml is NOT here: it's committed (holds no secrets, just KV ids + your domain).
 src/brands.ts
-wrangler.toml
 src/assets/logo.ts
 docs/superpowers/

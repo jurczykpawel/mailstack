@@ -37,7 +37,7 @@ emails without extra code.
 # 1. Install dependencies
 npm install
 
-# 2. Copy example config files (brands.ts, wrangler.toml, assets/logo.ts)
+# 2. Bootstrap business config (brands.ts, assets/logo.ts) — wrangler.toml is already in the repo
 npm run setup
 
 # 3. Edit your brand(s)
@@ -63,17 +63,18 @@ npm run deploy
 
 ## Config
 
-mailstack uses a **gitignored real config + committed example** pattern so you can publish
-the repo without leaking private data.
+`wrangler.toml` is committed — it holds no secrets, just KV ids and your domain (edit it for
+your deployment). Your **business** config is gitignored and bootstrapped from a committed
+example, so the public repo never leaks private data:
 
 | Real file (gitignored) | Example template | Purpose |
 |---|---|---|
-| `src/brands.ts` | `src/brands.example.ts` | Brand registry |
-| `wrangler.toml` | `wrangler.example.toml` | Worker config |
+| `src/brands.ts` | `src/brands.example.ts` | Brand registry (sender, recipients, theme) |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` | Brand logo PNG (base64) |
 
-`npm run setup` copies each example to the real location if the real file is missing.
-Edit the real files — **never the `.example` ones** (those stay generic and are committed).
+`npm run setup` copies each example to the real location if it's missing (it also runs before
+`dev`/`test`/`typecheck`/`deploy`). Edit the real files — **never the `.example` ones**.
+Secrets live in no file at all — set them with `wrangler secret put` (see Quick start).
 
 ### Adding a brand
 
