@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.dev.vars
+.env
+.wrangler/
+.DS_Store
+priv/
+
+# Real deployment config (gitignored — copy from *.example files via `npm run setup`)
+src/brands.ts
+wrangler.toml
+src/assets/logo.ts
+docs/superpowers/

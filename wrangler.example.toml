@@ -1,0 +1,27 @@
+name = "mailstack"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain (optional). Attach in the Cloudflare dashboard or via wrangler.
+# routes = [{ pattern = "mail.example.com", custom_domain = true }]
+
+# Non-secret config. Region for Amazon SES (must match where your SES
+# identity/domain is verified).
+[vars]
+SES_REGION = "eu-west-1"
+
+# Fixed-window rate limiter store (public mode). Fill in the ids after creating
+# the namespaces:
+#   wrangler kv namespace create RATE_LIMIT
+#   wrangler kv namespace create RATE_LIMIT --preview
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "<KV_ID>"
+preview_id = "<KV_PREVIEW_ID>"
+
+# SECRETS — never put these in this file. Set each one with `wrangler secret put <NAME>`:
+#   wrangler secret put SES_ACCESS_KEY_ID      # AWS IAM access key id (SES SendEmail only)
+#   wrangler secret put SES_SECRET_ACCESS_KEY  # AWS IAM secret access key
+#   wrangler secret put TURNSTILE_SECRET       # Cloudflare Turnstile secret key (server-side)
+#   wrangler secret put API_KEY                # bearer token for trusted (server-to-server) mode

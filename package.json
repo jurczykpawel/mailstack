@@ -1,0 +1,28 @@
+{
+  "name": "mailstack",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/ensure-config.mjs",
+    "prepare": "husky",
+    "predev": "npm run setup",
+    "dev": "wrangler dev",
+    "predeploy": "npm run setup",
+    "deploy": "wrangler deploy",
+    "pretypecheck": "npm run setup",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run setup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250525.0",
+    "husky": "^9.1.7",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3",
+    "wrangler": "^4.98.0"
+  }
+}

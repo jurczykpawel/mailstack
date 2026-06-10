@@ -1,0 +1,12 @@
+#!/bin/sh
+files=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$files" ] && exit 0
+if ! command -v trufflehog >/dev/null 2>&1; then
+  echo "trufflehog not installed — skipping local secret scan (CI still enforces). Install: brew install trufflehog"
+  exit 0
+fi
+echo "trufflehog: scanning staged files..."
+# shellcheck disable=SC2086
+trufflehog filesystem $files --no-update --fail --results=verified,unknown 2>/dev/null \
+  && echo "no secrets found" \
+  || { echo "potential secret in staged changes — commit blocked"; exit 1; }

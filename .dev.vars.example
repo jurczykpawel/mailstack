@@ -1,0 +1,12 @@
+# Copy to `.dev.vars` for local `wrangler dev`. These map to Worker secrets in prod
+# (set with `wrangler secret put <NAME>`). NEVER commit real values — .dev.vars is gitignored.
+
+# AWS IAM credentials for an Amazon SES sender (scope to ses:SendEmail only).
+SES_ACCESS_KEY_ID=AKIA_EXAMPLE_PLACEHOLDER
+SES_SECRET_ACCESS_KEY=example_secret_placeholder
+
+# Cloudflare Turnstile secret key (the server-side counterpart to the public sitekey).
+TURNSTILE_SECRET=0x_turnstile_secret_placeholder
+
+# Bearer token that unlocks trusted (server-to-server) mode. Generate a long random string.
+API_KEY=replace_with_a_long_random_token
