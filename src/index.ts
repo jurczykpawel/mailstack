@@ -5,10 +5,12 @@ import { handleSend } from "./send";
 import { handleSellfHook } from "./sellf";
 import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
+import { createChallenge, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
 
 const defaultDeps: SendDeps = {
   verifyTurnstile,
+  verifyAltcha,
   sendEmail,
   now: () => new Date(),
 };
@@ -62,6 +64,29 @@ export default {
           "access-control-allow-origin": "*",
         },
       });
+    }
+
+    if (pathname === "/altcha/challenge") {
+      if (req.method === "OPTIONS") return handlePreflight(req, url);
+      if (req.method === "GET") {
+        const origin = req.headers.get("origin") || "";
+        const brandId = url.searchParams.get("brand");
+        const brand = brandId ? getBrand(brandId) : findBrandByOrigin(origin);
+        if (!brand || !isOriginAllowed(brand, origin)) {
+          return new Response(JSON.stringify({ success: false, message: "forbidden" }), {
+            status: 403,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        const challenge = await createChallenge(env.ALTCHA_HMAC_KEY);
+        return new Response(JSON.stringify(challenge), {
+          headers: {
+            ...corsHeaders(origin),
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        });
+      }
     }
 
     if (pathname === "/v1/send") {

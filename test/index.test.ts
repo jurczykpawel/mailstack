@@ -8,6 +8,7 @@ const env: Env = {
   SES_SECRET_ACCESS_KEY: "secret_test",
   TURNSTILE_SECRET: "ts_secret",
   API_KEY: "trusted-secret-token",
+  ALTCHA_HMAC_KEY: "test_altcha_hmac_key_placeholder",
 };
 
 const ctx = {} as ExecutionContext;

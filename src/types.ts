@@ -9,6 +9,7 @@ export interface Env {
   SES_SECRET_ACCESS_KEY: string;
   TURNSTILE_SECRET: string;
   API_KEY: string;
+  ALTCHA_HMAC_KEY: string;
   // KV (optional so tests / misconfigured envs degrade gracefully)
   RATE_LIMIT?: KVNamespace;
 }
@@ -42,6 +43,8 @@ export interface Brand {
   autoReply?: boolean;
   /** Template used for the auto-reply. Default "received". */
   autoReplyTemplate?: string;
+  /** Captcha provider for public mode. Default 'turnstile' when unset. */
+  captcha?: 'altcha' | 'turnstile';
 }
 
 /** A submitted content field after coercion (control keys are stripped out). */
@@ -121,6 +124,7 @@ export interface SendDeps {
     token: string,
     remoteIp: string | null,
   ) => Promise<boolean>;
+  verifyAltcha: (hmacKey: string, payloadB64: string) => Promise<boolean>;
   sendEmail: (env: Env, params: SendParams) => Promise<SendResult>;
   now: () => Date;
   /**
