@@ -24,6 +24,7 @@ const RESERVED_KEYS = new Set([
   "brand",
   "access_key",
   "cf-turnstile-response",
+  "altcha",
   "botcheck",
   "subject",
   "to",
@@ -196,10 +197,13 @@ export async function handleSend(
     if (honeypot.trim() !== "") {
       return json({ success: true }, { cors: corsOrigin });
     }
-    // 3) Turnstile.
-    const tsToken = coerceValue(body["cf-turnstile-response"]);
-    const ok = await deps.verifyTurnstile(env.TURNSTILE_SECRET, tsToken, ip);
-    if (!ok) {
+    // 3) Captcha (Altcha or Turnstile depending on brand config).
+    const captcha = brand.captcha ?? 'turnstile';
+    const captchaOk =
+      captcha === 'altcha'
+        ? await deps.verifyAltcha(env.ALTCHA_HMAC_KEY, coerceValue(body.altcha))
+        : await deps.verifyTurnstile(env.TURNSTILE_SECRET, coerceValue(body["cf-turnstile-response"]), ip);
+    if (!captchaOk) {
       return json(
         { success: false, message: "verification failed" },
         { status: 403, cors: corsOrigin },

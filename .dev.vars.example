@@ -10,3 +10,8 @@ TURNSTILE_SECRET=0x_turnstile_secret_placeholder
 
 # Bearer token that unlocks trusted (server-to-server) mode. Generate a long random string.
 API_KEY=replace_with_a_long_random_token
+
+# HMAC key for Altcha PoW challenges (used by brands with captcha: "altcha").
+# Generate: openssl rand -base64 32  — store the real value in Vaultwarden Infra.
+# Set as a Worker secret in prod: wrangler secret put ALTCHA_HMAC_KEY
+ALTCHA_HMAC_KEY=replace_with_altcha_hmac_key_placeholder

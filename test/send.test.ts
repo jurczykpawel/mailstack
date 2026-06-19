@@ -11,6 +11,7 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     SES_SECRET_ACCESS_KEY: "secret_test",
     TURNSTILE_SECRET: "ts_secret",
     API_KEY,
+    ALTCHA_HMAC_KEY: "test_altcha_hmac_key_placeholder",
     ...overrides,
   };
 }
@@ -40,9 +41,11 @@ function makeDeps(overrides: Partial<SendDeps> = {}): SendDeps & {
     status: 200,
   }));
   const verifyTurnstile = vi.fn(async () => true);
+  const verifyAltcha = vi.fn(async () => true);
   return {
     sendEmail,
     verifyTurnstile,
+    verifyAltcha,
     now: () => new Date("2026-06-10T12:00:00.000Z"),
     ...overrides,
   } as SendDeps & {
