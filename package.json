@@ -23,6 +23,6 @@
     "husky": "^9.1.7",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3",
-    "wrangler": "^4.98.0"
+    "wrangler": "^4.104.0"
   }
 }
