@@ -22,7 +22,7 @@
     "@cloudflare/workers-types": "^4.20250525.0",
     "husky": "^9.1.7",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.3",
+    "vitest": "^3.2.7",
     "wrangler": "^4.98.0"
   }
 }
