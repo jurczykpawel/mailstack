@@ -6,8 +6,8 @@ const ctx = {} as any;
 
 describe('GET /altcha/challenge', () => {
   it('returns a challenge for an allowed origin', async () => {
-    const req = new Request('https://mailer.techskills.academy/altcha/challenge?brand=tsa', {
-      headers: { origin: 'https://techskills.academy' },
+    const req = new Request('https://mailer.example/altcha/challenge?brand=acme', {
+      headers: { origin: 'https://acme.example' },
     });
     const res = await worker.fetch(req, env, ctx);
     expect(res.status).toBe(200);
@@ -17,7 +17,7 @@ describe('GET /altcha/challenge', () => {
   });
 
   it('403 for a disallowed origin', async () => {
-    const req = new Request('https://mailer.techskills.academy/altcha/challenge?brand=tsa', {
+    const req = new Request('https://mailer.example/altcha/challenge?brand=acme', {
       headers: { origin: 'https://evil.example' },
     });
     const res = await worker.fetch(req, env, ctx);
