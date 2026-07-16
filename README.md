@@ -272,3 +272,10 @@ npm run dev                       # wrangler dev
 
 ### Contributing & license
 See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under **MIT** — see [LICENSE](LICENSE).
+
+## Support
+
+mailstack is free and MIT-licensed. If it's quietly delivering your emails right now,
+you can buy me a croissant:
+
+[![🥐 Buy me a croissant](https://img.shields.io/badge/🥐_Buy_me_a_croissant-FFDD00)](https://sellf.techskills.academy/checkout/tip-mailstack?utm_source=github&utm_medium=readme&utm_campaign=tip-jar)
