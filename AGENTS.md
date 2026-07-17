@@ -217,6 +217,66 @@ curl -X POST https://mail.example.com/v1/send \
         "autoreply":"0", "cf-turnstile-response":"<token>" }'
 ```
 
+## Email markup (schema.org / Gmail)
+
+Emails can carry **schema.org markup** — a `<script type="application/ld+json">` block in the
+`<head>` — so Gmail (and, partially, Yahoo) render **action buttons** in the message bar
+(GitHub-style), **Promotions-tab annotations** (deal badge, promo code), or **reservation**
+cards. It is not an SMTP header; clients that don't support it ignore it (graceful degradation).
+
+> **Allowlisting caveat:** markup renders to *arbitrary* recipients only after you register the
+> sender with Google (sample to `schema.whitelisting+sample@gmail.com`; needs DKIM/SPF, volume,
+> low spam). It renders to **your own inbox** and in Google's **Email Markup Tester** with no
+> registration — enough to develop and verify. Outlook uses a different format; Apple Mail: none.
+
+### Adding markup
+
+Send a reserved `markup` control key — **trusted mode only** (`Authorization: Bearer <API_KEY>`);
+it is ignored for public browser requests, like `to`/`template`. The value is an **array of
+directives**, each tagged with `kind`:
+
+```jsonc
+{
+  "brand": "acme", "template": "payment", "to": "buyer@example.com",
+  "amount": "149.00", "orderId": "ORD-7788",
+  "markup": [
+    { "kind": "viewAction", "name": "See order", "url": "https://acme.example/o/ORD-7788" },
+    { "kind": "discountOffer", "discountCode": "WELCOME10", "description": "10% off", "availabilityEnds": "2026-08-01" },
+    { "kind": "schema", "type": "ParcelDelivery", "props": { "trackingNumber": "1Z999" } },
+    { "kind": "raw", "value": { "@type": "FlightReservation", "reservationId": "ABC123" } }
+  ]
+}
+```
+
+| `kind` | Produces | Key fields |
+|---|---|---|
+| `viewAction` | `EmailMessage` → `ViewAction` (go-to button) | `name`, `url` (http/https) |
+| `confirmAction` | `EmailMessage` → `ConfirmAction` + `HttpActionHandler` (one-click) | `name`, `url` |
+| `trackAction` | `ParcelDelivery` + `TrackAction` | `url`; optional `trackingNumber` |
+| `discountOffer` | `DiscountOffer` (Promotions tab) | `discountCode`; optional `description`, `availabilityStarts/Ends` |
+| `promotionCard` | `PromotionCard` (image card) | `images` (http/https, ≥1) or `image`; optional `name`, `url` |
+| `organization` | `Organization` (logo) | `name`, `logo` (url) |
+| `schema` | `{ "@type": <type>, ...props }` | `type`, `props` — any schema.org type |
+| `raw` | passthrough of a full JSON-LD object | `value` (plain object with a string `@type`) |
+
+Invalid or unknown directives are **dropped** (fail-soft) — the email still sends. Non-http(s)
+action URLs are rejected. Caps: ≤ 5 blocks, ≤ 16 KB total, bounded nesting depth.
+
+### Template auto-markup and the merge rule
+
+A template may derive markup from its own data. Today the **`payment`** template emits a
+`ViewAction` when the request carries an `orderUrl` ("Zobacz zamówienie") or `invoiceUrl`
+("Pobierz fakturę"). This applies to Sellf emails too, since they render through the same path.
+
+Control is **per request**, no config flags:
+
+- **Omit** `markup` → the template may add its own markup.
+- **Include** `markup` (any array) → your blocks win wholesale; template auto-markup is suppressed.
+- `"markup": []` → no markup at all for this email.
+
+To make a template emit its own markup, build blocks with the helpers in `src/markup` and return
+them as `RenderedBody.jsonLd` (see `src/templates/types/payment.ts`).
+
 ## Sellf webhook (`/v1/hooks/sellf`)
 
 `POST /v1/hooks/sellf` turns Sellf webhook events into branded emails to the customer,
@@ -289,6 +349,9 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
   if the KV binding is missing so a misconfig never takes the form offline silently.
 - **Bearer compare:** trusted-mode token is compared in constant time.
 - **Output escaping:** every field value is HTML-escaped before rendering (no stored/reflected XSS).
+- **Markup safety:** JSON-LD is embedded via a JSON-safe serializer that escapes `<` (neutralizes
+  a `</script>` breakout) and U+2028/U+2029; action URLs must be http(s); markup is trusted-mode
+  only and capped in count/size (never injectable by public requests).
 - **Size/shape guards:** body capped at 64 KB, ~40 fields, 5000 chars/value; non-object JSON rejected.
 - **No secrets in code:** SES/Turnstile/API credentials are read from `env` at runtime only.
 
@@ -345,6 +408,10 @@ src/
     types/received.ts  submission acknowledgement
     types/payment.ts   payment confirmation
     types/notice.ts    generic catch-all
+  markup/              schema.org email markup (JSON-LD)
+    builders.ts        typed builders (viewAction, discountOffer, ...) + generic schema()/raw()
+    serialize.ts       safe JSON-in-<script> serialization (neutralizes </script>) + head assembly
+    index.ts           buildBlocks() — validate/fail-soft/cap; re-exports builders + serialize
   ratelimit.ts         KV fixed-window limiter
   cors.ts              origin allowlist + CORS headers
   types.ts             shared types (Env, Brand, TemplateDef, SendDeps, ...)

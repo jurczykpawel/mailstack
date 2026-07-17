@@ -134,6 +134,7 @@ export function renderLayout(brand: Brand, input: LayoutInput): RenderedEmail {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${heading}</title>
+    ${input.headHtml ?? ""}
   </head>
   <body style="margin:0;padding:0;background:#f0f2f5;font-family:${FONT_STACK};">
     ${preview}

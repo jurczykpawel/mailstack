@@ -73,12 +73,17 @@ export interface RenderedEmail {
 /** Flat content fields from the request (control keys already stripped). */
 export type TemplateData = Record<string, string>;
 
+/** A ready-to-serialize schema.org JSON-LD object (always carries "@type"). */
+export type JsonLdBlock = Record<string, unknown>;
+
 /** What a template type produces; the layout wraps this with brand chrome. */
 export interface RenderedBody {
   heading: string;
   bodyHtml: string;
   bodyText: string;
   previewText?: string;
+  /** Optional schema.org markup the template derives from its own data. */
+  jsonLd?: JsonLdBlock[];
 }
 
 /** Inputs to the shared branded layout. */
@@ -87,6 +92,8 @@ export interface LayoutInput {
   bodyHtml: string;
   bodyText: string;
   previewText?: string;
+  /** Pre-serialized `<script type="application/ld+json">` tags for the `<head>`. */
+  headHtml?: string;
 }
 
 /**

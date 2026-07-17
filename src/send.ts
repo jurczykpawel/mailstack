@@ -1,6 +1,7 @@
 import type {
   Brand,
   Env,
+  JsonLdBlock,
   SendDeps,
   SendResult,
   TemplateData,
@@ -11,6 +12,7 @@ import { corsHeaders, isOriginAllowed } from "./cors";
 import { checkRateLimit } from "./ratelimit";
 import { getTemplate, renderLayout } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
+import { buildBlocks, serializeToHead } from "./markup";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_FIELDS = 40;
@@ -31,6 +33,7 @@ const RESERVED_KEYS = new Set([
   "replyTo",
   "template",
   "autoreply",
+  "markup",
   "_meta",
 ]);
 
@@ -266,10 +269,19 @@ export async function handleSend(
       ? body.subject.trim()
       : undefined;
 
+  // Markup (schema.org JSON-LD). Trusted only. When the `markup` key is present
+  // the caller controls markup wholesale — an empty array suppresses the
+  // template's own markup; when absent, the template may supply its own.
+  const explicitJsonLd =
+    trusted && Object.prototype.hasOwnProperty.call(body, "markup")
+      ? buildBlocks(body.markup)
+      : undefined;
+
   const result = await renderAndSend(deps, env, brand, template, data, {
     to: recipients,
     replyTo,
     subject: subjectOverride,
+    explicitJsonLd,
   });
 
   if (!result.ok) {
@@ -379,6 +391,11 @@ export interface RenderAndSendParams {
   replyTo?: string;
   /** Overrides the template's own subject when set. */
   subject?: string;
+  /**
+   * Caller-supplied JSON-LD markup. `undefined` means "use the template's own
+   * markup"; any array (including empty) overrides it wholesale.
+   */
+  explicitJsonLd?: JsonLdBlock[];
 }
 
 /**
@@ -399,11 +416,18 @@ export async function renderAndSend(
       ? params.subject.trim()
       : template.subject(brand, data);
   const rendered = template.render(brand, data);
+  // Explicit markup (present in the request) wins wholesale; otherwise fall back
+  // to whatever markup the template produced from its own data.
+  const blocks =
+    params.explicitJsonLd !== undefined
+      ? params.explicitJsonLd
+      : rendered.jsonLd ?? [];
   const { html, text } = renderLayout(brand, {
     heading: rendered.heading,
     bodyHtml: rendered.bodyHtml,
     bodyText: rendered.bodyText,
     previewText: rendered.previewText,
+    headHtml: serializeToHead(blocks),
   });
   return deps.sendEmail(env, {
     from: brand.from,
