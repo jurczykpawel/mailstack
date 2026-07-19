@@ -40,13 +40,45 @@ describe("buildBlocks — typed builders", () => {
     });
   });
 
-  it("trackAction -> ParcelDelivery with a TrackAction", () => {
-    const [b] = buildBlocks([
-      { kind: "trackAction", url: "https://x.example/t", trackingNumber: "1Z999" },
-    ]);
+  const fullTrackAction = {
+    kind: "trackAction",
+    url: "https://x.example/t",
+    trackingNumber: "1Z999",
+    carrier: "FedEx",
+    expectedArrivalUntil: "2026-08-01T12:00:00+02:00",
+    orderNumber: "ORD-1",
+    merchant: "Acme Inc.",
+    deliveryAddress: {
+      streetAddress: "1 Example St",
+      addressLocality: "Warsaw",
+      addressRegion: "Mazowieckie",
+      addressCountry: "PL",
+      postalCode: "00-001",
+    },
+    itemShipped: "Widget",
+  };
+
+  it("trackAction -> ParcelDelivery with a TrackAction (all Gmail-required fields)", () => {
+    const [b] = buildBlocks([fullTrackAction]);
     expect(b["@type"]).toBe("ParcelDelivery");
     expect(b.trackingNumber).toBe("1Z999");
-    expect(b.potentialAction).toMatchObject({ "@type": "TrackAction", target: "https://x.example/t" });
+    expect(b.potentialAction).toMatchObject({ "@type": "TrackAction", url: "https://x.example/t" });
+    expect(b.carrier).toMatchObject({ "@type": "Organization", name: "FedEx" });
+    expect(b.deliveryAddress).toMatchObject({ "@type": "PostalAddress", addressCountry: "PL" });
+    expect(b.itemShipped).toMatchObject({ "@type": "Product", name: "Widget" });
+    expect(b.partOfOrder).toMatchObject({
+      "@type": "Order",
+      orderNumber: "ORD-1",
+      merchant: { "@type": "Organization", name: "Acme Inc." },
+    });
+  });
+
+  it("trackAction drops the directive if any Gmail-required field is missing", () => {
+    expect(buildBlocks([{ kind: "trackAction", url: "https://x.example/t" }])).toEqual([]);
+    const { carrier, ...noCarrier } = fullTrackAction;
+    expect(buildBlocks([noCarrier])).toEqual([]);
+    const { deliveryAddress, ...noAddress } = fullTrackAction;
+    expect(buildBlocks([noAddress])).toEqual([]);
   });
 
   it("discountOffer requires a discountCode", () => {

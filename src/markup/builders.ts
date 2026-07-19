@@ -53,14 +53,79 @@ export function confirmAction(d: Rec): JsonLdBlock | null {
   return block;
 }
 
-/** Parcel-tracking action. Requires an http(s) tracking url. */
+const ADDRESS_FIELDS = [
+  "streetAddress",
+  "addressLocality",
+  "addressRegion",
+  "addressCountry",
+  "postalCode",
+] as const;
+
+/** Builds a PostalAddress; requires all of street/locality/region/country/postal. */
+function buildDeliveryAddress(v: unknown): Rec | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const src = v as Rec;
+  const address: Rec = { "@type": "PostalAddress" };
+  for (const field of ADDRESS_FIELDS) {
+    const value = str(src[field]);
+    if (!value) return null;
+    address[field] = value;
+  }
+  const name = str(src.name);
+  if (name) address.name = name;
+  return address;
+}
+
+/** Builds a shipped Product; accepts a plain name or an object (name required). */
+function buildItemShipped(v: unknown): Rec | null {
+  if (typeof v === "string") {
+    const name = str(v);
+    return name ? { "@type": "Product", name } : null;
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const src = v as Rec;
+  const name = str(src.name);
+  if (!name) return null;
+  const item: Rec = { "@type": "Product", name };
+  if (isHttpUrl(src.url)) item.url = src.url;
+  if (isHttpUrl(src.image)) item.image = src.image;
+  const sku = str(src.sku);
+  if (sku) item.sku = sku;
+  return item;
+}
+
+/**
+ * Parcel-tracking action. Gmail's ParcelDelivery requires carrier, deliveryAddress,
+ * expectedArrivalUntil, itemShipped and partOfOrder in addition to the tracking url —
+ * a bare url/trackingNumber (schema.org's own generic minimum) is not enough for the
+ * real Gmail spec, so all of these are required here too (fail-soft: missing any of
+ * them drops the whole directive rather than emitting a block Gmail will reject).
+ */
 export function trackAction(d: Rec): JsonLdBlock | null {
   if (!isHttpUrl(d.url)) return null;
+  const carrier = str(d.carrier);
+  const expectedArrivalUntil = str(d.expectedArrivalUntil);
+  const orderNumber = str(d.orderNumber);
+  const merchant = str(d.merchant);
+  if (!carrier || !expectedArrivalUntil || !orderNumber || !merchant) return null;
+  const deliveryAddress = buildDeliveryAddress(d.deliveryAddress);
+  const itemShipped = buildItemShipped(d.itemShipped);
+  if (!deliveryAddress || !itemShipped) return null;
+
   const block: JsonLdBlock = {
     "@context": SCHEMA_CONTEXT,
     "@type": "ParcelDelivery",
+    deliveryAddress,
+    expectedArrivalUntil,
+    carrier: { "@type": "Organization", name: carrier },
+    itemShipped,
+    partOfOrder: {
+      "@type": "Order",
+      orderNumber,
+      merchant: { "@type": "Organization", name: merchant },
+    },
     trackingUrl: d.url,
-    potentialAction: { "@type": "TrackAction", target: d.url },
+    potentialAction: { "@type": "TrackAction", url: d.url },
   };
   const tn = str(d.trackingNumber);
   if (tn) block.trackingNumber = tn;

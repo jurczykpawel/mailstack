@@ -252,7 +252,7 @@ directives**, each tagged with `kind`:
 |---|---|---|
 | `viewAction` | `EmailMessage` → `ViewAction` (go-to button) | `name`, `url` (http/https) |
 | `confirmAction` | `EmailMessage` → `ConfirmAction` + `HttpActionHandler` (one-click) | `name`, `url` |
-| `trackAction` | `ParcelDelivery` + `TrackAction` | `url`; optional `trackingNumber` |
+| `trackAction` | `ParcelDelivery` + `TrackAction` | `url`, `carrier`, `expectedArrivalUntil`, `orderNumber`, `merchant`, `deliveryAddress` ({streetAddress,addressLocality,addressRegion,addressCountry,postalCode}), `itemShipped` (name string or {name,url,image,sku}) — Gmail's real ParcelDelivery spec requires all of these, not just a url; optional `trackingNumber` |
 | `discountOffer` | `DiscountOffer` (Promotions tab) | `discountCode`; optional `description`, `availabilityStarts/Ends` |
 | `promotionCard` | `PromotionCard` (image card) | `images` (http/https, ≥1) or `image`; optional `name`, `url` |
 | `organization` | `Organization` (logo) | `name`, `logo` (url) |
