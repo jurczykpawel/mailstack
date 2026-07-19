@@ -21,14 +21,14 @@ export function isHttpUrl(v: unknown): v is string {
   }
 }
 
-/** Go-to button in the message bar. Requires a name and an http(s) target. */
+/** Go-to button in the message bar. Requires a name and an http(s) url. */
 export function viewAction(d: Rec): JsonLdBlock | null {
   const name = str(d.name);
   if (!name || !isHttpUrl(d.url)) return null;
   const block: JsonLdBlock = {
     "@context": SCHEMA_CONTEXT,
     "@type": "EmailMessage",
-    potentialAction: { "@type": "ViewAction", target: d.url, name },
+    potentialAction: { "@type": "ViewAction", url: d.url, name },
   };
   const desc = str(d.description);
   if (desc) block.description = desc;

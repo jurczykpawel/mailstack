@@ -10,7 +10,7 @@ describe("buildBlocks — typed builders", () => {
     expect(b["@type"]).toBe("EmailMessage");
     expect(b.potentialAction).toMatchObject({
       "@type": "ViewAction",
-      target: "https://x.example/o/1",
+      url: "https://x.example/o/1",
       name: "Zobacz zamówienie",
     });
   });
