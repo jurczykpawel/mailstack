@@ -19,10 +19,10 @@
     "aws4fetch": "^1.0.20"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260702.1",
+    "@cloudflare/workers-types": "^5.20260719.1",
     "husky": "^9.1.7",
     "typescript": "^5.8.3",
     "vitest": "^3.2.7",
-    "wrangler": "^4.98.0"
+    "wrangler": "^4.112.0"
   }
 }
