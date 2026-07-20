@@ -1,0 +1,257 @@
+{
+  "name": "Wyślij potwierdzenie zamówienia z przyciskiem akcji Gmail (mailstack)",
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Purchase webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "webhookId": "mailstack-purchase-confirmation-example",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mailstack-purchase-confirmation",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "config",
+      "name": "Configuration (EDIT ME)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "baseUrl",
+              "value": "https://mail.yourdomain.com",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "apiKey",
+              "value": "your-mailstack-api-key",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "brand",
+              "value": "acme",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "to",
+              "value": "={{ $json.body.customer.email }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "name",
+              "value": "={{ $json.body.customer.name }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "amount",
+              "value": "={{ $json.body.amount }}",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "currency",
+              "value": "={{ $json.body.currency }}",
+              "type": "string"
+            },
+            {
+              "id": "a8",
+              "name": "item",
+              "value": "={{ $json.body.product }}",
+              "type": "string"
+            },
+            {
+              "id": "a9",
+              "name": "orderId",
+              "value": "={{ $json.body.orderId }}",
+              "type": "string"
+            },
+            {
+              "id": "a10",
+              "name": "orderUrl",
+              "value": "={{ $json.body.orderUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "a11",
+              "name": "discountCode",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a12",
+              "name": "discountDescription",
+              "value": "10% off your next course",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "build",
+      "name": "Build request body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Assemble the mailstack /v1/send body: a payment confirmation with a Gmail\n// action button, plus a discount badge IF a discount code was configured.\n// mailstack drops incomplete markup directives on its own (fail-soft), but we\n// only bother sending the discountOffer block at all when there's a code to show.\nconst c = $input.first().json;\nconst markup = [\n  { kind: 'viewAction', name: 'View order', url: c.orderUrl },\n];\nif (c.discountCode) {\n  markup.push({ kind: 'discountOffer', discountCode: c.discountCode, description: c.discountDescription });\n}\nconst body = {\n  brand: c.brand,\n  template: 'payment',\n  to: c.to,\n  name: c.name,\n  amount: c.amount,\n  currency: c.currency,\n  item: c.item,\n  orderId: c.orderId,\n  orderUrl: c.orderUrl,\n  markup,\n};\nreturn [{ json: { baseUrl: c.baseUrl, apiKey: c.apiKey, body } }];"
+      }
+    },
+    {
+      "id": "send",
+      "name": "Send confirmation via mailstack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        900,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.baseUrl }}/v1/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "st0",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -460
+      ],
+      "parameters": {
+        "content": "## Zamień webhook zamówienia w branded mail potwierdzający z przyciskiem akcji Gmail\n\nOdbiera webhook zamówienia/zakupu (ze Stripe, Gumroad, WooCommerce, [Sellf](https://sellf.app) albo własnego checkoutu) i wysyła kupującemu branded potwierdzenie przez [mailstack](https://github.com/jurczykpawel/mailstack) - darmowy, samodzielnie hostowany wysyłacz maili. Mail niesie **markup schema.org**, więc Gmail pokazuje prawdziwy przycisk akcji \"Zobacz zamówienie\" na pasku wiadomości oraz opcjonalny badge z kodem rabatowym w zakładce Oferty.\n\n### Jak to działa\n- **Purchase webhook** odbiera payload Twojego dostawcy (przykład zakłada ogólny kształt `{customer:{email,name}, amount, currency, product, orderId, orderUrl}`).\n- **Configuration (EDIT ME)** mapuje te pola (dostosuj wyrażenia do swojego dostawcy) plus dane połączenia z mailstackiem i opcjonalny kod rabatowy.\n- **Build request body** buduje `template: \"payment\"` oraz tablicę `markup`: `viewAction` (przycisk Gmail) i `discountOffer`. Mailstack automatycznie pomija blok rabatu, jeśli zostawisz `discountCode` puste - mail i tak wychodzi.\n- **HTTP Request** wysyła POST na `/v1/send` (tryb zaufany).\n\n### Konfiguracja\n1. Wdróż mailstack i utwórz klucz API (patrz README).\n2. Wskaż webhook swojego dostawcy płatności na Production URL tego workflowa, albo podmień node **Purchase webhook** na natywny trigger dostawcy, jeśli taki ma.\n3. Dostosuj wyrażenia w **Configuration (EDIT ME)** do nazw pól w payloadzie Twojego dostawcy.\n4. Uzupełnij `baseUrl`, `apiKey`, `brand`; zostaw `discountCode` puste, żeby wysłać zwykłe potwierdzenie.\n5. Aktywuj workflow.\n\n### Wskazówki\nAdnotacje mailstacka w zakładce Oferty (kody rabatowe, karty z obrazkiem) renderują się dla dowolnych odbiorców dopiero po allowliście domeny u Google - patrz README mailstacka. Przyciski akcji działają od razu, bez allowlisty.\n",
+        "width": 1020,
+        "height": 380,
+        "color": 1
+      }
+    },
+    {
+      "id": "sec1",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        160
+      ],
+      "parameters": {
+        "content": "## 1. Odbierz i zmapuj zamówienie\nWebhook odbiera payload dostawcy; Configuration mapuje go na pola mailstacka.",
+        "width": 480,
+        "height": 420,
+        "color": 7
+      }
+    },
+    {
+      "id": "sec2",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        560,
+        160
+      ],
+      "parameters": {
+        "content": "## 2. Zbuduj i wyślij mail\nZłóż mail payment z przyciskiem Gmail/markupem rabatu i wyślij POST do mailstacka.",
+        "width": 460,
+        "height": 420,
+        "color": 7
+      }
+    },
+    {
+      "id": "st1",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        620
+      ],
+      "parameters": {
+        "content": "## Zabezpiecz ten webhook przed produkcją\nKtokolwiek znajdzie ten URL, może wywołać fałszywy mail potwierdzający. Dodaj weryfikację podpisu swojego dostawcy (np. Stripe-Signature) przed Configuration, albo sprawdzenie współdzielonego sekretu w nagłówku.",
+        "width": 300,
+        "height": 160,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "Purchase webhook": {
+      "main": [
+        [
+          {
+            "node": "Configuration (EDIT ME)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration (EDIT ME)": {
+      "main": [
+        [
+          {
+            "node": "Build request body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request body": {
+      "main": [
+        [
+          {
+            "node": "Send confirmation via mailstack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

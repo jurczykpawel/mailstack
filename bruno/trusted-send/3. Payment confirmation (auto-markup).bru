@@ -1,0 +1,51 @@
+meta {
+  name: 3. Payment confirmation (auto-markup)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "payment",
+    "to": "buyer@example.com",
+    "name": "Jane Smith",
+    "amount": "149.00",
+    "currency": "USD",
+    "item": "Pro Plan",
+    "orderId": "ORD-7788",
+    "date": "2026-06-10",
+    "orderUrl": "https://acme.example/o/ORD-7788",
+    "invoiceUrl": "https://acme.example/fv/ORD-7788.pdf"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Payment confirmation — template auto-markup
+
+  The `payment` template renders the amount/currency/item/orderId and an
+  "Pobierz fakturę" button from `invoiceUrl`. Subject is
+  "Potwierdzenie płatności - ORD-7788".
+
+  Crucially, the `markup` key is **omitted** here. Per the merge rule, that lets
+  the template supply its own schema.org markup: `payment` auto-emits a
+  `ViewAction` ("Zobacz zamówienie" from `orderUrl`, or "Pobierz fakturę" from
+  `invoiceUrl`) so Gmail shows an action button. Compare with
+  "10. Suppress template auto-markup", which sends `"markup": []` to turn this
+  off.
+}

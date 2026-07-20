@@ -1,0 +1,41 @@
+meta {
+  name: 3. Origin not allowed (403)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: none
+}
+
+headers {
+  Origin: https://evil.example
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "name": "Jane Smith",
+    "email": "jane@example.com",
+    "message": "Please get in touch.",
+    "cf-turnstile-response": "test-token"
+  }
+}
+
+assert {
+  res.status: eq 403
+  res.body.success: eq false
+  res.body.message: eq origin not allowed
+}
+
+docs {
+  # Origin not allowed
+
+  In public mode the origin allowlist is the first gate. `https://evil.example`
+  is not in the `acme` brand's `allowedOrigins`, so the request is rejected with
+  `403 origin not allowed` before the honeypot, Turnstile, or SES are ever
+  reached. This is the server-side counterpart to the blocked CORS preflight —
+  even a client that ignores CORS cannot get past it.
+}

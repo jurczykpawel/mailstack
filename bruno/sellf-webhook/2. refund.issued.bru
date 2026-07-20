@@ -1,0 +1,42 @@
+meta {
+  name: 2. refund.issued
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/hooks/sellf?brand=acme
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "event": "refund.issued",
+    "timestamp": "2026-06-11T10:00:00.000Z",
+    "data": {
+      "customer": { "email": "buyer@example.com", "firstName": "Jane", "lastName": "Smith" },
+      "product": { "name": "Pro Plan" },
+      "refund": { "amount": 4999, "currency": "usd" },
+      "payment": { "sessionId": "cs_test_123" }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Sellf webhook: refund.issued -> notice
+
+  Maps to the `notice` template with subject "Zwrot środków". Body states the
+  refunded amount (`refund.amount / 100` + upper-cased `refund.currency`) for
+  `product.name`, plus the transaction id
+  (`payment.sessionId ?? payment.paymentIntentId`).
+}

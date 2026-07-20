@@ -1,0 +1,39 @@
+meta {
+  name: 3. waitlist.signup
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/hooks/sellf?brand=acme
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "event": "waitlist.signup",
+    "timestamp": "2026-06-12T08:15:00.000Z",
+    "data": {
+      "customer": { "email": "buyer@example.com", "firstName": "Jane", "lastName": "Smith" },
+      "product": { "name": "Pro Plan" }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Sellf webhook: waitlist.signup -> notice
+
+  Maps to the `notice` template with subject "Jesteś na liście oczekujących" —
+  thanks the customer for signing up to `product.name` and promises a heads-up
+  when it is available.
+}

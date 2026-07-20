@@ -1,0 +1,24 @@
+headers {
+  Content-Type: application/json
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+docs {
+  # mailstack API
+
+  Bruno collection for the mailstack Cloudflare Worker (form-to-email +
+  transactional email sender). See `README.md` in this folder for setup.
+
+  The collection default is **trusted mode**: every request inherits
+  `Authorization: Bearer {{apiKey}}`. Public-mode requests (contact form,
+  Altcha, CORS preflight, health) override this with `auth: none` per request,
+  because a valid bearer would flip them into trusted mode and skip the very
+  gates they are meant to demonstrate.
+}

@@ -1,0 +1,40 @@
+meta {
+  name: 2. Received (ack) email
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "received",
+    "to": "jane@example.com",
+    "name": "Jane Smith",
+    "refId": "REQ-2026-0042",
+    "summary": "Consultation request"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Received / acknowledgement email
+
+  The `received` template ("we got your message") renders `name`, an optional
+  reference id (`refId`), and a short `summary`. It is the same template the
+  public contact form uses for its auto-reply, here sent explicitly in trusted
+  mode to an arbitrary recipient.
+}

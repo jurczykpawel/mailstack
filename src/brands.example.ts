@@ -44,6 +44,8 @@ export const BRANDS: Record<string, Brand> = {
     to: ["team@demo.example"],
     allowedOrigins: ["https://demo.example", "http://localhost:4321"],
     subjectPrefix: "New message",
+    // Self-hosted proof-of-work captcha instead of Turnstile (see src/altcha.ts).
+    captcha: "altcha",
     theme: {
       accent: "#008AFF",
       accent2: "#A8D603",

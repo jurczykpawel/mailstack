@@ -1,0 +1,256 @@
+{
+  "name": "Send a transactional email with mailstack",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "When clicking Execute",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config",
+      "name": "Configuration (EDIT ME)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "baseUrl",
+              "value": "https://mail.yourdomain.com",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "apiKey",
+              "value": "your-mailstack-api-key",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "brand",
+              "value": "acme",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "template",
+              "value": "payment",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "to",
+              "value": "customer@example.com",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "name",
+              "value": "Jane Smith",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "amount",
+              "value": "149.00",
+              "type": "string"
+            },
+            {
+              "id": "a8",
+              "name": "currency",
+              "value": "PLN",
+              "type": "string"
+            },
+            {
+              "id": "a9",
+              "name": "item",
+              "value": "Pro Plan",
+              "type": "string"
+            },
+            {
+              "id": "a10",
+              "name": "orderId",
+              "value": "ORD-7788",
+              "type": "string"
+            },
+            {
+              "id": "a11",
+              "name": "date",
+              "value": "2026-07-19",
+              "type": "string"
+            },
+            {
+              "id": "a12",
+              "name": "invoiceUrl",
+              "value": "https://example.com/invoice/ORD-7788.pdf",
+              "type": "string"
+            },
+            {
+              "id": "a13",
+              "name": "orderUrl",
+              "value": "https://example.com/orders/ORD-7788",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "build",
+      "name": "Build request body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Assemble the mailstack /v1/send body from Configuration, keeping baseUrl/apiKey\n// out of it (those configure the HTTP request itself, not the email content).\nconst c = $input.first().json;\nconst body = {\n  brand: c.brand,\n  template: c.template,\n  to: c.to,\n  name: c.name,\n  amount: c.amount,\n  currency: c.currency,\n  item: c.item,\n  orderId: c.orderId,\n  date: c.date,\n  invoiceUrl: c.invoiceUrl,\n  orderUrl: c.orderUrl,\n};\nreturn [{ json: { baseUrl: c.baseUrl, apiKey: c.apiKey, body } }];"
+      }
+    },
+    {
+      "id": "send",
+      "name": "Send email via mailstack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        900,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.baseUrl }}/v1/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "st0",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -420
+      ],
+      "parameters": {
+        "content": "## Send self-hosted transactional emails with mailstack\n\n[mailstack](https://github.com/jurczykpawel/mailstack) is a free, self-hosted email sender (Cloudflare Worker + Amazon SES) you deploy once and call from anywhere - no SaaS email API, no per-email pricing, no vendor lock-in.\n\n### How it works\n- A **Configuration** node holds your mailstack URL, API key and the email's content (this example sends a `payment` confirmation - mailstack also ships `welcome`, `received` and `notice` templates).\n- **Build request body** assembles the JSON mailstack expects (keeping your URL and API key out of the body).\n- The **HTTP Request** POSTs it to `/v1/send` with your API key as a Bearer token (trusted mode) - mailstack renders a branded HTML+text email and sends it via Amazon SES.\n- Setting `orderUrl` also makes mailstack add a Gmail action button (\"View order\") automatically - no extra config needed.\n\n### Setup\n1. Deploy mailstack (`git clone` + `wrangler deploy` - see the repo README) and note its URL and your brand id.\n2. Create an API key: set the `API_KEY` secret with `wrangler secret put API_KEY`.\n3. Replace the **When clicking Execute** trigger with your own (webhook, form, CRM event, cron...).\n4. Fill in **Configuration (EDIT ME)**: `baseUrl`, `apiKey`, `brand`, and the email fields.\n5. Run once - check the recipient's inbox.\n\n### Customization tips\nChange `template` to `welcome`, `received` or `notice` for other email types (see the mailstack README for each template's fields). Map `to`/`name`/`amount`/etc. from your trigger's data instead of typing them in.\n",
+        "width": 1020,
+        "height": 340,
+        "color": 1
+      }
+    },
+    {
+      "id": "sec1",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        160
+      ],
+      "parameters": {
+        "content": "## 1. What to send\nTrigger your flow, then fill in the recipient, template and content in Configuration.",
+        "width": 480,
+        "height": 420,
+        "color": 7
+      }
+    },
+    {
+      "id": "sec2",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        560,
+        160
+      ],
+      "parameters": {
+        "content": "## 2. Send it\nBuild the JSON body mailstack expects and POST it with your API key as a Bearer token.",
+        "width": 460,
+        "height": 420,
+        "color": 7
+      }
+    },
+    {
+      "id": "st1",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        280,
+        620
+      ],
+      "parameters": {
+        "content": "## Keep your API key secret\nThe mailstack API key unlocks trusted mode (any recipient, any template). Store it in n8n credentials/environment for production - don't commit workflows with a real key.",
+        "width": 300,
+        "height": 160,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "When clicking Execute": {
+      "main": [
+        [
+          {
+            "node": "Configuration (EDIT ME)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration (EDIT ME)": {
+      "main": [
+        [
+          {
+            "node": "Build request body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request body": {
+      "main": [
+        [
+          {
+            "node": "Send email via mailstack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

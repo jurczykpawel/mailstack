@@ -1,0 +1,38 @@
+meta {
+  name: 5. access.expired
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/v1/hooks/sellf?brand=acme
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "event": "access.expired",
+    "timestamp": "2026-06-14T00:00:00.000Z",
+    "data": {
+      "customer": { "email": "buyer@example.com", "firstName": "Jane", "lastName": "Smith" },
+      "product": { "name": "Pro Plan" }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Sellf webhook: access.expired -> notice
+
+  Maps to the `notice` template with subject "Dostęp wygasł" — tells the
+  customer their access to `product.name` expired and to reply to renew.
+}

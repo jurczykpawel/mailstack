@@ -1,0 +1,93 @@
+meta {
+  name: 2. Solve PoW and submit contact
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: none
+}
+
+headers {
+  Origin: https://demo.example
+}
+
+body:json {
+  {
+    "brand": "demo",
+    "name": "Dana Demo",
+    "email": "dana@demo.example",
+    "type": "Question",
+    "message": "Testing the self-hosted Altcha captcha flow.",
+    "altcha": "{{altchaPayload}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+script:pre-request {
+  // Solve the Altcha proof-of-work: find `number` in [0, maxnumber] such that
+  // sha256(salt + number) === challenge, then base64-encode the widget payload
+  // (the signature is copied verbatim from the challenge — no re-signing).
+  //
+  // NOTE: Bruno's script sandbox APIs used here (require('crypto-js'), btoa,
+  // Buffer) may need small adjustments once run against a live wrangler dev;
+  // the live-testing pass will reconcile any sandbox mismatches.
+  const CryptoJS = require("crypto-js");
+
+  const challenge = bru.getVar("altchaChallenge");
+  const salt = bru.getVar("altchaSalt");
+  const signature = bru.getVar("altchaSignature");
+  const maxnumber = Number(bru.getVar("altchaMaxnumber"));
+
+  if (!challenge || !salt || !signature) {
+    throw new Error("Run '1. Get Altcha challenge' first — challenge vars are empty");
+  }
+
+  let solution = null;
+  for (let n = 0; n <= maxnumber; n++) {
+    const hash = CryptoJS.SHA256(salt + n).toString(CryptoJS.enc.Hex);
+    if (hash === challenge) {
+      solution = n;
+      break;
+    }
+  }
+  if (solution === null) {
+    throw new Error("Altcha PoW not solved within maxnumber=" + maxnumber);
+  }
+
+  const payload = {
+    algorithm: "SHA-256",
+    challenge: challenge,
+    salt: salt,
+    number: solution,
+    signature: signature,
+  };
+  const json = JSON.stringify(payload);
+  const b64 =
+    typeof btoa === "function"
+      ? btoa(json)
+      : Buffer.from(json, "utf-8").toString("base64");
+  bru.setVar("altchaPayload", b64);
+}
+
+docs {
+  # Step 2 — solve the PoW and submit
+
+  The pre-request script brute-forces `number` so that
+  `sha256(salt + number) === challenge`, then builds the widget payload
+  `{algorithm, challenge, salt, number, signature}` and base64-encodes it into
+  the `altchaPayload` var. The server (`verifyAltcha`) recomputes the same hash
+  and re-checks the HMAC signature against `ALTCHA_HMAC_KEY`, so a forged
+  payload fails closed.
+
+  This is the Altcha equivalent of the Turnstile contact form: same public-mode
+  gates, but the captcha is proof-of-work rather than a third-party widget.
+  `demo` has `autoReply` off, so no submitter confirmation is sent. Needs a
+  working SES path for the 200 (else 502 `send failed`).
+}

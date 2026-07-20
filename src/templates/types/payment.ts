@@ -1,5 +1,12 @@
-import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types";
+import type {
+  Brand,
+  JsonLdBlock,
+  RenderedBody,
+  TemplateData,
+  TemplateDef,
+} from "../../types";
 import { ctaButton, ctaText, paragraph, summaryTable } from "../layout";
+import { viewAction } from "../../markup";
 
 /** Payment confirmation with an amount summary and optional invoice CTA. */
 export const paymentTemplate: TemplateDef = {
@@ -45,6 +52,19 @@ export const paymentTemplate: TemplateDef = {
     const cta = ctaText(invoiceUrl, "Pobierz fakturę");
     if (cta) textParts.push(cta);
 
+    // Auto-markup: a Gmail action button. Prefer an explicit order URL; fall back
+    // to the invoice URL. Absent both -> no block (fail-soft, email unchanged).
+    const orderUrl = (data.orderUrl || "").trim();
+    const actionUrl = orderUrl || invoiceUrl;
+    const jsonLd: JsonLdBlock[] = [];
+    if (actionUrl) {
+      const action = viewAction({
+        name: orderUrl ? "Zobacz zamówienie" : "Pobierz fakturę",
+        url: actionUrl,
+      });
+      if (action) jsonLd.push(action);
+    }
+
     return {
       heading,
       bodyHtml: htmlParts.join("\n"),
@@ -52,6 +72,7 @@ export const paymentTemplate: TemplateDef = {
       previewText: amountValue
         ? `Potwierdzenie płatności: ${amountValue}`
         : intro,
+      jsonLd: jsonLd.length ? jsonLd : undefined,
     };
   },
 };

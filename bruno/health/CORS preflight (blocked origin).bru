@@ -1,0 +1,29 @@
+meta {
+  name: CORS preflight (blocked origin)
+  type: http
+  seq: 3
+}
+
+options {
+  url: {{baseUrl}}/v1/send?brand=acme
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: https://evil.example
+  Access-Control-Request-Method: POST
+}
+
+assert {
+  res.status: eq 403
+}
+
+docs {
+  # CORS preflight — blocked origin
+
+  `https://evil.example` is not in the `acme` brand's `allowedOrigins`, so the
+  preflight is rejected with `403` and **no** CORS headers. The browser then
+  refuses to send the actual `POST`, so a form on a non-allowlisted origin can
+  never submit to this brand.
+}

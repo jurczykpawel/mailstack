@@ -1,0 +1,4 @@
+vars {
+  baseUrl: https://mail.yourdomain.com
+  apiKey: your-api-key-here
+}

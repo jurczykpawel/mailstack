@@ -1,0 +1,48 @@
+meta {
+  name: Payload too large (413)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "Too big",
+    "paragraphs": "{{bigValue}}"
+  }
+}
+
+assert {
+  res.status: eq 413
+  res.body.success: eq false
+  res.body.message: eq payload too large
+}
+
+script:pre-request {
+  // Build a body larger than the 64 KB cap so the size guard trips before any
+  // parsing. 70000 chars in one field pushes the whole request over the limit.
+  bru.setVar("bigValue", "x".repeat(70000));
+}
+
+docs {
+  # Error: payload too large
+
+  The handler caps the body at 64 KB (`MAX_BODY_BYTES`). The pre-request script
+  fills one field with 70,000 characters via `{{bigValue}}`, so the request
+  exceeds the cap. The guard checks the `content-length` header and the raw text
+  length before parsing, returning `413 payload too large`. (Individual field
+  values are also capped at 5,000 chars, but that trim happens only after this
+  size guard passes.)
+}

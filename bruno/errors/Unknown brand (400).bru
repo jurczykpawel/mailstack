@@ -1,0 +1,40 @@
+meta {
+  name: Unknown brand (400)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "nope",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "This will never send",
+    "paragraphs": "The brand does not exist."
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.success: eq false
+  res.body.message: eq unknown brand
+}
+
+docs {
+  # Error: unknown brand
+
+  The `brand` control key must resolve to a registered brand. `"nope"` is not in
+  the registry, so the Worker returns `400 unknown brand`. This check runs right
+  after JSON parsing, before the mode (public vs trusted) branching, so it fires
+  regardless of auth.
+}

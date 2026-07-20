@@ -1,0 +1,43 @@
+meta {
+  name: 6. Unmapped event (ignored)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/v1/hooks/sellf?brand=acme
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "event": "subscription.created",
+    "timestamp": "2026-06-15T09:00:00.000Z",
+    "data": {
+      "customer": { "email": "buyer@example.com" },
+      "product": { "name": "Pro Plan" }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.ignored: eq subscription.created
+}
+
+docs {
+  # Sellf webhook: unmapped event
+
+  Events with no entry in `SELLF_EVENT_MAP` (e.g. `subscription.*`, `invoice.*`)
+  are intentionally **acked** with `200 {success:true, ignored:"<event>"}` so
+  Sellf does not retry something we will never email. No mail is sent.
+
+  Missing/invalid recipients on a *mapped* event are acked the same way with
+  `ignored: "no-email"`.
+}

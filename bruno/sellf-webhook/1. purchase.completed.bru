@@ -1,0 +1,46 @@
+meta {
+  name: 1. purchase.completed
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/hooks/sellf?brand=acme
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "event": "purchase.completed",
+    "timestamp": "2026-06-10T09:30:00.000Z",
+    "data": {
+      "customer": { "email": "buyer@example.com", "firstName": "Jane", "lastName": "Smith" },
+      "product": { "name": "Pro Plan" },
+      "order": { "amount": 4999, "currency": "usd", "sessionId": "cs_test_123" }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Sellf webhook: purchase.completed -> payment
+
+  The Sellf webhook is bearer-only (no HMAC) and reuses the existing templates.
+  `purchase.completed` maps to the `payment` template: recipient is
+  `data.customer.email`, name is firstName + lastName, amount is
+  `order.amount / 100` ("49.99"), currency is upper-cased, item is
+  `product.name`, orderId is `order.sessionId ?? order.paymentIntentId`, and the
+  date comes from the envelope `timestamp` (pl-PL). Subject:
+  "Potwierdzenie płatności - cs_test_123".
+
+  The send is awaited: a real SES failure returns 502 so Sellf retries.
+}

@@ -1,0 +1,4 @@
+vars {
+  baseUrl: http://localhost:8787
+  apiKey: your-api-key-here
+}

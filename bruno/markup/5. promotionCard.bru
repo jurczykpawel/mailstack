@@ -1,0 +1,49 @@
+meta {
+  name: 5. promotionCard
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "Summer sale",
+    "paragraphs": "Our biggest sale of the year is here.",
+    "markup": [
+      {
+        "kind": "promotionCard",
+        "name": "Summer Sale",
+        "url": "https://acme.example/sale",
+        "images": [
+          "https://acme.example/img/sale-1.png",
+          "https://acme.example/img/sale-2.png"
+        ]
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: promotionCard
+
+  Emits a `PromotionCard` (image card for the Promotions tab). Requires at least
+  one http(s) image, supplied as `images` (array) or a single `image`;
+  non-http(s) entries are filtered out. `name` and `url` are optional.
+}

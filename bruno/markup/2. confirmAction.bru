@@ -1,0 +1,42 @@
+meta {
+  name: 2. confirmAction
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "Confirm your subscription",
+    "paragraphs": "Click confirm to activate your subscription.",
+    "markup": [
+      { "kind": "confirmAction", "name": "Confirm subscription", "url": "https://acme.example/confirm/abc123" }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: confirmAction
+
+  Emits an `EmailMessage` with a `ConfirmAction` + `HttpActionHandler` — a
+  one-click button where Gmail itself issues the HTTP request to the handler
+  URL. Requires `name` and an http(s) `url`. Use for idempotent confirm/activate
+  actions.
+}

@@ -1,0 +1,42 @@
+meta {
+  name: 1. viewAction
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "Your order",
+    "paragraphs": "Thanks for your purchase - track it from the button in Gmail's message bar.",
+    "markup": [
+      { "kind": "viewAction", "name": "View order", "url": "https://acme.example/o/ORD-7788" }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: viewAction
+
+  Emits an `EmailMessage` with a `ViewAction` — a go-to button Gmail renders in
+  the message bar (GitHub-style). Requires `name` and an http(s) `url`
+  (non-http(s) URLs are rejected). Trusted mode only; the `markup` key is
+  ignored for public requests.
+}

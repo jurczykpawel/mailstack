@@ -1,0 +1,34 @@
+meta {
+  name: Invalid JSON (400)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: text
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:text {
+  { "brand": "acme", "template": "notice",  <-- this is not valid JSON
+}
+
+assert {
+  res.status: eq 400
+  res.body.success: eq false
+  res.body.message: eq invalid JSON
+}
+
+docs {
+  # Error: invalid JSON
+
+  The body is sent as raw text (still `Content-Type: application/json` from the
+  collection default) and is deliberately malformed. `JSON.parse` throws, so the
+  handler returns `400 invalid JSON`. Non-object JSON (arrays, strings, numbers)
+  is rejected the same way — the body must be a JSON object.
+}

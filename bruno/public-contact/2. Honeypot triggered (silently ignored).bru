@@ -1,0 +1,44 @@
+meta {
+  name: 2. Honeypot triggered (silently ignored)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: none
+}
+
+headers {
+  Origin: https://acme.example
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "name": "Spam Bot",
+    "email": "bot@example.com",
+    "message": "buy cheap widgets now",
+    "botcheck": "i am a bot",
+    "cf-turnstile-response": "test-token"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Honeypot — looks like success, sends nothing
+
+  `botcheck` is a hidden honeypot field: real users never fill it, bots that
+  auto-fill every input do. When it is non-empty the Worker returns
+  `200 {success:true}` **and sends no email** — the bot sees "success" and does
+  not retry or adapt.
+
+  So this request returns exactly the same 200 as a genuine submission, but no
+  mail is dispatched. It short-circuits before Turnstile and SES, so it does not
+  depend on any secret being configured.
+}

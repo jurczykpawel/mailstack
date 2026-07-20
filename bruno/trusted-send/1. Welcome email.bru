@@ -1,0 +1,45 @@
+meta {
+  name: 1. Welcome email
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "welcome",
+    "to": "newuser@example.com",
+    "name": "Jane Smith",
+    "intro": "Welcome aboard - we're glad you're here.",
+    "body": "Your account is ready. Here is how to get started with your first project.",
+    "ctaUrl": "https://acme.example/start",
+    "ctaLabel": "Get started"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Welcome email (trusted / transactional)
+
+  Trusted mode: the bearer token matches `API_KEY`, which skips origin and
+  captcha checks and unlocks `template`, `to`, `subject`, `replyTo`, and
+  `markup`.
+
+  The `welcome` template renders `name`, `intro`, `body`, and a CTA button from
+  `ctaUrl`/`ctaLabel`. Reply-To defaults to the brand inbox (`brand.to[0]`) for
+  non-contact templates. Recipient is the validated `to` override.
+}

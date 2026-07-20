@@ -1,0 +1,50 @@
+meta {
+  name: 9. Multiple directives combined
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "payment",
+    "to": "buyer@example.com",
+    "name": "Jane Smith",
+    "amount": "149.00",
+    "currency": "USD",
+    "item": "Pro Plan",
+    "orderId": "ORD-7788",
+    "markup": [
+      { "kind": "viewAction", "name": "View order", "url": "https://acme.example/o/ORD-7788" },
+      { "kind": "discountOffer", "discountCode": "NEXT10", "description": "10% off your next order", "availabilityEnds": "2026-08-01" },
+      { "kind": "organization", "name": "Acme Inc.", "logo": "https://acme.example/logo.png" }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: multiple directives
+
+  The `markup` array may carry several directives at once (capped at 5 blocks,
+  16 KB total, bounded nesting depth). Here a `viewAction`, a `discountOffer`,
+  and an `organization` block ride on one `payment` email.
+
+  Because `markup` is present, it wins wholesale: the `payment` template's own
+  auto-`ViewAction` (which it would derive from `orderUrl`/`invoiceUrl`) is
+  suppressed in favor of these caller-supplied blocks.
+}

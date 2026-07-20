@@ -1,0 +1,27 @@
+meta {
+  name: Health check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.ok: eq true
+  res.body.service: eq mailstack
+}
+
+docs {
+  # Health check
+
+  Liveness probe — no auth, no brand. Returns
+  `{ "ok": true, "service": "mailstack" }`.
+
+  Run this first to confirm the Worker is up and `{{baseUrl}}` points at it
+  before exercising the rest of the collection.
+}
