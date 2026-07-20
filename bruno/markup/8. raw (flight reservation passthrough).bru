@@ -1,0 +1,54 @@
+meta {
+  name: 8. raw (flight reservation passthrough)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "traveler@example.com",
+    "heading": "Your flight is booked",
+    "paragraphs": "Reservation confirmed - see your itinerary.",
+    "markup": [
+      {
+        "kind": "raw",
+        "value": {
+          "@type": "FlightReservation",
+          "reservationId": "ABC123",
+          "reservationStatus": "https://schema.org/ReservationConfirmed",
+          "reservationFor": {
+            "@type": "Flight",
+            "flightNumber": "LO123",
+            "airline": { "@type": "Airline", "name": "Example Air", "iataCode": "EX" }
+          }
+        }
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: raw passthrough
+
+  The `raw` builder passes a full JSON-LD object straight through. Requires
+  `value` to be a plain object with a string `@type`; a default
+  `"@context": "https://schema.org"` is injected unless the object supplies its
+  own. Use this for any complex reservation/receipt type you want to hand-craft.
+}

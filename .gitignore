@@ -14,3 +14,7 @@ wrangler.toml
 src/brands.ts
 src/assets/logo.ts
 docs/superpowers/
+
+# Bruno environments hold real base URLs / API keys — keep only the .example templates.
+bruno/environments/*.bru
+!bruno/environments/*.bru.example

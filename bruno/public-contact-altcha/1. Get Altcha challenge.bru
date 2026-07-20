@@ -1,0 +1,49 @@
+meta {
+  name: 1. Get Altcha challenge
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/altcha/challenge?brand=demo
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: https://demo.example
+}
+
+assert {
+  res.status: eq 200
+  res.body.algorithm: eq SHA-256
+  res.body.challenge: isDefined
+  res.body.salt: isDefined
+  res.body.signature: isDefined
+  res.body.maxnumber: isDefined
+}
+
+script:post-response {
+  // Stash the challenge so the next request can solve the proof-of-work.
+  const b = res.getBody();
+  if (b) {
+    bru.setVar("altchaChallenge", b.challenge);
+    bru.setVar("altchaSalt", b.salt);
+    bru.setVar("altchaSignature", b.signature);
+    bru.setVar("altchaMaxnumber", b.maxnumber);
+  }
+}
+
+docs {
+  # Step 1 — fetch an Altcha challenge
+
+  The `demo` brand uses self-hosted **Altcha** (proof-of-work) instead of
+  Turnstile. This endpoint is origin-gated the same way `/v1/send` is: the
+  `Origin` must be in the brand's allowlist (`https://demo.example`), otherwise
+  it returns `403`.
+
+  It returns `{ algorithm, challenge, salt, signature, maxnumber }`. The
+  post-response script saves `challenge`, `salt`, `signature`, and `maxnumber`
+  as collection vars for step 2, which brute-forces the PoW and submits the
+  form. Run this request immediately before "2. Solve PoW and submit contact".
+}

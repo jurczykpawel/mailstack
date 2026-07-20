@@ -1,0 +1,46 @@
+meta {
+  name: 4. Notice (generic)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "customer@example.com",
+    "heading": "Scheduled maintenance",
+    "paragraphs": [
+      "We will perform scheduled maintenance on Saturday between 02:00 and 04:00 UTC.",
+      "During this window the dashboard may be briefly unavailable. No action is needed on your side."
+    ],
+    "ctaUrl": "https://acme.example/status",
+    "ctaLabel": "View status page"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Notice — generic catch-all template
+
+  The `notice` template is the flexible fallback: a `heading`, one or more
+  `paragraphs` (a JSON array of strings joined into blocks, or a single string
+  with blank-line separators), and an optional CTA button. It also accepts a
+  `subject` field as its own subject override. This is the template most Sellf
+  webhook events (`refund.issued`, `waitlist.signup`, `access.expired`) render
+  through.
+}

@@ -1,0 +1,35 @@
+meta {
+  name: CORS preflight (allowed origin)
+  type: http
+  seq: 2
+}
+
+options {
+  url: {{baseUrl}}/v1/send?brand=acme
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: https://acme.example
+  Access-Control-Request-Method: POST
+}
+
+assert {
+  res.status: eq 204
+  res.headers['access-control-allow-origin']: eq https://acme.example
+  res.headers['access-control-allow-methods']: eq POST, OPTIONS
+}
+
+docs {
+  # CORS preflight — allowed origin
+
+  Browsers send an `OPTIONS` preflight before a cross-origin `POST /v1/send`.
+  The brand is resolved from `?brand=acme` (or, when omitted, from the first
+  brand whose allowlist contains the `Origin`).
+
+  `https://acme.example` is in the `acme` brand's `allowedOrigins`, so the
+  Worker answers `204` and reflects the exact origin back in
+  `Access-Control-Allow-Origin` (never `*`). This is what lets a real form on
+  that origin submit.
+}

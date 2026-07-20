@@ -1,0 +1,49 @@
+meta {
+  name: 10. Suppress template auto-markup (empty array)
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "payment",
+    "to": "buyer@example.com",
+    "name": "Jane Smith",
+    "amount": "149.00",
+    "currency": "USD",
+    "item": "Pro Plan",
+    "orderId": "ORD-7788",
+    "orderUrl": "https://acme.example/o/ORD-7788",
+    "markup": []
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: suppress template auto-markup
+
+  This is a `payment` send that also carries `orderUrl` — so it would normally
+  auto-emit a `ViewAction` ("Zobacz zamówienie"). But `"markup": []` is present,
+  and an explicitly-supplied (even empty) `markup` array wins wholesale, so
+  **no** markup is emitted at all.
+
+  Contrast the three merge cases:
+  - omit `markup` entirely -> template may add its own (see trusted-send #3),
+  - `markup: [ ...blocks ]` -> your blocks win, auto-markup suppressed (see #9),
+  - `markup: []` -> no markup at all (this request).
+}

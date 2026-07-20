@@ -1,0 +1,62 @@
+meta {
+  name: 3. trackAction (full ParcelDelivery)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "Your parcel is on the way",
+    "paragraphs": "Track your delivery from Gmail.",
+    "markup": [
+      {
+        "kind": "trackAction",
+        "url": "https://track.carrier.example/1Z999AA10123456784",
+        "carrier": "UPS",
+        "expectedArrivalUntil": "2026-06-15T18:00:00Z",
+        "orderNumber": "ORD-7788",
+        "merchant": "Acme Inc.",
+        "deliveryAddress": {
+          "streetAddress": "123 Example Street",
+          "addressLocality": "Example City",
+          "addressRegion": "EX",
+          "addressCountry": "US",
+          "postalCode": "00000"
+        },
+        "itemShipped": "Pro Plan Widget",
+        "trackingNumber": "1Z999AA10123456784"
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: trackAction (full ParcelDelivery)
+
+  Emits a `ParcelDelivery` + `TrackAction`. Gmail's real ParcelDelivery spec
+  requires far more than a URL, so this directive is fail-soft: **all** of
+  `url`, `carrier`, `expectedArrivalUntil`, `orderNumber`, `merchant`,
+  `deliveryAddress` (with every one of streetAddress / addressLocality /
+  addressRegion / addressCountry / postalCode), and `itemShipped` are required.
+  Omit any single one and the entire directive is silently dropped (the email
+  still sends, just without the tracking card). `trackingNumber` is optional.
+  `itemShipped` may be a plain name string or `{name, url, image, sku}`.
+}

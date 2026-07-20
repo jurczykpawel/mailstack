@@ -1,0 +1,47 @@
+meta {
+  name: 4. discountOffer
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "A welcome gift",
+    "paragraphs": "Here's 10% off your next order.",
+    "markup": [
+      {
+        "kind": "discountOffer",
+        "discountCode": "WELCOME10",
+        "description": "10% off your next order",
+        "availabilityStarts": "2026-06-01",
+        "availabilityEnds": "2026-08-01"
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: discountOffer
+
+  Emits a `DiscountOffer` that Gmail can surface as a Promotions-tab annotation
+  (deal badge + promo code). Requires `discountCode`; `description`,
+  `availabilityStarts`, and `availabilityEnds` are optional.
+}

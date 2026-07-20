@@ -1,0 +1,38 @@
+meta {
+  name: 4. lead.captured
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/hooks/sellf?brand=acme
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "event": "lead.captured",
+    "timestamp": "2026-06-13T12:00:00.000Z",
+    "data": {
+      "customer": { "email": "buyer@example.com", "firstName": "Jane", "lastName": "Smith" },
+      "product": { "name": "Free Guide" }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Sellf webhook: lead.captured -> welcome
+
+  Maps to the `welcome` template with the intro "Twój dostęp do Free Guide jest
+  gotowy." and no CTA. Used when a lead captures a free/lead-magnet product.
+}

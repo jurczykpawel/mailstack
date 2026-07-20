@@ -1,0 +1,45 @@
+meta {
+  name: 4. Autoreply opt-out
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: none
+}
+
+headers {
+  Origin: https://acme.example
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "name": "Jane Smith",
+    "email": "jane@example.com",
+    "type": "Consultation",
+    "message": "No confirmation email please.",
+    "autoreply": "0",
+    "cf-turnstile-response": "test-token"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Auto-reply opt-out
+
+  The `acme` brand defaults to `autoReply: true`, so a normal contact
+  submission also sends a "we received your message" confirmation (the
+  `received` template) back to the submitter.
+
+  The per-request `autoreply` control key overrides that brand default:
+  `"0"` (also `false`/`no`/`off`/empty) suppresses the confirmation for this one
+  submission, while `"1"`/`true`/`yes`/`on` would force it on. The main email to
+  `brand.to` is unaffected — only the submitter confirmation is toggled.
+}

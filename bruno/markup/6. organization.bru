@@ -1,0 +1,44 @@
+meta {
+  name: 6. organization
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "From Acme Inc.",
+    "paragraphs": "This message carries our organization logo markup.",
+    "markup": [
+      {
+        "kind": "organization",
+        "name": "Acme Inc.",
+        "logo": "https://acme.example/logo.png"
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: organization
+
+  Emits an `Organization` block so clients that support it can show the sender's
+  brand logo. Requires `name` and an http(s) `logo` URL.
+}

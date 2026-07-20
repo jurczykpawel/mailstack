@@ -1,0 +1,52 @@
+meta {
+  name: 1. Contact form (Turnstile) - success
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: none
+}
+
+headers {
+  Origin: https://acme.example
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "name": "Jane Smith",
+    "email": "jane@example.com",
+    "type": "Consultation",
+    "message": "Please get in touch about your services.",
+    "cf-turnstile-response": "test-token"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Public contact form (Turnstile brand)
+
+  The canonical browser-form submission. `auth: none` keeps this in **public
+  mode**, which enforces the full gate stack: origin allowlist, honeypot,
+  Turnstile, rate limit, and a fixed recipient (`brand.to`). Any `to`/`from` in
+  the body would be ignored (anti-relay); this brand always mails
+  `inbox@acme.example`.
+
+  `acme` uses Cloudflare Turnstile. Locally, set
+  `TURNSTILE_SECRET=1x0000000000000000000000000000000AA` (the official
+  always-pass testing secret) in `.dev.vars` so the literal `"test-token"`
+  verifies. In production, this value must be a real token from the Turnstile
+  widget.
+
+  Requires a working SES path (real or mocked) for the send to succeed and
+  return 200 — otherwise the handler returns 502 `send failed`. Because `acme`
+  has `autoReply: true`, a "we received your message" confirmation is also sent
+  to the submitter, best-effort via `ctx.waitUntil` (see the opt-out request).
+}

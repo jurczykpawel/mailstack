@@ -1,0 +1,47 @@
+meta {
+  name: 5. Custom to + replyTo + subject override
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": ["ops@example.com", "cc@example.com"],
+    "replyTo": "support@acme.example",
+    "subject": "Custom subject wins over the template default",
+    "heading": "Overrides demo",
+    "paragraphs": "This send overrides recipient, Reply-To, and subject at once."
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # Trusted overrides — to, replyTo, subject
+
+  Trusted mode lets the caller override three things a public request never
+  could:
+
+  - `to`: an array of validated recipients (each must be a valid email, capped
+    at 5). Public mode always mails the fixed `brand.to`.
+  - `replyTo`: a validated Reply-To that wins over the template default.
+  - `subject`: a subject override that wins over whatever the template would
+    compute.
+
+  Invalid recipients here would return `400 invalid recipient` before any send.
+}

@@ -1,0 +1,49 @@
+meta {
+  name: 7. schema (generic type)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/v1/send
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{apiKey}}
+}
+
+body:json {
+  {
+    "brand": "acme",
+    "template": "notice",
+    "to": "buyer@example.com",
+    "heading": "Generic schema.org block",
+    "paragraphs": "This send attaches an arbitrary schema.org type via the generic builder.",
+    "markup": [
+      {
+        "kind": "schema",
+        "type": "ParcelDelivery",
+        "props": {
+          "trackingNumber": "1Z999AA10123456784",
+          "trackingUrl": "https://track.carrier.example/1Z999AA10123456784"
+        }
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
+
+docs {
+  # markup: schema (generic escape hatch)
+
+  The generic builder emits `{ "@type": <type>, ...props }` for any schema.org
+  type not covered by a dedicated builder. Requires `type`; `props` is a flat
+  object merged verbatim. Unlike `trackAction`, there is no field validation
+  here — you own the correctness of the shape.
+}
