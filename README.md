@@ -229,6 +229,7 @@ Change a setting (edit `.env` or `src/brands.ts`) and run `npm run deploy` again
 - **Anti-relay** — the recipient is always the server-side `brand.to`; the request body can never redirect mail.
 - **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
 - **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`; one branded layout.
+- **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
 - **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
 - **Sellf webhook adapter** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
 - **No database** — rate limit in KV, everything else stateless. **Secret scanning** in pre-commit + CI.

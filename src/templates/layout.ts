@@ -1,5 +1,7 @@
 import type { Brand, LayoutInput, RenderedEmail } from "../types";
 
+const MAILSTACK_HOME_URL = "https://mailstack.techskills.academy/pl";
+
 /** Escape the five HTML-significant characters. Applied to every untrusted value. */
 export function escapeHtml(s: string): string {
   return s
@@ -164,7 +166,7 @@ export function renderLayout(brand: Brand, input: LayoutInput): RenderedEmail {
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez mailstack</p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="${escapeHtml(MAILSTACK_HOME_URL)}" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -188,5 +190,7 @@ function renderLayoutText(brand: Brand, input: LayoutInput): string {
   if (brand.theme.address) lines.push(brand.theme.address);
   if (brand.theme.phone) lines.push(`tel: ${brand.theme.phone}`);
   lines.push(brand.theme.siteUrl);
+  lines.push("");
+  lines.push(`Wysłano przez mailstack (${MAILSTACK_HOME_URL})`);
   return lines.join("\n");
 }

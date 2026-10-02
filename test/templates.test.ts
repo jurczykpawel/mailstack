@@ -63,6 +63,20 @@ describe("renderEmail", () => {
     expect(text).toContain("Acme Inc.");
   });
 
+  it("links the mailstack footer with the muted inline style", () => {
+    const { html } = renderEmail(brand, baseInput());
+    expect(html).toContain(
+      'Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a>',
+    );
+  });
+
+  it("includes the mailstack footer URL in plain text", () => {
+    const { text } = renderEmail(brand, baseInput());
+    expect(text).toContain(
+      "Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+    );
+  });
+
   it("renders a known field label", () => {
     const { html } = renderEmail(brand, baseInput());
     expect(html).toContain("Imię i nazwisko");
