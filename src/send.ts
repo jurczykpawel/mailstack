@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { getBrand } from "./registry";
 import { corsHeaders, isOriginAllowed } from "./cors";
+import { consumeAltcha } from "./altcha";
 import { checkRateLimit } from "./ratelimit";
 import { getTemplate, renderLayout } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
@@ -202,9 +203,11 @@ export async function handleSend(
     }
     // 3) Captcha (Altcha or Turnstile depending on brand config).
     const captcha = brand.captcha ?? 'turnstile';
+    const altchaPayload = coerceValue(body.altcha);
     const captchaOk =
       captcha === 'altcha'
-        ? await deps.verifyAltcha(env.ALTCHA_HMAC_KEY, coerceValue(body.altcha))
+        ? await deps.verifyAltcha(env.ALTCHA_HMAC_KEY, altchaPayload, deps.now())
+          && await consumeAltcha(env.RATE_LIMIT, altchaPayload, deps.now)
         : await deps.verifyTurnstile(env.TURNSTILE_SECRET, coerceValue(body["cf-turnstile-response"]), ip);
     if (!captchaOk) {
       return json(

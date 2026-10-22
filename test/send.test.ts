@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { createChallenge, verifyAltcha } from "../src/altcha";
 import { handleSend } from "../src/send";
 import type { Env, SendDeps, SendParams } from "../src/types";
 
@@ -558,18 +559,20 @@ describe("handleSend — auto-reply (public contact)", () => {
 
   it("body autoreply:'1' overrides a brand default of false", async () => {
     const { waitUntil, flush } = collectingWaitUntil();
-    const deps = makeDeps({ waitUntil });
+    const deps = makeDeps({ waitUntil, verifyAltcha, now: () => new Date() });
+    const challenge = await createChallenge(makeEnv().ALTCHA_HMAC_KEY, { maxnumber: 0 });
+    const altcha = btoa(JSON.stringify({ ...challenge, number: 0 }));
     const res = await handleSend(
       req(
         {
-          brand: "demo", // default off
+          brand: "demo", altcha, // default off
           email: "alice@example.com",
           autoreply: "1",
           "cf-turnstile-response": "ok",
         },
         { origin: DEMO_ORIGIN },
       ),
-      makeEnv(),
+      makeEnv({ RATE_LIMIT: fakeKV() }),
       deps,
     );
     expect(res.status).toBe(200);
@@ -582,13 +585,15 @@ describe("handleSend — auto-reply (public contact)", () => {
 
   it("does not auto-reply for a brand with the default off", async () => {
     const { waitUntil, flush } = collectingWaitUntil();
-    const deps = makeDeps({ waitUntil });
+    const deps = makeDeps({ waitUntil, verifyAltcha, now: () => new Date() });
+    const challenge = await createChallenge(makeEnv().ALTCHA_HMAC_KEY, { maxnumber: 0 });
+    const altcha = btoa(JSON.stringify({ ...challenge, number: 0 }));
     await handleSend(
       req(
-        { brand: "demo", email: "alice@example.com", "cf-turnstile-response": "ok" },
+        { brand: "demo", altcha, email: "alice@example.com", "cf-turnstile-response": "ok" },
         { origin: DEMO_ORIGIN },
       ),
-      makeEnv(),
+      makeEnv({ RATE_LIMIT: fakeKV() }),
       deps,
     );
     await flush();

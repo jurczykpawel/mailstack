@@ -184,6 +184,26 @@ Submissions now arrive in your inbox. 🎉
 
 ---
 
+## Public forms using ALTCHA
+
+Brands may set `captcha: "altcha"` instead of using Turnstile. Set the Worker's
+`ALTCHA_HMAC_KEY` secret and configure the widget's challenge URL as
+`https://mail.example.com/altcha/challenge?brand=demo`. Send its base64 solution in
+the `altcha` field of `POST /v1/send`.
+
+Each challenge has a signed expiry of 10 minutes. A solution without a valid expiry,
+an expired solution, or an already recorded solution returns `403 verification failed`.
+The Worker records usage in `RATE_LIMIT` KV before sending; missing KV or storage
+errors also return 403. Fetch a new challenge for each submission or retry, including
+after `send failed`. Records use the remaining validity as TTL (minimum 60 seconds);
+this does not extend acceptance past the signed expiry.
+
+KV is eventually consistent and its read/write pair is not atomic, so simultaneous
+requests or requests across locations can be accepted before the record is visible.
+Single-use handling is best effort, without a global exactly-once guarantee. See
+[Cloudflare's KV consistency documentation](https://developers.cloudflare.com/kv/concepts/how-kv-works/).
+Turnstile and trusted submissions keep their existing behavior.
+
 ## Sending emails from your app (payments, welcome, etc.)
 
 For server-to-server emails (no spam check needed), call the same endpoint with your `API_KEY`
@@ -232,7 +252,7 @@ Change a setting (edit `.env` or `src/brands.ts`) and run `npm run deploy` again
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
 - **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
 - **Sellf webhook adapter** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
-- **No database** — rate limit in KV, everything else stateless. **Secret scanning** in pre-commit + CI.
+- **No database** — rate limit and ALTCHA usage records in KV. **Secret scanning** in pre-commit + CI.
 
 ### Config files
 Nothing deployment-specific is committed — `npm run setup` (also run before `dev`/`deploy`/`test`/

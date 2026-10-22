@@ -39,6 +39,7 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 |---|---|
 | `brand` | **required** — brand id (`acme`, `demo`, ...) |
 | `cf-turnstile-response` | Cloudflare Turnstile token (public mode) |
+| `altcha` | Base64 ALTCHA solution for brands with `captcha: "altcha"` |
 | `botcheck` | honeypot — must be empty/absent |
 | `access_key` | reserved (prefer the bearer header for trusted mode) |
 | `subject` | subject override (trusted mode only) |
@@ -58,9 +59,23 @@ See [Templates](#templates) for the per-type fields.
 No bearer token (or an invalid one). The Worker enforces **all** of:
 1. **Origin allowlist** — `Origin` must be in `brand.allowedOrigins`, else `403 origin not allowed`.
 2. **Honeypot** — a non-empty `botcheck` returns `200 {success:true}` and sends nothing.
-3. **Turnstile** — token verified server-side; failure → `403 verification failed`.
+3. **Captcha** — Turnstile by default, or ALTCHA when `brand.captcha` is `altcha`.
+   ALTCHA challenges from `GET /altcha/challenge?brand=<id>` expire after 10 minutes;
+   the expiry is included in the signed salt (`?expires=<unix-seconds>`). Missing,
+   invalid, or elapsed expiry returns `403 verification failed`. A verified solution
+   is recorded in `RATE_LIMIT` KV before sending. Subsequent uses return the same 403
+   when the recorded value is visible. Missing KV or read/write errors also return 403.
+   Turnstile and trusted mode do not use this ALTCHA record.
 4. **Rate limit** — KV fixed window, 8 requests/hour per `brand`+IP, else `429`.
 5. **Fixed recipient** — mail always goes to `brand.to`; any `to`/`from` in the body is ignored (anti-relay).
+
+ALTCHA records remain for the remaining validity, with a 60-second minimum KV TTL.
+The minimum TTL does not extend the solution's validity. Fetch and solve a new challenge
+for each submission, including retries after a delivery failure. KV reads and writes
+are not atomic and are eventually consistent: concurrent submissions or submissions
+from different locations can both be accepted before the record is visible. This is
+best-effort single-use behavior, not a global exactly-once guarantee. See
+[KV consistency](https://developers.cloudflare.com/kv/concepts/how-kv-works/).
 
 On success, a `contact` submission may also send a confirmation back to the submitter — see
 [Auto-reply](#auto-reply).

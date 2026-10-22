@@ -131,7 +131,7 @@ export interface SendDeps {
     token: string,
     remoteIp: string | null,
   ) => Promise<boolean>;
-  verifyAltcha: (hmacKey: string, payloadB64: string) => Promise<boolean>;
+  verifyAltcha: (hmacKey: string, payloadB64: string, now?: Date) => Promise<boolean>;
   sendEmail: (env: Env, params: SendParams) => Promise<SendResult>;
   now: () => Date;
   /**
