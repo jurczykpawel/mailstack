@@ -38,6 +38,12 @@ function buildOne(item: unknown): JsonLdBlock | null {
   return builder ? builder(d) : null;
 }
 
+function validLinks(value: unknown, key = ""): boolean {
+  if (Array.isArray(value)) return value.every((item) => validLinks(item, key));
+  if (value && typeof value === "object") return Object.entries(value).every(([name, item]) => validLinks(item, name));
+  return !/^(url|target|trackingUrl|urlTemplate)$/.test(key) || B.isHttpUrl(value);
+}
+
 /**
  * Turn an untrusted `markup` value (an array of directives, or a single one)
  * into validated JSON-LD blocks. Fail-soft: unknown/invalid/over-deep directives
@@ -53,7 +59,7 @@ export function buildBlocks(input: unknown): JsonLdBlock[] {
   for (const item of items) {
     if (out.length >= MAX_BLOCKS) break;
     const block = buildOne(item);
-    if (block && depth(block) < MAX_DEPTH) out.push(block);
+    if (block && depth(block) < MAX_DEPTH && validLinks(block)) out.push(block);
   }
   return out;
 }

@@ -1,4 +1,5 @@
 import type { Brand, LayoutInput, RenderedEmail } from "../types.ts";
+import { isHttpUrl } from "../urls.ts";
 
 const MAILSTACK_HOME_URL = "https://mailstack.techskills.academy/pl";
 
@@ -58,9 +59,10 @@ export function codeBox(value: string): string {
 
 /** Email-safe, table-based CTA button using the brand accent. Returns "" if no url. */
 export function ctaButton(brand: Brand, url: string, label: string): string {
-  if (!url.trim()) return "";
+  const href = url.trim();
+  if (!isHttpUrl(href)) return "";
   const accent = escapeHtml(brand.theme.accent);
-  const safeUrl = escapeHtml(url);
+  const safeUrl = escapeHtml(href);
   const safeLabel = escapeHtml(label.trim() || "Otwórz");
   return `
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
@@ -74,9 +76,10 @@ export function ctaButton(brand: Brand, url: string, label: string): string {
 
 /** Plain-text rendering of a CTA (label + URL). Returns "" if no url. */
 export function ctaText(url: string, label: string): string {
-  if (!url.trim()) return "";
+  const href = url.trim();
+  if (!isHttpUrl(href)) return "";
   const l = label.trim() || "Otwórz";
-  return `${l}: ${url}`;
+  return `${l}: ${href}`;
 }
 
 /**
@@ -128,7 +131,7 @@ export function renderLayout(brand: Brand, input: LayoutInput): RenderedEmail {
   const footerLines: string[] = [safeName];
   if (theme.address) footerLines.push(escapeHtml(theme.address));
   if (theme.phone) footerLines.push("tel: " + escapeHtml(theme.phone));
-  footerLines.push(
+  if (isHttpUrl(theme.siteUrl)) footerLines.push(
     `<a href="${escapeHtml(theme.siteUrl)}" style="color:${accent};text-decoration:none;">${escapeHtml(
       theme.siteUrl.replace(/^https?:\/\//, ""),
     )}</a>`,
@@ -193,7 +196,7 @@ function renderLayoutText(brand: Brand, input: LayoutInput): string {
   lines.push(brand.name);
   if (brand.theme.address) lines.push(brand.theme.address);
   if (brand.theme.phone) lines.push(`tel: ${brand.theme.phone}`);
-  lines.push(brand.theme.siteUrl);
+  if (isHttpUrl(brand.theme.siteUrl)) lines.push(brand.theme.siteUrl);
   lines.push("");
   lines.push(`Wysłano przez mailstack (${MAILSTACK_HOME_URL})`);
   return lines.join("\n");

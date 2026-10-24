@@ -1,4 +1,6 @@
 import type { JsonLdBlock } from "../types.ts";
+import { isHttpUrl } from "../urls.ts";
+export { isHttpUrl } from "../urls.ts";
 
 /** schema.org context every block is emitted with (callers may override in `raw`). */
 export const SCHEMA_CONTEXT = "https://schema.org";
@@ -8,17 +10,6 @@ type Rec = Record<string, unknown>;
 /** Trimmed string, or "" for anything non-string. */
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
-}
-
-/** True for a syntactically valid http(s) URL (rejects javascript:/data: etc.). */
-export function isHttpUrl(v: unknown): v is string {
-  if (typeof v !== "string") return false;
-  try {
-    const u = new URL(v);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 /** Go-to button in the message bar. Requires a name and an http(s) url. */

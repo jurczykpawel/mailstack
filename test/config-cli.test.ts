@@ -53,6 +53,7 @@ it("builds external config and verifies subsequent input changes", async () => {
   mkdirSync(join(root, "src/core/config"), { recursive: true });
   for (const file of ["schema.ts", "load.ts", "node.ts"]) cpSync(`src/core/config/${file}`, join(root, "src/core/config", file));
   cpSync("scripts/bundle-config.ts", join(root, "scripts/bundle-config.ts"));
+  cpSync("src/urls.ts", join(root, "src/urls.ts"));
   cpSync("src/templates", join(root, "src/templates"), { recursive: true });
   cpSync("src/markup", join(root, "src/markup"), { recursive: true });
   const file = join(dir, "external.json");
