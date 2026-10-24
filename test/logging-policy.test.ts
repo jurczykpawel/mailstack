@@ -103,3 +103,12 @@ it("retains full ordinary fields and applies encoded parameter names", () => {
   expect(archive.text).not.toContain("example-value");
   expect(archive.html).toContain("view=order");
 });
+
+it.each(["masked", "full"] as const)("projects long license code boxes at level %s", (level) => {
+  const licenseKey = "EXAMPLE-" + "a".repeat(358) + "1234";
+  const archive = content(projectArchive({ policy: { ...config().logging.defaults, level, show: ["licenseKey"] }, patterns,
+    brand, template: getTemplate("license")!, data: { licenseKey } }));
+  expect(archive.html).toMatch(/<pre style="[^"]*word-break:break-all;[^"]*">••••1234<\/pre>/);
+  expect(JSON.stringify(archive)).not.toContain(licenseKey);
+  expect(archive.text).toContain("Klucz licencji: ••••1234");
+});

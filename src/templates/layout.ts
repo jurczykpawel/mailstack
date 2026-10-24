@@ -52,6 +52,10 @@ export function paragraph(text: string): string {
   )}</p>`;
 }
 
+export function codeBox(value: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px 0;"><tr><td style="background:#f6f7f9;border:1px solid #e0e3e8;border-radius:8px;padding:16px;"><pre style="margin:0;font-family:Consolas,Monaco,'Courier New',monospace;font-size:13px;color:#1a1a1a;line-height:1.6;word-break:break-all;white-space:pre-wrap;user-select:text;">${escapeHtml(value)}</pre></td></tr></table>`;
+}
+
 /** Email-safe, table-based CTA button using the brand accent. Returns "" if no url. */
 export function ctaButton(brand: Brand, url: string, label: string): string {
   if (!url.trim()) return "";

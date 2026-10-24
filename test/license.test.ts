@@ -22,3 +22,21 @@ it("renders the license template with shared layout", () => {
   const { html, text } = renderLayout(brand, body);
   expect({ subject: template.subject(brand, input), html: html.replace(/^[ \t]+$/gm, ""), text }).toMatchSnapshot();
 });
+
+it("renders long license keys in a wrapping code box below the summary", () => {
+  const licenseKey = "EXAMPLE-" + "a".repeat(358) + "1234";
+  expect(licenseKey).toHaveLength(370);
+  const body = getTemplate("license")!.render(brand, { productName: "Example Pro", licenseKey });
+  const code = body.bodyHtml.match(/<pre style="([^"]*)">([^<]*)<\/pre>/);
+  expect(code).not.toBeNull();
+  expect(code![1]).toContain("word-break:break-all");
+  expect(code![1]).toContain("white-space:pre-wrap");
+  expect(code![1]).toContain("user-select:text");
+  expect(code![2]).toBe(licenseKey);
+  const summary = body.bodyHtml.match(/<table\b[^>]*style="[^"]*overflow:hidden;[^"]*"[^>]*>[\s\S]*?<\/table>/)?.[0];
+  expect(summary).toBeDefined();
+  expect(summary).not.toContain(licenseKey);
+  expect(summary).not.toContain("Klucz licencji");
+  expect(body.bodyHtml).toMatch(/Klucz licencji<\/p>\s*<table\b/);
+  expect(body.bodyText).toBe(`Witaj,\n\nTwoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:\n\nProdukt: Example Pro\n\nKlucz licencji: ${licenseKey}`);
+});
