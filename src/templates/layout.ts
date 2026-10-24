@@ -89,10 +89,10 @@ export function summaryTable(rows: Array<{ label: string; value: string }>): str
     .map(
       (r) => `
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">${escapeHtml(
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">${escapeHtml(
                   r.label,
                 )}</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">${textToHtml(
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">${textToHtml(
                   r.value,
                 )}</td>
               </tr>`,
@@ -100,7 +100,7 @@ export function summaryTable(rows: Array<{ label: string; value: string }>): str
     .join("");
   if (!body) return "";
   return `
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">${body}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">${body}
             </table>`;
 }
 

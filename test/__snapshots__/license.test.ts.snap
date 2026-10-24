@@ -29,18 +29,18 @@ exports[`renders the license template with shared layout 1`] = `
                 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:</p>
 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Produkt</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Example Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Produkt</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Example Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Plan</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Plan</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Domena</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">example.com</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Domena</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">example.com</td>
               </tr>
             </table>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Klucz licencji</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px 0;"><tr><td style="background:#f6f7f9;border:1px solid #e0e3e8;border-radius:8px;padding:16px;"><pre style="margin:0;font-family:Consolas,Monaco,'Courier New',monospace;font-size:13px;color:#1a1a1a;line-height:1.6;word-break:break-all;white-space:pre-wrap;user-select:text;">EXAMPLE-1234</pre></td></tr></table>

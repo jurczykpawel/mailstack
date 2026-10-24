@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { escapeHtml, humanizeLabel, renderEmail } from "../src/templates";
 import { getBrand } from "../src/core/config";
+import { summaryTable } from "../src/templates/layout";
 import type { RenderInput } from "../src/types";
 
 describe("escapeHtml", () => {
@@ -127,5 +128,20 @@ describe("renderEmail", () => {
     const { html } = renderEmail(brand, baseInput());
     expect(html).toContain("2026-06-10T10:00:00.000Z");
     expect(html).toContain("1.2.3.4");
+  });
+});
+
+
+describe("summaryTable", () => {
+  it("wraps uninterrupted labels and values within fixed columns", () => {
+    const html = summaryTable([{ label: "L".repeat(370), value: "X".repeat(370) }]);
+    const cells = [...html.matchAll(/<td style="([^"]*)">([^<]*)<\/td>/g)];
+    expect(cells).toHaveLength(2);
+    for (const [, style] of cells) {
+      expect(style).toContain("overflow-wrap:anywhere;");
+      expect(style).toContain("word-break:break-word;");
+    }
+    expect(html).toContain("table-layout:fixed;");
+    expect(cells.map((cell) => cell[2])).toEqual(["L".repeat(370), "X".repeat(370)]);
   });
 });

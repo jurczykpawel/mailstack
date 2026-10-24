@@ -4,74 +4,74 @@ exports[`acme/contact retains its rendering 1`] = `
 {
   "body": {
     "bodyHtml": "
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Jane &amp; Smith</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">jane@example.com</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Welcome</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Details</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/start</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Open</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">REF-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/invoice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Notice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">First<br><br>Second</td>
               </tr>
             </table>
                 <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
@@ -136,74 +136,74 @@ IP: -",
             <tr>
               <td style="padding:12px 24px 0 24px;">
                 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Jane &amp; Smith</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">jane@example.com</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Welcome</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Details</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/start</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Open</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">REF-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/invoice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Notice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">First<br><br>Second</td>
               </tr>
             </table>
                 <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
@@ -367,22 +367,22 @@ exports[`acme/payment retains its rendering 1`] = `
     "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00 USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
             </table>
 
@@ -447,22 +447,22 @@ Pobierz fakturę: https://example.com/invoice",
                 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00 USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
             </table>
 
@@ -692,74 +692,74 @@ exports[`demo/contact retains its rendering 1`] = `
 {
   "body": {
     "bodyHtml": "
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Jane &amp; Smith</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">jane@example.com</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Welcome</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Details</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/start</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Open</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">REF-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/invoice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Notice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">First<br><br>Second</td>
               </tr>
             </table>
                 <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
@@ -824,74 +824,74 @@ IP: -",
             <tr>
               <td style="padding:12px 24px 0 24px;">
                 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Jane &amp; Smith</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">jane@example.com</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Welcome</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Details</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/start</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Open</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">REF-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Consultation</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">https://example.com/invoice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Notice</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">First<br><br>Second</td>
               </tr>
             </table>
                 <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
@@ -1051,22 +1051,22 @@ exports[`demo/payment retains its rendering 1`] = `
     "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00 USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
             </table>
 
@@ -1131,22 +1131,22 @@ Pobierz fakturę: https://example.com/invoice",
                 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">149.00 USD</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">Pro</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">ORD-1</td>
               </tr>
               <tr>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
-                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;overflow-wrap:anywhere;word-break:break-word;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;">2026-06-10</td>
               </tr>
             </table>
 
