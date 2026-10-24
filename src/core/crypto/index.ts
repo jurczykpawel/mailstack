@@ -102,7 +102,7 @@ export async function blindIndex(address: string, key: IndexKey): Promise<{ kid:
     const at = trimmed.lastIndexOf('@');
     if (at < 1 || at === trimmed.length - 1) throw invalid();
     const normalized = trimmed.slice(0, at + 1) + trimmed.slice(at + 1).toLowerCase();
-    const digest = await crypto.subtle.sign('HMAC', await hmacKey(key), utf8.encode(normalized));
+    const digest = await crypto.subtle.sign('HMAC', await hmacKey(key), utf8.encode('mailstack/v1/idx\n' + normalized));
     return { kid: key.kid, index: encode(digest).slice(0, 22) };
   } catch {
     throw new Error('Unable to compute index');
@@ -118,11 +118,15 @@ export async function blindIndexes(address: string, keys: readonly IndexKey[]): 
   }
 }
 
+function macInput(data: unknown): Uint8Array {
+  return utf8.encode('mailstack/v1/mac\n' + canonicalJson(data));
+}
+
 export async function createMac(data: unknown, keys: readonly IndexKey[]): Promise<Mac> {
   try {
     checkKids(keys);
     const key = keys[0];
-    const digest = await crypto.subtle.sign('HMAC', await hmacKey(key), utf8.encode(canonicalJson(data)));
+    const digest = await crypto.subtle.sign('HMAC', await hmacKey(key), macInput(data));
     return { kid: key.kid, mac: encode(digest) };
   } catch {
     throw new Error('Unable to compute MAC');
@@ -133,7 +137,7 @@ export async function verifyMac(data: unknown, tag: Mac, keys: readonly IndexKey
   try {
     checkKids(keys);
     const key = keys.find((k) => k.kid === tag.kid);
-    return !!key && await crypto.subtle.verify('HMAC', await hmacKey(key), decode(tag.mac), utf8.encode(canonicalJson(data)));
+    return !!key && await crypto.subtle.verify('HMAC', await hmacKey(key), decode(tag.mac), macInput(data));
   } catch {
     return false;
   }

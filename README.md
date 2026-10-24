@@ -316,6 +316,10 @@ Back up the private file separately from message data. Do not commit it or the e
 and uses JSON primitive serialization; it rejects non-JSON values and cycles.
 `createMac(data,keys)` returns `{kid,mac}` with a full base64url HMAC for request or
 resend payloads; `verifyMac(data,tag,keys)` selects the matching key and returns a boolean.
+HMAC inputs are UTF-8: `mailstack/v1/idx\n` followed by the normalized address for
+blind indexes, or `mailstack/v1/mac\n` followed by canonical JSON for MACs (`\n` = LF).
+Indexes retain the first 22 base64url characters; MACs retain the full digest.
+Values computed without these context prefixes must be recomputed.
 
 ### Contributing & license
 See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under **MIT** — see [LICENSE](LICENSE).

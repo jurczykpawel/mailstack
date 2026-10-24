@@ -72,8 +72,21 @@ function decode(value: string): ArrayBuffer {
 }
 
 describe('index and canonical MAC', () => {
+  it.each<[string, unknown]>([
+    ['{"a":"x@y"}', { a: 'x@y' }],
+    ['"a@b"', 'a@b'],
+  ])('uses distinct contexts for an address and JSON value %s', async (address, data) => {
+    const index = await blindIndex(address, indexKey);
+    const tag = await createMac(data, [indexKey]);
+    expect(index.index).not.toBe(tag.mac.slice(0, 22));
+  });
+
+  it('requires the current MAC context', async () => {
+    expect(await verifyMac({ z: 1, a: 2 }, { kid: 'i1', mac: 'bJYsNGiwWW4g9LpjKotkLDQbJyni44hSzjHo3YRhaNg' }, [indexKey])).toBe(false);
+  });
+
   it('normalizes only the domain and matches a fixed digest', async () => {
-    expect(await blindIndex(' Alice+tag@EXAMPLE.COM ', indexKey)).toEqual({ kid: 'i1', index: 'HpjHTGiK4hWrjHR9wMT2R7' });
+    expect(await blindIndex(' Alice+tag@EXAMPLE.COM ', indexKey)).toEqual({ kid: 'i1', index: 'b9wBqr5yIzYo7CZ-kHaqYF' });
     expect(await blindIndex('alice+tag@example.com', indexKey)).not.toEqual(await blindIndex('Alice+tag@example.com', indexKey));
   });
 
@@ -96,7 +109,7 @@ describe('index and canonical MAC', () => {
   it('uses a full canonical HMAC and verifies by kid after rotation', async () => {
     const data = { z: 1, a: 2 };
     const tag = await createMac(data, [indexKey]);
-    expect(tag).toEqual({ kid: 'i1', mac: 'bJYsNGiwWW4g9LpjKotkLDQbJyni44hSzjHo3YRhaNg' });
+    expect(tag).toEqual({ kid: 'i1', mac: 'BPC2gX0K_ylHZOY7dOCkE1SYc1fyEpbT5A-dzwhje8M' });
     const keys = [{ ...indexKey, kid: 'i2' }, indexKey];
     expect((await createMac(data, keys)).kid).toBe('i2');
     expect(await verifyMac({ a: 2, z: 1 }, tag, keys)).toBe(true);
