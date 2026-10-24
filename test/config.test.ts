@@ -4,6 +4,7 @@ import { loadConfig } from "../src/core/config/load";
 import example from "../config/mailstack.example.json";
 import { TEMPLATES } from "../src/templates/index";
 const BRANDS = example.brands;
+const clientDefaults = { id: "demo-client", tokenSha256: "a".repeat(64), scopes: ["send"], recipientOverride: false, attachments: false };
 
 function config() {
   return {
@@ -60,14 +61,14 @@ describe("configuration schema", () => {
     expect(parseConfig(value).logging.brands.acme.templates?.payment.resend).toBe("replay");
   });
   it("requires a callback matching the effective brand and template", () => {
-    const value = { ...config(), clients: [{ brands: ["demo"], templates: ["payment"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } }] };
+    const value = { ...config(), clients: [{ ...clientDefaults, brands: ["demo"], templates: ["payment"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } }] };
     const logging = { ...value.logging, brands: { acme: { templates: { payment: { resend: "source" } } } } };
     expect(() => parseConfig({ ...value, logging })).toThrow("$.logging.brands.acme.templates.payment.resend");
     value.clients[0].brands = ["acme"];
     expect(parseConfig({ ...value, logging }).clients).toEqual(value.clients);
   });
   it("accepts deferred sections without interpreting their unrelated fields", () => {
-    expect(parseConfig({ ...config(), clients: { future: true }, events: [], alerts: "later" }).alerts).toBe("later");
+    expect(parseConfig({ ...config(), events: [], alerts: "later" }).alerts).toBe("later");
   });
   it("reports JSON and version errors without input values", () => {
     expect(() => loadConfig("{" )).toThrow("$: invalid JSON");
@@ -90,7 +91,7 @@ it("applies policy validation through the exported zod schema", () => {
 });
 it("accepts a global source policy covered by clients for every registered template", () => {
   const value = config(); value.logging.defaults.resend = "source";
-  const client = { brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice", "license"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
+  const client = { ...clientDefaults, brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice", "license"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
   expect(() => parseConfig({ ...value, clients: [client] })).not.toThrow();
   client.templates = ["payment"];
   expect(() => parseConfig({ ...value, clients: [client] })).toThrow("$.logging.defaults.resend");

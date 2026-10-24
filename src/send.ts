@@ -7,7 +7,8 @@ import type {
   TemplateData,
   TemplateDef,
 } from "./types";
-import { getBrand } from "./core/config";
+import { config, getBrand } from "./core/config";
+import { authenticate, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { consumeAltcha } from "./altcha";
 import { checkRateLimit } from "./ratelimit";
@@ -61,7 +62,7 @@ interface JsonResponseInit {
 }
 
 function json(
-  body: { success: boolean; message?: string },
+  body: { success: boolean; message?: string; code?: string },
   init: JsonResponseInit = {},
 ): Response {
   const headers: Record<string, string> = {
@@ -72,29 +73,6 @@ function json(
     status: init.status ?? 200,
     headers,
   });
-}
-
-/** Constant-time string comparison (length-safe) for bearer tokens. */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
-
-/** Extract the bearer token from the Authorization header, or null. */
-function bearerToken(req: Request): string | null {
-  const h = req.headers.get("authorization") || "";
-  const m = /^Bearer\s+(.+)$/i.exec(h);
-  return m ? m[1].trim() : null;
-}
-
-/** True when the request carries a bearer token matching `env.API_KEY`. */
-export function isTrusted(req: Request, env: Env): boolean {
-  const token = bearerToken(req);
-  return !!token && !!env.API_KEY && timingSafeEqual(token, env.API_KEY);
 }
 
 /**
@@ -141,7 +119,7 @@ function normalizeTrustedRecipients(raw: unknown): string[] | null {
 
 /**
  * Handle POST /v1/send. Two modes:
- *  - Trusted: valid `Authorization: Bearer <API_KEY>` skips Turnstile/origin,
+ *  - Trusted: an authenticated client skips Turnstile/origin,
  *    may pick a `template`, set `subject`/`replyTo`, and a validated `to`.
  *  - Public: enforces origin allowlist, honeypot, Turnstile, and rate limit, and
  *    is always pinned to the `contact` template.
@@ -188,8 +166,8 @@ export async function handleSend(
   const originAllowed = isOriginAllowed(brand, origin);
   const corsOrigin = originAllowed ? origin : null;
 
-  // Trusted mode: bearer matches API_KEY (constant-time).
-  const trusted = isTrusted(req, env);
+  const client = await authenticate(req, env, config);
+  const trusted = !!client;
 
   if (!trusted) {
     // 1) Origin allowlist.
@@ -232,6 +210,9 @@ export async function handleSend(
       ? body.template.trim()
       : DEFAULT_TEMPLATE
     : DEFAULT_TEMPLATE;
+  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride))) {
+    return json({ success: false, message: "forbidden", code: "scope" }, { status: 403, cors: corsOrigin });
+  }
   const template = getTemplate(templateId);
   if (!template) {
     return json(

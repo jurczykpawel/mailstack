@@ -154,7 +154,20 @@ interface Brand {
 
 Example brands in `config/mailstack.example.json`: `acme` (auto-reply on) and `demo`. Copy the JSON outside the repository and export `MAILSTACK_CONFIG`. Node 24+ runs the TypeScript CLI directly: `node scripts/mailstack.ts config check <file>` or `config import-brands <legacy-brands.ts>` (JSON stdout; trusted local input).
 
-The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. Clients, events and alerts remain optional deferred sections. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; the current Worker rejects it until an audit store is integrated. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
+The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. Clients and legacyApiKey are optional validated sections; events and alerts remain deferred. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; the current Worker rejects it until an audit store is integrated. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
+
+### Client configuration
+
+```bash
+node scripts/mailstack.ts client create --id acme-app --scopes send --brands acme --templates notice,payment
+node scripts/mailstack.ts client create --id panel --scopes panel
+```
+
+The CLI prints the token once alongside a configuration entry containing `tokenSha256`.
+Clients with `send` or `hook:sellf` require explicit `brands` and `templates` (lists or `"*"`);
+CLI callers must provide both `--brands` and `--templates` (quote `'*'` for all values).
+Panel-only clients may omit these selections, which become empty lists. `legacyApiKey`
+retains its wildcard defaults for both fields.
 
 ### How to add a brand
 1. Append an entry to `brands` in the external JSON with a new id.
