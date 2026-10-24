@@ -1,3 +1,4 @@
+import { boundedText } from "./core/http";
 import type { Env, SendDeps, TemplateData } from "./types";
 import { config, getBrand } from "./core/config";
 import { deliveryResponse } from "./core/logging/delivery";
@@ -195,7 +196,13 @@ export async function handleSellfHook(
     return jsonResponse({ success: false, message: "unknown brand" }, 400);
   }
 
-  const rawBody = await req.text();
+  let rawBody: string;
+  try {
+    rawBody = await boundedText(req, 64 * 1024);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    return jsonResponse({ success: false, message: "payload too large" }, 413);
+  }
   if (client.sellfSignatureSecretEnv && !await verifySignature(req, rawBody, Reflect.get(env, client.sellfSignatureSecretEnv), deps.now())) {
     return jsonResponse({ success: false, message: "unauthorized" }, 401);
   }
