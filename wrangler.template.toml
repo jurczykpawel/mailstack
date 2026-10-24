@@ -11,6 +11,9 @@ compatibility_flags = ["nodejs_compat"]
 # *.workers.dev URL is used. The domain's zone must be in the same Cloudflare account.
 __ROUTES__
 
+[triggers]
+crons = ["17 * * * *"]
+
 [build]
 command = "node scripts/bundle-config.ts --verify"
 

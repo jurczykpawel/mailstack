@@ -1,5 +1,5 @@
 import { Kysely, sql } from 'kysely';
-import type { Dialect } from 'kysely';
+import type { RawBuilder, Dialect } from 'kysely';
 import type { Store } from '../ports';
 import { INITIAL_SCHEMA } from './migration';
 
@@ -10,8 +10,17 @@ interface Database {
 export class KyselyStore implements Store {
   readonly db: Kysely<Database>;
 
-  constructor(dialect: Dialect) {
+  constructor(dialect: Dialect, private readonly atomic?: (queries: RawBuilder<unknown>[]) => Promise<number[]>) {
     this.db = new Kysely<Database>({ dialect });
+  }
+
+  async batch(queries: RawBuilder<unknown>[]): Promise<number[]> {
+    if (this.atomic) return this.atomic(queries);
+    return this.db.transaction().execute(async (tx) => {
+      const changes: number[] = [];
+      for (const query of queries) changes.push(Number((await query.execute(tx)).numAffectedRows ?? 0));
+      return changes;
+    });
   }
 
   async migrate(): Promise<void> {
