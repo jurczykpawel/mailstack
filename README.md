@@ -99,8 +99,8 @@ instead of the spam folder, for a tiny cost.
 ### 5) Create the rate-limit storage, then fill in `.env`
 This caps how often someone can submit, to stop abuse.
 ```bash
-wrangler kv namespace create RATE_LIMIT
-wrangler kv namespace create RATE_LIMIT --preview
+wrangler d1 create mailstack
+wrangler d1 create mailstack-preview
 ```
 Each command prints an **id** — copy both. Then create your settings file:
 ```bash
@@ -108,10 +108,12 @@ cp .env.example .env
 ```
 Open **`.env`** and paste the two ids (leave the domain empty for now):
 ```
-MAILSTACK_KV_ID=<the first id>
-MAILSTACK_KV_PREVIEW_ID=<the second id>
+MAILSTACK_D1_ID=<the first id>
+MAILSTACK_D1_PREVIEW_ID=<the second id>
 MAILSTACK_ROUTE=
 ```
+
+Create the D1 databases above, run `npm run setup` to generate the SQL migration, then apply it with `wrangler d1 migrations apply DB --local` for development or `wrangler d1 migrations apply DB --remote` before deployment.
 
 ### 6) Describe your "brand" (who the email is from and to)
 Copy `config/mailstack.example.json` to a private location outside this repository, then
@@ -200,16 +202,12 @@ the `altcha` field of `POST /v1/send`.
 
 Each challenge has a signed expiry of 10 minutes. A solution without a valid expiry,
 an expired solution, or an already recorded solution returns `403 verification failed`.
-The Worker records usage in `RATE_LIMIT` KV before sending; missing KV or storage
+The Worker atomically records usage in D1 before sending; missing storage or storage
 errors also return 403. Fetch a new challenge for each submission or retry, including
-after `send failed`. Records use the remaining validity as TTL (minimum 60 seconds);
-this does not extend acceptance past the signed expiry.
-
-KV is eventually consistent and its read/write pair is not atomic, so simultaneous
-requests or requests across locations can be accepted before the record is visible.
-Single-use handling is best effort, without a global exactly-once guarantee. See
-[Cloudflare's KV consistency documentation](https://developers.cloudflare.com/kv/concepts/how-kv-works/).
-Turnstile and trusted submissions keep their existing behavior.
+after `send failed`. Records expire at the signed expiry; concurrent submissions of
+one solution allow only one submission to proceed. Trusted sends skip guards.
+Public Turnstile sends still require the D1 rate limiter (8 attempts per brand/IP/hour);
+unavailable storage returns 429.
 
 ## Sending emails from your app (payments, welcome, etc.)
 
@@ -230,7 +228,7 @@ curl -X POST https://mailstack.<your-name>.workers.dev/v1/send \
 Built-in templates: `payment`, `welcome`, `received`, `notice` (and `contact` for forms).
 
 ## What it costs
-- **Cloudflare** (Workers, KV, Turnstile): generous free tiers — 100,000 Worker requests/day.
+- **Cloudflare** (Workers, D1, Turnstile): generous free tiers — 100,000 Worker requests/day.
 - **Amazon SES**: about **$0.10 per 1,000 emails** (often with a free monthly allowance). A
   contact form will almost certainly stay free.
 
@@ -244,8 +242,7 @@ Change a setting (edit `.env` or `mailstack.json`) and run `npm run deploy` agai
 - **"verification failed"?** The Turnstile widget wasn't solved, or your Site/Secret keys don't match.
 - **"origin not allowed"?** Add your site's address to `allowedOrigins` in `mailstack.json`, redeploy.
 - **"send failed"?** Your `from` address isn't verified in SES, or the SES region doesn't match
-  where you verified it (set it in `.env` is for KV; the region is in `wrangler.template.toml` →
-  `SES_REGION`).
+  where you verified it (the region is `SES_REGION` in `wrangler.template.toml`).
 
 ---
 
@@ -259,7 +256,7 @@ Change a setting (edit `.env` or `mailstack.json`) and run `npm run deploy` agai
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
 - **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
 - **Sellf webhook adapter** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
-- **No database** — rate limit and ALTCHA usage records in KV. **Secret scanning** in pre-commit + CI.
+- **D1 storage** — atomic rate limits and ALTCHA usage records. **Secret scanning** in pre-commit + CI.
 
 ### Config files
 Nothing deployment-specific is committed. `npm run setup` (also run before `dev`/`deploy`)
@@ -267,8 +264,9 @@ generates these files. Test/typecheck hooks use the committed JSON example:
 
 | Generated (gitignored) | From | Holds |
 |---|---|---|
-| `wrangler.toml` | `wrangler.template.toml` + `.env` | KV ids + custom domain (`MAILSTACK_*` vars) |
+| `wrangler.toml` | `wrangler.template.toml` + `.env` | D1 ids + custom domain (`MAILSTACK_*` vars) |
 | `src/core/config/bundled.ts` | external `MAILSTACK_CONFIG` JSON | Validated brands and logging policy + SHA-256 |
+| `.wrangler/migrations/0001_initial.sql` | `src/core/store/migration.ts` | Shared schema for Wrangler D1 migrations |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` | Brand logo PNG (base64) |
 
 Configure via **`.env`** and the external **`MAILSTACK_CONFIG`** file; secrets via `wrangler secret put`. Full
@@ -309,7 +307,7 @@ The JSON example and render snapshots contain only acme/demo data.
 
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
-closed) · honeypot · fixed recipient / anti-relay · KV rate limit (8/hour per brand+IP) ·
+closed) · honeypot · fixed recipient / anti-relay · D1 rate limit (8/hour per brand+IP) ·
 constant-time bearer compare · all field values HTML-escaped · 64 KB / ~40 fields / 5000
 chars-per-value guards · no secrets in code.
 

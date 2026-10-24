@@ -3,13 +3,14 @@
  * gen-wrangler.mjs — generate wrangler.toml from wrangler.template.toml + env vars.
  *
  * Reads deployment config from the environment (and a gitignored .env if present),
- * so real KV ids / custom domain never live in the committed template. Missing vars
+ * so real D1 ids / custom domain never live in the committed template. Missing vars
  * fall back to harmless placeholders, so `typecheck`/`test`/`dev` still work without
  * an .env — only a real `deploy` needs the real values.
  *
- * Vars: MAILSTACK_KV_ID, MAILSTACK_KV_PREVIEW_ID, MAILSTACK_ROUTE (optional).
+ * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE (optional).
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { INITIAL_SCHEMA } from "../src/core/store/migration.ts";
 import { BUILD_CONFIG_SHA } from "../src/core/config/bundled.ts";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,8 +27,8 @@ if (existsSync(envFile)) {
   }
 }
 
-const kvId = env.MAILSTACK_KV_ID || "PLACEHOLDER_KV_ID";
-const kvPreview = env.MAILSTACK_KV_PREVIEW_ID || "PLACEHOLDER_KV_PREVIEW_ID";
+const d1Id = env.MAILSTACK_D1_ID || "PLACEHOLDER_D1_ID";
+const d1Preview = env.MAILSTACK_D1_PREVIEW_ID || "PLACEHOLDER_D1_PREVIEW_ID";
 const route = (env.MAILSTACK_ROUTE || "").trim();
 const sellfBrand = (env.SELLF_DEFAULT_BRAND || "acme").trim();
 
@@ -38,13 +39,15 @@ const routesBlock = route
 const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("__ROUTES__", routesBlock)
   .replace("${BUILD_CONFIG_SHA}", BUILD_CONFIG_SHA)
-  .replaceAll("${MAILSTACK_KV_ID}", kvId)
-  .replaceAll("${MAILSTACK_KV_PREVIEW_ID}", kvPreview)
+  .replaceAll("${MAILSTACK_D1_ID}", d1Id)
+  .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)
   .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand);
 
+mkdirSync(resolve(root, ".wrangler/migrations"), { recursive: true });
+writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SCHEMA);
 writeFileSync(resolve(root, "wrangler.toml"), out);
 
-const placeholder = kvId.startsWith("PLACEHOLDER");
+const placeholder = d1Id.startsWith("PLACEHOLDER");
 console.log(
-  `[gen-wrangler] wrote wrangler.toml (kv=${placeholder ? "PLACEHOLDER — set MAILSTACK_KV_ID in .env before deploy" : "from env"}, route=${route || "none (workers.dev)"})`,
+  `[gen-wrangler] wrote wrangler.toml (d1=${placeholder ? "PLACEHOLDER — set MAILSTACK_D1_ID in .env before deploy" : "from env"}, route=${route || "none (workers.dev)"})`,
 );

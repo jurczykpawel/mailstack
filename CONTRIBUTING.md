@@ -9,8 +9,8 @@ npm install          # also runs `prepare` which initializes husky
 npm run setup        # generates wrangler.toml from .env + copies brand/logo examples
 ```
 
-Now copy `.env.example` to `.env` and fill in your KV ids (+ optional custom domain), then
-edit `src/brands.ts` with at least one brand (the example has `acme` and `demo`).
+Now copy `.env.example` to `.env` and fill in your D1 ids (+ optional custom domain), then
+edit the external `mailstack.json` with at least one brand (the example has `acme` and `demo`).
 
 For local dev, copy `.dev.vars.example` to `.dev.vars` and fill in the secrets:
 
@@ -27,13 +27,14 @@ Deployment config is generated (gitignored), so nothing private is committed:
 | Generated file | Created from |
 |---|---|
 | `wrangler.toml` | `wrangler.template.toml` + `.env` (`MAILSTACK_*` vars) |
-| `src/brands.ts` | `src/brands.example.ts` |
+| `src/core/config/bundled.ts` | external `MAILSTACK_CONFIG` JSON |
+| `.wrangler/migrations/0001_initial.sql` | `src/core/store/migration.ts` |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` |
 
-Configure via `.env` (KV ids + domain) and `src/brands.ts` — not the generated files.
+Configure via `.env` (D1 ids + domain) and the external `mailstack.json` — not the generated files.
 
 `npm run setup` (also runs automatically before `dev`, `test`, `typecheck`, `deploy`)
-copies each example to the real location if the real file is absent. Never edit the
+generates the runtime config and migration SQL. Never edit the
 `.example` files with real data — they are committed as-is and serve as the public
 template.
 
@@ -44,13 +45,13 @@ npm test          # runs ensure-config then vitest
 npm run typecheck # type-check only (no emit)
 ```
 
-Tests use demo brands (`acme`, `demo`) from `src/brands.example.ts` on a clean clone.
+Tests use demo brands (`acme`, `demo`) from `config/mailstack.example.json` on a clean clone.
 All side effects (SES send, Turnstile verify, clock) are injected via `SendDeps` and
 mocked in tests — no real AWS or Cloudflare calls are made.
 
 ## Adding a brand
 
-1. Add an entry to `src/brands.ts` (gitignored; do NOT edit `brands.example.ts`).
+1. Add an entry to the external `mailstack.json` selected by `MAILSTACK_CONFIG`.
 2. Add a case to `test/brands.test.ts` if you want to assert specific field values.
 3. `npm run typecheck && npm test`.
 4. Redeploy.

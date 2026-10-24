@@ -5,8 +5,7 @@ Cloudflare Worker. Self-owned alternative to Web3Forms: your forms POST here, th
 validates and renders a branded email, and sends it via **Amazon SES**. Multi-tenant by
 design — each "brand" has its own sender, fixed recipient, origin allowlist, and theme.
 
-Stack: Cloudflare Workers + TypeScript (strict), `aws4fetch` for SES SigV4, KV for rate
-limiting. No database. Entry point `src/index.ts` (`export default { fetch }`).
+Stack: Cloudflare Workers + TypeScript (strict), `aws4fetch` for SES SigV4, D1 for atomic guards. Entry point `src/index.ts` (`export default { fetch }`).
 
 ## Public API
 
@@ -63,19 +62,15 @@ No bearer token (or an invalid one). The Worker enforces **all** of:
    ALTCHA challenges from `GET /altcha/challenge?brand=<id>` expire after 10 minutes;
    the expiry is included in the signed salt (`?expires=<unix-seconds>`). Missing,
    invalid, or elapsed expiry returns `403 verification failed`. A verified solution
-   is recorded in `RATE_LIMIT` KV before sending. Subsequent uses return the same 403
-   when the recorded value is visible. Missing KV or read/write errors also return 403.
-   Turnstile and trusted mode do not use this ALTCHA record.
-4. **Rate limit** — KV fixed window, 8 requests/hour per `brand`+IP, else `429`.
+   is atomically recorded in D1 before sending. Subsequent uses return the same 403.
+   Missing storage or write errors also return 403. Trusted mode skips guards.
+4. **Rate limit** — D1 fixed window, 8 requests/hour per `brand`+IP, else `429`.
+   Missing storage or storage errors also return 429.
 5. **Fixed recipient** — mail always goes to `brand.to`; any `to`/`from` in the body is ignored (anti-relay).
 
-ALTCHA records remain for the remaining validity, with a 60-second minimum KV TTL.
-The minimum TTL does not extend the solution's validity. Fetch and solve a new challenge
-for each submission, including retries after a delivery failure. KV reads and writes
-are not atomic and are eventually consistent: concurrent submissions or submissions
-from different locations can both be accepted before the record is visible. This is
-best-effort single-use behavior, not a global exactly-once guarantee. See
-[KV consistency](https://developers.cloudflare.com/kv/concepts/how-kv-works/).
+ALTCHA records expire at the signed validity timestamp. Fetch and solve a new challenge
+for each submission, including retries after a delivery failure. Atomic insertion allows
+only one concurrent submission to consume the same solution.
 
 On success, a `contact` submission may also send a confirmation back to the submitter — see
 [Auto-reply](#auto-reply).
@@ -363,8 +358,8 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
 - **Fixed recipient / anti-relay:** the recipient is always `brand.to` from server config
   in public mode. `to`/`from` in the request body are ignored, so the endpoint can never be
   used as an open relay. Covered by a regression test.
-- **Rate limit:** KV-backed fixed window (8/hour per brand+IP) blocks bursts. Degrades open
-  if the KV binding is missing so a misconfig never takes the form offline silently.
+- **Rate limit:** D1-backed fixed window (8/hour per brand+IP). Missing or unavailable
+  storage declines public requests with 429.
 - **Bearer compare:** trusted-mode token is compared in constant time.
 - **Output escaping:** every field value is HTML-escaped before rendering (no stored/reflected XSS).
 - **Markup safety:** JSON-LD is embedded via a JSON-safe serializer that escapes `<` (neutralizes
@@ -389,12 +384,10 @@ For local `wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill plac
 
 ## Deploy notes
 
-1. **Create the KV namespace** and put the ids in `.env` (`MAILSTACK_KV_ID` /
-   `MAILSTACK_KV_PREVIEW_ID`); `npm run setup` writes them into the generated `wrangler.toml`:
-   ```bash
-   wrangler kv namespace create RATE_LIMIT
-   wrangler kv namespace create RATE_LIMIT --preview   # for `wrangler dev`
-   ```
+1. **Create the D1 databases** with `wrangler d1 create mailstack` and
+   `wrangler d1 create mailstack-preview`, then put their ids in `.env`
+   (`MAILSTACK_D1_ID` / `MAILSTACK_D1_PREVIEW_ID`). Run `npm run setup`, then
+   `wrangler d1 migrations apply DB --local` for development or `--remote` before deploy.
 2. **Verify the SES sender(s)** (domain or email identity) in the SES console for the
    region in `SES_REGION` (default `eu-west-1`), and move the account out of the SES
    sandbox so it can mail arbitrary recipients.
@@ -434,7 +427,7 @@ src/
     builders.ts        typed builders (viewAction, discountOffer, ...) + generic schema()/raw()
     serialize.ts       safe JSON-in-<script> serialization (neutralizes </script>) + head assembly
     index.ts           buildBlocks() — validate/fail-soft/cap; re-exports builders + serialize
-  ratelimit.ts         KV fixed-window limiter
+  ratelimit.ts         D1 fixed-window limiter
   cors.ts              origin allowlist + CORS headers
   types.ts             shared types (Env, Brand, TemplateDef, SendDeps, ...)
 test/                  vitest suites (pure functions + handler with mocked deps)
@@ -449,13 +442,13 @@ the handler is unit-testable without network or the Workers runtime.
 npm install
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run
-npm run dev         # wrangler dev (needs .dev.vars + KV preview id)
+npm run dev         # wrangler dev (needs .dev.vars + D1 preview id)
 npm run deploy      # guarded Wrangler deploy
 ```
 
 ## TODO (infra/deploy)
 
-- Copy `.env.example` → `.env` and set `MAILSTACK_KV_ID` / `MAILSTACK_KV_PREVIEW_ID` (+ optional `MAILSTACK_ROUTE`).
+- Copy `.env.example` → `.env` and set `MAILSTACK_D1_ID` / `MAILSTACK_D1_PREVIEW_ID` (+ optional `MAILSTACK_ROUTE`).
 - Run `npm run setup` — generates `wrangler.toml` from `.env` and bundles the external `MAILSTACK_CONFIG` and creates `src/assets/logo.ts` from its example.
 - Edit the external JSON with your real brand(s). (Don't edit the generated `wrangler.toml` — change `.env` instead.)
 - Set the four secrets (`SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `TURNSTILE_SECRET`, `API_KEY`).
