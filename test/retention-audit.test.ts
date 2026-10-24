@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { sql } from 'kysely';
+import type { RawBuilder } from 'kysely';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
@@ -19,9 +20,11 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`maintenance: ${driver}
   let binding: D1Database;
   const rows = async () => (await sql<AuditRow>`select * from audit order by seq`.execute(store.db)).rows;
   const count = async (table: string) => (await sql<{ n: number }>`select count(*) n from ${sql.table(table)}`.execute(store.db)).rows[0].n;
+  const messageQuery = (id: string, created = now, expires = now + day) =>
+    sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at)
+      values (${id},'test','acme','notice','meta','hash','sending',${created},${expires})`;
   const message = async (id: string, created = now, expires = now + day) => {
-    await sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at)
-      values (${id},'test','acme','notice','meta','hash','sending',${created},${expires})`.execute(store.db);
+    await messageQuery(id, created, expires).execute(store.db);
   };
   beforeAll(async () => {
     if (driver === 'sqlite') store = createSqliteStore(':memory:');
@@ -90,7 +93,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`maintenance: ${driver}
     await appendAudit(store, { at: 1, actor: 'system', action: 'test' });
     const original = store.batch.bind(store);
     const batch = vi.spyOn(store, 'batch').mockImplementation(async queries => {
-      if (queries.some(query => query.compile(store.db).sql.includes('insert into audit'))) throw new Error('storage unavailable');
+      if (queries.some(query => query.sql.includes('insert into audit'))) throw new Error('storage unavailable');
       return original(queries);
     });
     try { await expect(runRetention(store, now, config)).rejects.toThrow('storage unavailable'); }
@@ -127,21 +130,24 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`maintenance: ${driver}
     for (const table of ['contents', 'replays', 'guards']) expect(await count(table)).toBe(1);
   });
   it('removes 501 expired messages and all their children while keeping the boundary', async () => {
+    const seed: RawBuilder<unknown>[] = [];
     for (let i = 0; i < 501; i++) {
       const id = `m_${i}`;
-      await message(id, now, now - 1);
-      await sql`insert into recipients values (${id},0,'to','idx','kid','sealed','hint','sent',null)`.execute(store.db);
-      await sql`insert into subjects values (${id},'recipient','idx','kid')`.execute(store.db);
-      for (const table of ['contents', 'replays']) await sql`insert into ${sql.table(table)} values (${id},'sealed',${now + day})`.execute(store.db);
-      await sql`insert into events(id,message_id,source,source_event_id,type,occurred_at,received_at,auth)
-        values (${id},${id},'local',${id},'sent',${now},${now},'local')`.execute(store.db);
+      seed.push(messageQuery(id, now, now - 1));
+      seed.push(sql`insert into recipients values (${id},0,'to','idx','kid','sealed','hint','sent',null)`);
+      seed.push(sql`insert into subjects values (${id},'recipient','idx','kid')`);
+      for (const table of ['contents', 'replays']) seed.push(sql`insert into ${sql.table(table)} values (${id},'sealed',${now + day})`);
+      seed.push(sql`insert into events(id,message_id,source,source_event_id,type,occurred_at,received_at,auth)
+        values (${id},${id},'local',${id},'sent',${now},${now},'local')`);
     }
+    for (let offset = 0; offset < seed.length; offset += 70)
+      await store.batch(seed.slice(offset, offset + 70).map(query => query.compile(store.db)));
     await message('boundary', now, now);
     const original = store.batch.bind(store);
     const sizes: number[] = [];
     const batch = vi.spyOn(store, 'batch').mockImplementation(async queries => {
       const changes = await original(queries);
-      if (queries.at(-1)?.compile(store.db).sql.startsWith('delete from messages')) sizes.push(changes.at(-1)!);
+      if (queries.at(-1)?.sql.startsWith('delete from messages')) sizes.push(changes.at(-1)!);
       return changes;
     });
     try { await runRetention(store, now, config); } finally { batch.mockRestore(); }
@@ -175,7 +181,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`maintenance: ${driver}
     expect(event.id).toMatch(/^evt_[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
   });
   it('rolls back a failed atomic batch', async () => {
-    await expect(store.batch([sql`insert into guards values ('batch',1,1)`, sql`insert into absent_table values (1)`])).rejects.toThrow();
+    await expect(store.batch([sql`insert into guards values ('batch',1,1)`, sql`insert into absent_table values (1)`].map(query => query.compile(store.db)))).rejects.toThrow();
     expect(await count('guards')).toBe(0);
   });
   if (driver === 'd1') it('runs scheduled maintenance through waitUntil', async () => {

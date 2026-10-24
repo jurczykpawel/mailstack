@@ -18,7 +18,7 @@ export async function runRetention(store: KyselyStore, now: number, cfg: Config)
       ...['recipients', 'subjects', 'events', 'contents', 'replays'].map(table =>
         sql`delete from ${sql.table(table)} where message_id in (${ids})`),
       sql`delete from messages where id in (${ids})`,
-    ]);
+    ].map(query => query.compile(store.db)));
   }
   await sql`delete from contents where message_id in (select id from messages
     where created_at <= ${now - cfg.logging.ceilings.contentDays * 86400000})`.execute(store.db);
@@ -34,7 +34,7 @@ export async function runRetention(store: KyselyStore, now: number, cfg: Config)
         from messages where id = ${id} and status = 'sending' and created_at < ${now - 900000}
         on conflict(source,source_event_id) do nothing`,
       sql`update messages set status = 'unknown' where id = ${id} and status = 'sending' and created_at < ${now - 900000}`,
-    ]));
+    ]).map(query => query.compile(store.db)));
   }
   await pruneAudit(store, now - cfg.logging.ceilings.auditDays * 86400000, row => appendAudit(store, {
     at: now, actor: 'system', action: 'audit.pruned', details: { upTo: row.seq, hashAtUpTo: row.hash },
