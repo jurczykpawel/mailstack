@@ -9,8 +9,8 @@ const omittedUrls = [
   "javascript:alert(1)", "JaVaScRiPt:alert(1)", " javascript:alert(1)",
   "java\nscript:alert(1)", "data:text/html,hello", "vbscript:msgbox(1)",
   "//example.com", "/start", "java%73cript:alert(1)", "%68ttps://example.com",
-  "mailto:hello@example.com", "tel:+48123456789", " https://example.com",
-  "https://example.com\n", "ht\ttps://example.com", "\u0000https://example.com",
+  "mailto:hello@example.com", "tel:+48123456789", "https://ex.com/a b",
+  "ht\ttps://example.com", "\u0000https://example.com",
   "https://example.com/\u007f", "https://", "",
 ];
 const fields = [
@@ -19,6 +19,27 @@ const fields = [
 ] as const;
 
 describe("template links", () => {
+  it.each([" https://example.com/x ", "https://example.com/x\n"])(
+    "trims address %j before rendering", (url) => {
+      const href = "https://example.com/x";
+      expect(ctaButton(brand, url, "Open")).toContain(`href="${href}"`);
+      expect(ctaText(url, "Open")).toBe(`Open: ${href}`);
+      for (const [id, field] of fields) {
+        const body = getTemplate(id)!.render(brand, { [field]: url });
+        expect(body.bodyHtml).toContain(`href="${href}"`);
+        expect(body.bodyHtml).not.toContain(url);
+        expect(body.bodyText).toContain(href);
+        expect(body.bodyText).not.toContain(url);
+      }
+      for (const field of ["invoiceUrl", "orderUrl"]) {
+        const body = getTemplate("payment")!.render(brand, { [field]: url });
+        expect(body.jsonLd).toMatchObject([
+          { potentialAction: { url: href } },
+        ]);
+      }
+    },
+  );
+
   it.each(omittedUrls)("omits unsupported address %j from both CTA formats", (url) => {
     expect(ctaButton(brand, url, "Open")).toBe("");
     expect(ctaText(url, "Open")).toBe("");

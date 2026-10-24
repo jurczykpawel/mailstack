@@ -59,9 +59,10 @@ export function codeBox(value: string): string {
 
 /** Email-safe, table-based CTA button using the brand accent. Returns "" if no url. */
 export function ctaButton(brand: Brand, url: string, label: string): string {
-  if (!isHttpUrl(url)) return "";
+  const href = url.trim();
+  if (!isHttpUrl(href)) return "";
   const accent = escapeHtml(brand.theme.accent);
-  const safeUrl = escapeHtml(url);
+  const safeUrl = escapeHtml(href);
   const safeLabel = escapeHtml(label.trim() || "Otwórz");
   return `
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
@@ -75,9 +76,10 @@ export function ctaButton(brand: Brand, url: string, label: string): string {
 
 /** Plain-text rendering of a CTA (label + URL). Returns "" if no url. */
 export function ctaText(url: string, label: string): string {
-  if (!isHttpUrl(url)) return "";
+  const href = url.trim();
+  if (!isHttpUrl(href)) return "";
   const l = label.trim() || "Otwórz";
-  return `${l}: ${url}`;
+  return `${l}: ${href}`;
 }
 
 /**
