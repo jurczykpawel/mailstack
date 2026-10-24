@@ -313,6 +313,26 @@ The JSON example and render snapshots contain only acme/demo data.
   keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template`/`autoreply` (trusted only). Everything else is email content.
 - `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
+- `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
+  `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
+
+### SES events
+
+Configure `events.ses` with `topicArns` (SNS ARN list), `accountIds` (12-digit account list),
+and optional `allowSignatureV1` (default `false`). SNS topics should use SignatureVersion 2.
+The endpoint accepts bodies up to 256 KB. Invalid envelopes return 400, unverified messages
+403, oversized bodies 413, and unavailable storage or evidence keys 503 so SNS can retry.
+Set the JSON bindings `CONTENT_PUBLIC_KEYS` and `INDEX_KEYS` using the output of the keys CLI.
+
+Events match existing messages through `ms_id` tags or account/provider identifiers and
+recipients through blind indexes across active index keys. Event insertion and status
+projection run atomically with SQLite transactions or D1 batches. Evidence contains the
+complete SNS envelope sealed with purpose `evidence`; complaint events set the message's
+`complained` flag. Unknown/deleted messages are acknowledged without creating rows.
+
+Certificate parsing uses a small DER extractor for SPKI followed by WebCrypto RSA verification,
+with no X.509 package dependency. Tests generate local RSA certificates and exercise both
+Node and workerd. A real SNS notification remains a deployment validation step.
 
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
@@ -430,3 +450,31 @@ Worker vars. For local `wrangler dev`, it may also be set in `.dev.vars`. Only s
 with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
 `ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
 response headers are excluded. No open/click tracking configuration is sent.
+
+### Retention and snapshots
+
+The Worker runs retention hourly at minute 17 (UTC). Expired content, resend data
+and guards are removed; message metadata and its children are deleted in atomic
+batches of at most 500 messages. Logging ceilings also apply to existing rows.
+Content readers must call `isContentReadable(row, now)` before returning content,
+including when scheduled maintenance has not run yet. Sending rows older than
+15 minutes become `unknown` with a local event; this does not resend mail.
+
+`appendAudit(store, entry)` accepts internal metadata only: actors, actions,
+message identifiers, counts and configuration identifiers; callers must exclude
+personal data from targets and details. Details use canonical JSON. The first
+`prev_hash` is 64 zeroes; absent target/details contribute empty strings to the
+newline-separated SHA-256 input. Appends assign consecutive sequence numbers
+inside an atomic write and retry a conflicting head at most three times.
+Pruning removes a contiguous expired prefix only after recording
+`audit.pruned {upTo, hashAtUpTo}`. `verifyChain(rows, anchor?)` checks ordered rows
+and an optional independently stored `(seq, hash)` anchor. Supply the last known
+head to detect a shortened tail; rows alone cannot establish a missing tail.
+A pruned prefix can be checked from its marker or a matching boundary anchor.
+
+Node exposes `backupSqlite(db, dir, now, keep=7)` for consistent daily snapshots
+named `mailstack-YYYYMMDD.db` using UTC dates. It retains the seven newest matching
+files and leaves other files untouched. Runtime scheduling is deferred to the
+Node runtime integration; with daily scheduling, backups expire within seven
+days. Keep keys outside the database and backup directory. Worker databases use
+[D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).

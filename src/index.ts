@@ -1,4 +1,8 @@
+import { parseKeyring } from "./core/keyring";
+import { handleSesEvent } from "./events/ses";
+import { createVerifier } from "./events/sns";
 import { createD1Store } from "./core/store/d1";
+import { runRetention } from "./core/retention";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
@@ -9,6 +13,8 @@ import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
 import { createChallenge, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
+
+const verifySns = createVerifier();
 
 const defaultDeps: SendDeps = {
   logging: config.logging,
@@ -41,7 +47,13 @@ function handlePreflight(req: Request, url: URL): Response {
   return new Response(null, { status: 403 });
 }
 
+export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
+  if (!env.DB) throw new Error("Retention storage unavailable");
+  ctx.waitUntil(runRetention(createD1Store(env.DB), event.scheduledTime, config));
+}
+
 export default {
+  scheduled,
   async fetch(
     req: Request,
     env: Env,
@@ -108,6 +120,13 @@ export default {
       return handleSellfHook(req, env, { ...defaultDeps, store: env.DB ? createD1Store(env.DB) : undefined });
     }
 
+    if (pathname === "/v1/events/ses" && req.method === "POST") {
+      try {
+        return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
+          store: env.DB ? createD1Store(env.DB) : undefined, now: Date.now,
+          ...parseKeyring(env) });
+      } catch { return Response.json({ ok: false }, { status: 503 }); }
+    }
     return notFound();
   },
 };

@@ -62,7 +62,10 @@ const shape = z.strictObject({
       defaults: policy.partial().optional(), templates: z.record(z.string(), policy.partial()).optional(),
     })),
   }),
-  clients: z.array(clientSchema).optional(), legacyApiKey: legacySchema.optional(), events: z.unknown().optional(), alerts: z.unknown().optional(),
+  clients: z.array(clientSchema).optional(), legacyApiKey: legacySchema.optional(), events: z.strictObject({ ses: z.strictObject({
+    topicArns: z.array(z.string().regex(/^arn:aws:sns:[a-z0-9-]+:\d{12}:[A-Za-z0-9_-]+(?:\.fifo)?$/)).nonempty(),
+    accountIds: z.array(z.string().regex(/^\d{12}$/)).nonempty(), allowSignatureV1: z.boolean().default(false),
+  }).optional() }).optional(), alerts: z.unknown().optional(),
 });
 export type Config = z.infer<typeof shape>;
 export type TemplatePolicies = Record<string, { secretFields?: string[] }>;

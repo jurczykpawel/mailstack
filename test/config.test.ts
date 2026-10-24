@@ -67,8 +67,8 @@ describe("configuration schema", () => {
     value.clients[0].brands = ["acme"];
     expect(parseConfig({ ...value, logging }).clients).toEqual(value.clients);
   });
-  it("accepts deferred sections without interpreting their unrelated fields", () => {
-    expect(parseConfig({ ...config(), events: [], alerts: "later" }).alerts).toBe("later");
+  it("accepts the deferred alerts section without interpreting it", () => {
+    expect(parseConfig({ ...config(), alerts: "later" }).alerts).toBe("later");
   });
   it("reports JSON and version errors without input values", () => {
     expect(() => loadConfig("{" )).toThrow("$: invalid JSON");

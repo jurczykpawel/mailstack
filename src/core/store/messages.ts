@@ -38,10 +38,19 @@ export interface MessageStore {
   setStatus(id: string, status: MessageStatus): Promise<void>;
   findByIdempotency(clientId: string, keyHash: string): Promise<MessageRow | undefined>;
 }
-export type AtomicBatch = (queries: CompiledQuery[]) => Promise<void>;
+export type AtomicBatch = (queries: CompiledQuery[]) => Promise<number[]>;
 
 export class MessageOperations implements MessageStore {
-  constructor(readonly db: Kysely<Database>, private readonly batch?: AtomicBatch) {}
+  constructor(readonly db: Kysely<Database>, private readonly atomic?: AtomicBatch) {}
+
+  async batch(queries: CompiledQuery[]): Promise<number[]> {
+    if (this.atomic) return this.atomic(queries);
+    return this.db.transaction().execute(async tx => {
+      const changes: number[] = [];
+      for (const query of queries) changes.push(Number((await tx.executeQuery(query)).numAffectedRows ?? 0));
+      return changes;
+    });
+  }
 
   async insertMessage(intent: MessageIntent): Promise<void> {
     const { message, recipients, subjects, content, replay } = intent;
@@ -52,10 +61,7 @@ export class MessageOperations implements MessageStore {
     for (const row of subjects) queries.push(this.db.insertInto('subjects').values(row).compile());
     if (content) queries.push(this.db.insertInto('contents').values(content).compile());
     if (replay) queries.push(this.db.insertInto('replays').values(replay).compile());
-    if (this.batch) await this.batch(queries);
-    else await this.db.transaction().execute(async tx => {
-      for (const query of queries) await tx.executeQuery(query);
-    });
+    await this.batch(queries);
   }
 
   async clearIdempotency(id: string, keyHash: string): Promise<void> {
