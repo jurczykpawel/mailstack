@@ -14,9 +14,12 @@
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
     "test": "vitest run",
-    "mailstack": "node scripts/mailstack.ts"
+    "mailstack": "node scripts/mailstack.ts",
+    "keys": "node scripts/keys.mjs"
   },
   "dependencies": {
+    "@hpke/core": "1.9.0",
+    "@hpke/dhkem-x25519": "1.8.0",
     "aws4fetch": "^1.0.20",
     "zod": "^4.6.7"
   },
