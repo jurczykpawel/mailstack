@@ -24,6 +24,26 @@ const pattern = z.union([
   }, "invalid regular expression") }),
   z.strictObject({ name: z.string().min(1), urlParams: strings.nonempty() }),
 ]);
+const scopes = z.array(z.enum(["send", "hook:sellf", "panel"])).refine(
+  (values) => !values.includes("panel") || values.length === 1, "panel requires a separate client");
+const selection = z.union([z.literal("*"), z.array(z.string().min(1))]);
+const permissions = {
+  scopes, brands: selection.default("*"), templates: selection.default("*"),
+  recipientOverride: z.boolean().default(false), attachments: z.boolean().default(false),
+};
+export const clientSchema = z.strictObject({
+  id: z.string().regex(/^[a-z0-9-]+$/), tokenSha256: z.string().regex(/^[a-f0-9]{64}$/i), ...permissions,
+  rate: z.strictObject({ perMinute: days, perDay: days }).optional(),
+  resendCallback: z.strictObject({
+    url: z.url().refine((value) => /^https?:/.test(value)), secretEnv: z.string().min(1),
+  }).optional(),
+  sellfSignatureSecretEnv: z.string().min(1).optional(),
+});
+const legacySchema = z.strictObject({
+  ...permissions, enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"),
+  scopes: scopes.default(["send", "hook:sellf"]), recipientOverride: z.boolean().default(true),
+});
+export type Client = z.infer<typeof clientSchema>;
 const shape = z.strictObject({
   version: z.literal(1), brands: z.record(z.string(), brand),
   logging: z.strictObject({
@@ -32,15 +52,11 @@ const shape = z.strictObject({
       defaults: policy.partial().optional(), templates: z.record(z.string(), policy.partial()).optional(),
     })),
   }),
-  clients: z.unknown().optional(), events: z.unknown().optional(), alerts: z.unknown().optional(),
+  clients: z.array(clientSchema).optional(), legacyApiKey: legacySchema.optional(), events: z.unknown().optional(), alerts: z.unknown().optional(),
 });
 export type Config = z.infer<typeof shape>;
 export type TemplatePolicies = Record<string, { secretFields?: string[] }>;
 export type Policy = z.infer<typeof policy>;
-const callbackClient = z.object({
-  brands: z.union([z.literal("*"), strings]), templates: z.union([z.literal("*"), strings]),
-  resendCallback: z.object({ url: z.url().refine((v) => /^https?:/.test(v)), secretEnv: z.string().min(1) }),
-});
 export function effectivePolicies(config: Config, templates: TemplatePolicies = TEMPLATES) {
   const brandIds = Object.keys(config.brands);
   return (brandIds.length ? brandIds : ["*"]).flatMap((brandId) => {
@@ -65,9 +81,12 @@ function schemaWithTemplates(templates: TemplatePolicies) {
     for (const id of Object.keys(config.logging.brands)) {
       if (!Object.hasOwn(config.brands, id)) fail(["logging", "brands", id], "unknown brand");
     }
-    const clients = Array.isArray(config.clients) ? config.clients.flatMap((value) => {
-      const parsed = callbackClient.safeParse(value); return parsed.success ? [parsed.data] : [];
-    }) : [];
+    const clients = (config.clients ?? []).filter((client) => client.resendCallback);
+    const ids = new Set<string>();
+    for (const [index, client] of (config.clients ?? []).entries()) {
+      if (ids.has(client.id)) ctx.addIssue({ code: "custom", path: ["clients", index, "id"], message: "duplicate client id" });
+      ids.add(client.id);
+    }
     for (const { brandId, templateId, policy: p, path } of effectivePolicies(config, templates)) {
       if (p.contentDays > p.metaDays || p.contentDays > config.logging.ceilings.contentDays)
         fail(path("contentDays"), `exceeds $.${path("metaDays").join(".")} or ceiling`);
