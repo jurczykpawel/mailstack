@@ -24,7 +24,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
 };
 
 export function getTemplate(id: string): TemplateDef | undefined {
-  return TEMPLATES[id];
+  return Object.hasOwn(TEMPLATES, id) ? TEMPLATES[id] : undefined;
 }
 
 /**

@@ -246,3 +246,20 @@ it('records a fresh attempt when a conflicting insert resolves to a failed messa
   expect(await rows()).toMatchObject([{ status: 'send_failed', idem_key_hash: null }, { status: 'sent' }]);
   expect(deps.sendEmail).toHaveBeenCalledTimes(2);
 });
+
+
+it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf'])('returns unknown template for %s', async template => {
+  const response = await send({ ...body, template });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ success: false, message: 'unknown template' });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+});
+
+it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf'])('acknowledges unmapped event %s', async event => {
+  const response = await hook(JSON.stringify({ ...hookBody, event }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ success: true, ignored: event });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+});

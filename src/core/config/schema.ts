@@ -73,16 +73,18 @@ export type Policy = z.infer<typeof policy>;
 export function effectivePolicies(config: Config, templates: TemplatePolicies = TEMPLATES) {
   const brandIds = Object.keys(config.brands);
   return (brandIds.length ? brandIds : ["*"]).flatMap((brandId) => {
-    const overrides = config.logging.brands[brandId];
+    const overrides = Object.hasOwn(config.logging.brands, brandId) ? config.logging.brands[brandId] : undefined;
     const defaults = { ...config.logging.defaults, ...overrides?.defaults };
     const ids = new Set([...Object.keys(templates), ...Object.keys(overrides?.templates ?? {})]);
-    return [...ids].map((templateId) => ({
-      brandId, templateId, policy: { ...defaults, ...overrides?.templates?.[templateId] },
-      path: (key: keyof Policy) => overrides?.templates?.[templateId]?.[key] !== undefined
-        ? ["logging", "brands", brandId, "templates", templateId, key]
-        : overrides?.defaults?.[key] !== undefined ? ["logging", "brands", brandId, "defaults", key]
-          : ["logging", "defaults", key],
-    }));
+    return [...ids].map((templateId) => {
+      const templatePolicy = overrides?.templates && Object.hasOwn(overrides.templates, templateId) ? overrides.templates[templateId] : undefined;
+      return { brandId, templateId, policy: { ...defaults, ...templatePolicy },
+        path: (key: keyof Policy) => templatePolicy?.[key] !== undefined
+          ? ["logging", "brands", brandId, "templates", templateId, key]
+          : overrides?.defaults?.[key] !== undefined ? ["logging", "brands", brandId, "defaults", key]
+            : ["logging", "defaults", key],
+      };
+    });
   });
 }
 function schemaWithTemplates(templates: TemplatePolicies) {
@@ -104,7 +106,7 @@ function schemaWithTemplates(templates: TemplatePolicies) {
       if (p.contentDays > p.metaDays || p.contentDays > config.logging.ceilings.contentDays)
         fail(path("contentDays"), `exceeds $.${path("metaDays").join(".")} or ceiling`);
       if (p.metaDays > config.logging.ceilings.metaDays) fail(path("metaDays"), "exceeds ceiling");
-      if (p.resend === "replay" && templates[templateId]?.secretFields?.length)
+      if (p.resend === "replay" && Object.hasOwn(templates, templateId) && templates[templateId]?.secretFields?.length)
         fail(path("resend"), "template requires source or off");
       if (p.resend === "replay" && p.level !== "masked" && p.level !== "full")
         fail(path("resend"), "replay requires masked or full");

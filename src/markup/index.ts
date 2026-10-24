@@ -34,7 +34,7 @@ const BUILDERS: Record<string, (d: Rec) => JsonLdBlock | null> = {
 function buildOne(item: unknown): JsonLdBlock | null {
   if (!item || typeof item !== "object" || Array.isArray(item)) return null;
   const d = item as Rec;
-  const builder = typeof d.kind === "string" ? BUILDERS[d.kind] : undefined;
+  const builder = typeof d.kind === "string" && Object.hasOwn(BUILDERS, d.kind) ? BUILDERS[d.kind] : undefined;
   return builder ? builder(d) : null;
 }
 
