@@ -35,6 +35,7 @@ export interface MessageStore {
   clearIdempotency(id: string, keyHash: string): Promise<void>;
   insertMessage(intent: MessageIntent): Promise<void>;
   markSent(id: string, update: SentUpdate): Promise<void>;
+  markFailed(id: string, providerResponseSealed: string): Promise<void>;
   setStatus(id: string, status: MessageStatus): Promise<void>;
   findByIdempotency(clientId: string, keyHash: string): Promise<MessageRow | undefined>;
 }
@@ -72,6 +73,11 @@ export class MessageOperations implements MessageStore {
   async markSent(id: string, update: SentUpdate): Promise<void> {
     await this.db.updateTable('messages').set({ status: 'sent', provider_message_id: update.providerMessageId,
       provider_response_sealed: update.providerResponseSealed, sent_at: update.sentAt }).where('id', '=', id).execute();
+  }
+
+  async markFailed(id: string, providerResponseSealed: string): Promise<void> {
+    await this.db.updateTable('messages').set({ status: 'send_failed', provider_response_sealed: providerResponseSealed })
+      .where('id', '=', id).execute();
   }
 
   async setStatus(id: string, status: MessageStatus): Promise<void> {

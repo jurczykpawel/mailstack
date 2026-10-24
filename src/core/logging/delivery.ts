@@ -80,13 +80,13 @@ export async function deliver(
   }
   if (id) {
     try {
+      const sealed = await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'provider_response' }, parseKeyring(env).contentKeys);
       if (result.ok) {
-        const sealed = await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'provider_response' }, parseKeyring(env).contentKeys);
         await deps.store!.markSent(id, { providerMessageId: result.messageId ?? '', providerResponseSealed: sealed, sentAt: deps.now().getTime() });
-      } else await deps.store!.setStatus(id, 'send_failed');
+      } else await deps.store!.markFailed(id, sealed);
     } catch {
-      await deps.store!.setStatus(id, 'unknown').catch(() => {});
-      return { ...failure(502, 'send_failed'), id };
+      await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed').catch(() => {});
+      if (result.ok) return { ...failure(502, 'send_failed'), id };
     }
   }
   return result.ok ? { ok: true, status: 200, id } : { ...failure(502, 'send_failed'), id };

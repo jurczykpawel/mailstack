@@ -6,6 +6,7 @@ export function memoryStore(): Store {
     async clearIdempotency() { throw new Error('Unsupported operation'); },
     async insertMessage() { throw new Error('Unsupported operation'); },
     async markSent() { throw new Error('Unsupported operation'); },
+    async markFailed() { throw new Error('Unsupported operation'); },
     async setStatus() { throw new Error('Unsupported operation'); },
     async findByIdempotency() { throw new Error('Unsupported operation'); },
     async migrate() {},
