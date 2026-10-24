@@ -1,19 +1,19 @@
+import type { Brand } from "./types";
+
 const SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 interface SiteverifyResponse {
   success: boolean;
+  hostname?: string;
+  action?: string;
 }
 
-/**
- * Verify a Cloudflare Turnstile token server-side. Returns true only when
- * Cloudflare confirms `success`. Network/parse errors fail closed (false).
- * Injected into the handler via SendDeps so tests don't hit the network.
- */
 export async function verifyTurnstile(
   secret: string,
   token: string,
   remoteIp: string | null,
+  brand: Brand,
 ): Promise<boolean> {
   if (!secret || !token) return false;
 
@@ -27,10 +27,14 @@ export async function verifyTurnstile(
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body,
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return false;
     const data = (await res.json()) as SiteverifyResponse;
-    return data.success === true;
+    const hosts = new Set(brand.allowedOrigins.map((origin) => new URL(origin).hostname));
+    return data.success === true
+      && typeof data.hostname === "string" && hosts.has(data.hostname)
+      && (brand.turnstileAction === undefined || data.action === brand.turnstileAction);
   } catch {
     return false;
   }

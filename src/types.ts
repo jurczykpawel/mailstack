@@ -46,6 +46,7 @@ export interface Brand {
   autoReplyTemplate?: string;
   /** Captcha provider for public mode. Default 'turnstile' when unset. */
   captcha?: 'altcha' | 'turnstile';
+  turnstileAction?: string;
 }
 
 /** A submitted content field after coercion (control keys are stripped out). */
@@ -132,6 +133,7 @@ export interface SendDeps {
     secret: string,
     token: string,
     remoteIp: string | null,
+    brand: Brand,
   ) => Promise<boolean>;
   verifyAltcha: (hmacKey: string, payloadB64: string, now?: Date) => Promise<boolean>;
   sendEmail: (env: Env, params: SendParams) => Promise<SendResult>;

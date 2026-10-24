@@ -12,6 +12,7 @@ const policy = z.strictObject({
 const brand = z.strictObject({
   id: z.string(), name: z.string(), from: z.string(), to: strings, allowedOrigins: strings,
   subjectPrefix: z.string(), autoReply: z.boolean().optional(), autoReplyTemplate: z.string().optional(),
+  turnstileAction: z.string().optional(),
   captcha: z.enum(["altcha", "turnstile"]).optional(),
   theme: z.strictObject({
     accent: z.string(), accent2: z.string().optional(), logoUrl: z.string().optional(), siteUrl: z.string(),

@@ -357,7 +357,8 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
 - **Origin allowlist (public mode):** only listed origins may submit; CORS reflects the
   exact origin, never `*`.
 - **Turnstile:** every public submission is verified server-side against Cloudflare; the
-  verifier fails closed on network/parse errors.
+  verifier fails closed on network/parse errors. Hostname must exactly match a host from
+  `brand.allowedOrigins`, configured `turnstileAction` must match, and Siteverify times out after 5 seconds.
 - **Honeypot:** a filled `botcheck` field is silently dropped (looks like success to bots).
 - **Fixed recipient / anti-relay:** the recipient is always `brand.to` from server config
   in public mode. `to`/`from` in the request body are ignored, so the endpoint can never be

@@ -17,6 +17,7 @@
       ],
       "subjectPrefix": "New message from",
       "autoReply": true,
+      "turnstileAction": "contact",
       "theme": {
         "accent": "#0064BC",
         "accent2": "#A8D603",
