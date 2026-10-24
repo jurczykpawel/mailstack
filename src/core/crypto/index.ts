@@ -172,3 +172,12 @@ export async function verifyMac(data: unknown, tag: Mac, keys: readonly IndexKey
     return false;
   }
 }
+
+export async function refIndex(ref: string, key: IndexKey): Promise<{ kid: string; index: string }> {
+  try {
+    checkKids([key]);
+    if (typeof ref !== 'string' || !ref.length) throw invalid();
+    const digest = await crypto.subtle.sign('HMAC', await hmacKey(key), utf8.encode('mailstack/v1/ref\n' + ref));
+    return { kid: key.kid, index: encode(digest).slice(0, 22) };
+  } catch { throw new Error('Unable to compute index'); }
+}
