@@ -15,7 +15,7 @@ Base URL is wherever the Worker is deployed (e.g. `https://mail.example.com`).
 ### `GET /health`
 Liveness check.
 ```json
-{ "ok": true, "service": "mailstack" }
+{ "ok": true, "service": "mailstack", "version": "1.0.0", "commit": "dev" }
 ```
 
 ### `OPTIONS /v1/send`
@@ -396,7 +396,13 @@ For local `wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill plac
    region in `SES_REGION` (default `eu-west-1`), and move the account out of the SES
    sandbox so it can mail arbitrary recipients.
 3. **Set the secrets** (see above).
-4. **Deploy:** `wrangler deploy`.
+4. **Deploy:** `npm run deploy`. The guard runs before setup, fetches `origin/main`,
+   and requires a clean tree plus HEAD equal to `origin/main` or tagged and reachable
+   from it. It passes HEAD as `BUILD_COMMIT` to Wrangler. Export `MAILSTACK_HEALTH_URL`
+   (the full `/health` URL) to verify the deployed commit; without it the check is
+   explicitly skipped. `/health.version` comes from package.json; commit defaults to `dev`.
+   Release tags `v*` run typecheck and tests on Node 24; container publishing and the
+   private-config Worker deploy workflow are deferred.
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
 6. **Frontends:** point each site's form at `POST /v1/send` with the right `brand`, and add
@@ -443,7 +449,7 @@ npm install
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run
 npm run dev         # wrangler dev (needs .dev.vars + KV preview id)
-npm run deploy      # wrangler deploy
+npm run deploy      # guarded Wrangler deploy
 ```
 
 ## TODO (infra/deploy)
