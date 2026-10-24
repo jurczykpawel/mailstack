@@ -1,3 +1,4 @@
+import { memoryStore } from "./store-fixture";
 import { describe, it, expect, vi } from "vitest";
 import { createChallenge, verifyAltcha } from "../src/altcha";
 import { handleSend } from "../src/send";
@@ -17,22 +18,6 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   };
 }
 
-/** Minimal in-memory KV with TTL ignored (good enough for limit counting). */
-function fakeKV(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    get: vi.fn(async (key: string) => store.get(key) ?? null),
-    put: vi.fn(async (key: string, value: string) => {
-      store.set(key, value);
-    }),
-    delete: vi.fn(async (key: string) => {
-      store.delete(key);
-    }),
-    list: vi.fn(),
-    getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
-}
-
 function makeDeps(overrides: Partial<SendDeps> = {}): SendDeps & {
   sendEmail: ReturnType<typeof vi.fn>;
   verifyTurnstile: ReturnType<typeof vi.fn>;
@@ -44,6 +29,7 @@ function makeDeps(overrides: Partial<SendDeps> = {}): SendDeps & {
   const verifyTurnstile = vi.fn(async () => true);
   const verifyAltcha = vi.fn(async () => true);
   return {
+    store: memoryStore(),
     sendEmail,
     verifyTurnstile,
     verifyAltcha,
@@ -185,7 +171,7 @@ describe("handleSend — public mode", () => {
 
   it("enforces the rate limit after the max window", async () => {
     const deps = makeDeps();
-    const env = makeEnv({ RATE_LIMIT: fakeKV() });
+    const env = makeEnv();
     const send = () =>
       handleSend(
         req(
@@ -208,6 +194,17 @@ describe("handleSend — public mode", () => {
     const blocked = await send();
     expect(blocked.status).toBe(429);
     expect(deps.sendEmail).toHaveBeenCalledTimes(8);
+  });
+
+  it("declines public sends when the counter is unavailable", async () => {
+    const store = memoryStore();
+    vi.spyOn(store, "increment").mockRejectedValue(new Error("unavailable"));
+    const deps = makeDeps({ store });
+    const response = await handleSend(req({ brand: "acme", "cf-turnstile-response": "ok" },
+      { origin: ACME_ORIGIN }), makeEnv(), deps);
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ success: false, message: "rate limit exceeded" });
+    expect(deps.sendEmail).not.toHaveBeenCalled();
   });
 
   it("returns 502 when SES reports a failure", async () => {
@@ -572,7 +569,7 @@ describe("handleSend — auto-reply (public contact)", () => {
         },
         { origin: DEMO_ORIGIN },
       ),
-      makeEnv({ RATE_LIMIT: fakeKV() }),
+      makeEnv(),
       deps,
     );
     expect(res.status).toBe(200);
@@ -593,7 +590,7 @@ describe("handleSend — auto-reply (public contact)", () => {
         { brand: "demo", altcha, email: "alice@example.com", "cf-turnstile-response": "ok" },
         { origin: DEMO_ORIGIN },
       ),
-      makeEnv({ RATE_LIMIT: fakeKV() }),
+      makeEnv(),
       deps,
     );
     await flush();

@@ -207,7 +207,7 @@ export async function handleSend(
     const captchaOk =
       captcha === 'altcha'
         ? await deps.verifyAltcha(env.ALTCHA_HMAC_KEY, altchaPayload, deps.now())
-          && await consumeAltcha(env.RATE_LIMIT, altchaPayload, deps.now)
+          && await consumeAltcha(deps.store, altchaPayload, deps.now)
         : await deps.verifyTurnstile(env.TURNSTILE_SECRET, coerceValue(body["cf-turnstile-response"]), ip, brand);
     if (!captchaOk) {
       return json(
@@ -216,7 +216,7 @@ export async function handleSend(
       );
     }
     // 4) Rate limit.
-    const allowed = await checkRateLimit(env.RATE_LIMIT, brand.id, ip || "");
+    const allowed = await checkRateLimit(deps.store, brand.id, ip || "", deps.now());
     if (!allowed) {
       return json(
         { success: false, message: "rate limit exceeded" },

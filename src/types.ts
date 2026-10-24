@@ -1,4 +1,6 @@
-/** Worker bindings (vars + secrets + KV). Mirrors wrangler.toml + `wrangler secret`. */
+import type { Store } from './core/ports';
+
+/** Worker bindings (vars + secrets + D1). Mirrors wrangler.toml + `wrangler secret`. */
 export interface Env {
   // vars
   SES_REGION: string;
@@ -11,8 +13,7 @@ export interface Env {
   TURNSTILE_SECRET: string;
   API_KEY: string;
   ALTCHA_HMAC_KEY: string;
-  // KV (optional so tests / misconfigured envs degrade gracefully)
-  RATE_LIMIT?: KVNamespace;
+  DB?: D1Database;
 }
 
 /** Visual + contact identity used to render a brand's email. */
@@ -129,6 +130,7 @@ export interface SendParams {
 
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
+  store?: Store;
   verifyTurnstile: (
     secret: string,
     token: string,

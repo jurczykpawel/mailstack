@@ -1,3 +1,4 @@
+import { memoryStore } from "./store-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { verifyTurnstile } from "../src/turnstile";
 import { handleSend } from "../src/send";
@@ -22,6 +23,7 @@ function verify(candidate: Brand = brand) {
 async function submit() {
   const sendEmail = vi.fn(async () => ({ ok: true, status: 200 }));
   const deps: SendDeps = {
+    store: memoryStore(),
     verifyTurnstile, verifyAltcha: vi.fn(async () => false), sendEmail,
     now: () => new Date(),
   };

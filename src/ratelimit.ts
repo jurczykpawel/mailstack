@@ -1,28 +1,20 @@
-const WINDOW_SECONDS = 60 * 60; // fixed 1-hour window
+import type { Store } from './core/ports';
+
+const WINDOW_MS = 60 * 60 * 1000;
 const MAX_REQUESTS = 8;
 
-/**
- * Fixed-window rate limit backed by KV. Counts attempts per `rl:{brand}:{ip}`
- * and blocks once the window exceeds MAX_REQUESTS. Degrades open (allows) when
- * the KV binding is missing — handy in tests and safer than a hard failure.
- *
- * @returns true if the request is allowed, false if the limit is exceeded.
- */
 export async function checkRateLimit(
-  kv: KVNamespace | undefined,
+  store: Store | undefined,
   brand: string,
   ip: string,
+  now = new Date(),
 ): Promise<boolean> {
-  if (!kv) return true;
-
-  const key = `rl:${brand}:${ip || "unknown"}`;
-  const current = await kv.get(key);
-  const count = current ? parseInt(current, 10) || 0 : 0;
-
-  if (count >= MAX_REQUESTS) return false;
-
-  // Re-set the TTL each write; "first hit defines the window" is close enough
-  // for abuse control and avoids a second read for the original expiry.
-  await kv.put(key, String(count + 1), { expirationTtl: WINDOW_SECONDS });
-  return true;
+  try {
+    if (!store) return false;
+    const window = Math.floor(now.getTime() / WINDOW_MS);
+    const key = `rl:${brand}:${ip || 'unknown'}:${window}`;
+    return await store.increment(key, (window + 1) * WINDOW_MS) <= MAX_REQUESTS;
+  } catch {
+    return false;
+  }
 }

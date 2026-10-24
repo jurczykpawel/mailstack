@@ -1,3 +1,5 @@
+import type { Store } from './core/ports';
+
 export interface AltchaChallenge {
   algorithm: 'SHA-256';
   challenge: string;
@@ -83,20 +85,16 @@ export async function verifyAltcha(hmacKey: string, payloadB64: string, now = ne
 
 /** Record a verified submission before delivery. Storage must be available. */
 export async function consumeAltcha(
-  kv: KVNamespace | undefined,
+  store: Store | undefined,
   payloadB64: string,
   now: () => Date,
 ): Promise<boolean> {
   try {
     const p = parsePayload(payloadB64);
-    if (!kv || !p || !remainingSeconds(p.salt, now())) return false;
-    const key = `altcha:used:${p.challenge}`;
-    if (await kv.get(key) !== null) return false;
-    const remaining = remainingSeconds(p.salt, now());
-    if (!remaining) return false;
-    // KV requires at least 60 seconds; the signed timestamp still bounds acceptance.
-    await kv.put(key, '1', { expirationTtl: Math.max(60, remaining) });
-    return remainingSeconds(p.salt, now()) > 0;
+    if (!store || !p || !remainingSeconds(p.salt, now())) return false;
+    const expiresAt = Number(p.salt.split('?expires=')[1]) * 1000;
+    const consumed = await store.consume(`altcha:${p.challenge}`, expiresAt);
+    return consumed && remainingSeconds(p.salt, now()) > 0;
   } catch {
     return false;
   }

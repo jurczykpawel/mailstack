@@ -1,3 +1,4 @@
+import { createD1Store } from "./core/store/d1";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
 import { findBrandByOrigin, getBrand } from "./core/config";
@@ -96,6 +97,7 @@ export default {
         // Bind ctx.waitUntil so the best-effort auto-reply outlives the response.
         return handleSend(req, env, {
           ...defaultDeps,
+          store: env.DB ? createD1Store(env.DB) : undefined,
           waitUntil: ctx.waitUntil.bind(ctx),
         });
       }

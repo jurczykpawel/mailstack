@@ -1,3 +1,4 @@
+import { memoryStore } from "./store-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createChallenge, verifyAltcha } from '../src/altcha';
 import { handleSend } from '../src/send';
@@ -17,20 +18,18 @@ async function signed(salt: string, number: unknown = 0) {
 }
 
 function fixture() {
-  const store = new Map<string, string>();
-  const get = vi.fn(async (key: string) => store.get(key) ?? null);
-  const put = vi.fn(async (key: string, value: string, _options?: KVNamespacePutOptions) => { store.set(key, value); });
-  const kv = { get, put } as unknown as KVNamespace;
-  const env = { ALTCHA_HMAC_KEY: KEY, API_KEY: 'test-api-key', RATE_LIMIT: kv } as Env;
+  const store = memoryStore();
+  const consume = vi.spyOn(store, 'consume');
+  const env = { ALTCHA_HMAC_KEY: KEY, API_KEY: 'test-api-key' } as Env;
   const deps: SendDeps = {
-    verifyAltcha, verifyTurnstile: vi.fn(async () => true),
+    store, verifyAltcha, verifyTurnstile: vi.fn(async () => true),
     sendEmail: vi.fn(async () => ({ ok: true, status: 200 })), now: () => new Date(),
   };
   const send = (payload: string, headers: Record<string, string> = {}, brand = 'demo') => handleSend(new Request('https://mail.example/v1/send', {
     method: 'POST', headers: { origin: `https://${brand}.example`, ...headers },
     body: JSON.stringify({ brand, altcha: payload, message: 'Hello', autoreply: false }),
   }), env, deps);
-  return { env, deps, get, put, send };
+  return { env, deps, consume, send };
 }
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(START); });
@@ -51,13 +50,13 @@ describe('ALTCHA submission lifecycle', () => {
     expect(next.status).toBe(403);
     expect(await next.json()).toEqual({ success: false, message: 'verification failed' });
     expect(f.deps.sendEmail).toHaveBeenCalledTimes(1);
-    expect(f.put.mock.calls[0][2]).toEqual({ expirationTtl: 600 });
+    expect(f.consume.mock.calls[0][1]).toBe(START.getTime() + 600000);
   });
 
   it.each([0, -1])('declines expiry offset %s before storage or send', async (offset) => {
     const f = fixture();
     expect((await f.send(encode(await signed(`abcdef?expires=${START.getTime() / 1000 + offset}`)))).status).toBe(403);
-    expect(f.get).not.toHaveBeenCalled();
+    expect(f.consume).not.toHaveBeenCalled();
     expect(f.deps.sendEmail).not.toHaveBeenCalled();
   });
 
@@ -77,20 +76,19 @@ describe('ALTCHA submission lifecycle', () => {
     expect(await verifyAltcha(KEY, encode(await signed(`abcdef?expires=${START.getTime() / 1000 + 600}`, number)))).toBe(false);
   });
 
-  it.each(['read', 'write', 'missing'])('declines unavailable storage: %s', async failure => {
+  it.each(['write', 'missing'])('declines unavailable storage: %s', async failure => {
     const f = fixture();
-    if (failure === 'read') f.get.mockRejectedValue(new Error('unavailable'));
-    if (failure === 'write') f.put.mockRejectedValue(new Error('unavailable'));
-    if (failure === 'missing') delete f.env.RATE_LIMIT;
+    if (failure === 'write') f.consume.mockRejectedValue(new Error('unavailable'));
+    if (failure === 'missing') delete f.deps.store;
     expect((await f.send(encode(await signed(`abcdef?expires=${START.getTime() / 1000 + 600}`)))).status).toBe(403);
     expect(f.deps.sendEmail).not.toHaveBeenCalled();
   });
 
-  it('uses the minimum KV TTL near expiry without extending acceptance', async () => {
+  it('records the signed expiry without extending acceptance', async () => {
     const f = fixture();
     const payload = encode(await signed(`abcdef?expires=${START.getTime() / 1000 + 1}`));
     expect((await f.send(payload)).status).toBe(200);
-    expect(f.put.mock.calls[0][2]).toEqual({ expirationTtl: 60 });
+    expect(f.consume.mock.calls[0][1]).toBe(START.getTime() + 1000);
     vi.setSystemTime(new Date(START.getTime() + 1000));
     expect((await f.send(payload)).status).toBe(403);
     expect(f.deps.sendEmail).toHaveBeenCalledTimes(1);
@@ -105,12 +103,12 @@ describe('ALTCHA submission lifecycle', () => {
     expect(f.deps.sendEmail).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps trusted and Turnstile submissions independent of ALTCHA storage', async () => {
+  it('allows trusted sends and declines public sends without storage', async () => {
     const f = fixture();
-    delete f.env.RATE_LIMIT;
+    delete f.deps.store;
     expect((await f.send('', { authorization: 'Bearer test-api-key' })).status).toBe(200);
-    expect((await f.send('', {}, 'acme')).status).toBe(200);
+    expect((await f.send('', {}, 'acme')).status).toBe(429);
     expect(f.deps.verifyTurnstile).toHaveBeenCalledTimes(1);
-    expect(f.deps.sendEmail).toHaveBeenCalledTimes(2);
+    expect(f.deps.sendEmail).toHaveBeenCalledTimes(1);
   });
 });

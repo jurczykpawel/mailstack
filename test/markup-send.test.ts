@@ -1,3 +1,4 @@
+import { memoryStore } from "./store-fixture";
 import { describe, it, expect, vi } from "vitest";
 import { handleSend } from "../src/send";
 import type { Env, SendDeps, SendParams } from "../src/types";
@@ -22,6 +23,7 @@ function makeDeps() {
     async (_env: Env, _params: SendParams) => ({ ok: true, status: 200 }),
   );
   const deps: SendDeps = {
+    store: memoryStore(),
     sendEmail,
     verifyTurnstile: vi.fn(async () => true),
     verifyAltcha: vi.fn(async () => true),
