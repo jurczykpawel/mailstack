@@ -5,6 +5,7 @@ import { canonicalJson } from "../src/core/crypto";
 import { resolvePolicy } from "../src/core/logging/policy";
 import { projectArchive } from "../src/core/logging/projection";
 import { getTemplate } from "../src/templates";
+import { escapeHtml } from "../src/templates/layout";
 import example from "../config/mailstack.example.json";
 
 const patterns = [
@@ -40,6 +41,54 @@ it("resolves all inheritance layers and hashes canonical content", async () => {
 });
 
 describe("archive projection", () => {
+  it.each(["masked", "full"] as const)("projects supplied payment subjects at level %s", (level) => {
+    const input = { name: "PRIVATE-NAME", email: "private-name@example.com", amount: "149.00", currency: "USD", item: "Pro Plan" };
+    const subject = `Dla ${input.name} ${input.email}: ${input.item}`;
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level, show: ["amount", "currency", "item"] },
+      patterns: [], brand, template: getTemplate("payment")!, data: input, subject }));
+    expect(archive.subject).toBe(level === "masked" ? "Dla [ukryte] [ukryte]: Pro Plan" : subject);
+    for (const value of [archive.subject, archive.html, archive.text]) {
+      expect(value.includes(input.name)).toBe(level === "full");
+      expect(value).toContain(input.item);
+      if (level === "masked") expect(value).not.toContain(input.email);
+    }
+    expect(archive.text).toContain("149.00 USD");
+  });
+  it.each([false, true])("projects ordinary values with HTML encoding %s", (encoded) => {
+    const name = 'PRIVATE <NAME> & "Co"';
+    const email = "private-name@example.com";
+    const input = { name, email, item: `Plan for ${name} ${email}` };
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
+      patterns: [], brand: { ...brand, name: input.item }, template: getTemplate("payment")!, data: input,
+      subject: encoded ? escapeHtml(input.item) : input.item }));
+    for (const value of [archive.subject, archive.html, archive.text]) {
+      expect(value).toContain("Plan for [ukryte] [ukryte]");
+      expect(value).not.toContain(name);
+      expect(value).not.toContain(email);
+      expect(value).not.toContain("&lt;NAME&gt;");
+    }
+  });
+  it("projects longer values before their component values", () => {
+    const input = { name: "private-name", email: "private-name@example.com", item: "private-name@example.com private-name" };
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
+      patterns: [], brand, template: getTemplate("payment")!, data: input, subject: input.item }));
+    for (const value of [archive.subject, archive.html, archive.text]) {
+      expect(value).toContain("[ukryte] [ukryte]");
+      expect(value).not.toContain("@example.com");
+    }
+  });
+  it("projects email addresses in supplied subjects independently of data fields", () => {
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
+      patterns: [], brand, template: getTemplate("payment")!, data: { item: "Pro Plan", name: "private-name" },
+      subject: "Pro Plan: private-name+orders@example.com, other@example.org" }));
+    expect(archive.subject).toBe("Pro Plan: [ukryte], [ukryte]");
+  });
+  it("keeps short and empty values from changing surrounding content", () => {
+    const item = "Plan a PL";
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
+      patterns: [], brand, template: getTemplate("payment")!, data: { name: "a", country: "PL", empty: "", item }, subject: item }));
+    for (const value of [archive.subject, archive.html, archive.text]) expect(value).toContain(item);
+  });
   it("projects masked and full content", () => {
     const policy = { ...config().logging.defaults, level: "masked" as const, show: Object.keys(data) };
     for (const level of [policy.level, "full"] as const) {
