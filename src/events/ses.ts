@@ -1,8 +1,9 @@
+import { appendAudit } from '../core/audit';
 import { z } from 'zod';
 import { blindIndexes, seal } from '../core/crypto';
 import type { ContentKey, IndexKey } from '../core/crypto';
 import type { KyselyStore } from '../core/store';
-import { auditConfirmation, eventId, findMessage, recipients, recordEvents } from '../core/store/events';
+import { eventId, findMessage, recipients, recordEvents } from '../core/store/events';
 import { boundedText, confirm, envelope } from './sns';
 import type { createVerifier, SesOptions } from './sns';
 
@@ -36,7 +37,7 @@ export async function handleSesEvent(req: Request, deps: EventDeps): Promise<Res
   if (body.Type === 'SubscriptionConfirmation') {
     try {
       await confirm(body, deps.fetcher ?? fetch);
-      await auditConfirmation(deps.store, deps.now());
+      await appendAudit(deps.store, { at: deps.now(), actor: 'system', action: 'events.subscription_confirmed', details: {} });
       return response(200, 'confirmed');
     } catch { return response(503); }
   }

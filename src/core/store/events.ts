@@ -44,16 +44,3 @@ export async function recordEvents(store: KyselyStore, rows: EventRow[]): Promis
   const results = await store.batch(statements);
   return results.slice(0, rows.length).some(changes => changes === 1);
 }
-export async function auditConfirmation(store: KyselyStore, at: number): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const head = (await sql<{ seq: number; hash: string }>`select seq,hash from audit order by seq desc limit 1`.execute(store.db)).rows[0];
-    const seq = (head?.seq ?? 0) + 1, prev = head?.hash ?? '';
-    const input = `${prev}\n${seq}\n${at}\nsystem\nevents.subscription_confirmed\n\n{}`;
-    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))), b => b.toString(16).padStart(2, '0')).join('');
-    try {
-      await sql`insert into audit(seq,at,actor,action,target,details,prev_hash,hash)
-        values(${seq},${at},'system','events.subscription_confirmed',null,'{}',${prev},${hash})`.execute(store.db);
-      return;
-    } catch (error) { if (attempt === 2) throw error; }
-  }
-}
