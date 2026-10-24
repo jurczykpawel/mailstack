@@ -2,6 +2,7 @@
 export interface Env {
   // vars
   SES_REGION: string;
+  BUILD_COMMIT?: string;
   /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
   SELLF_DEFAULT_BRAND?: string;
   // secrets (set via `wrangler secret put`)
