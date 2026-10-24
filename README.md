@@ -144,14 +144,19 @@ wrangler secret put API_KEY                 # a long random password (for app-to
 Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
 
 ### 8) Deploy 🚀
+Use a clean checkout at `origin/main`, or a tag reachable from it. The deploy guard
+fetches origin before setup and passes HEAD to Wrangler as `BUILD_COMMIT`.
 ```bash
+export MAILSTACK_HEALTH_URL=https://mail.example.com/health
 npm run deploy
 ```
 Cloudflare gives you a URL like `https://mailstack.<your-name>.workers.dev`. Check it works:
 ```bash
 curl https://mailstack.<your-name>.workers.dev/health
-# → {"ok":true,"service":"mailstack"}
+# → {"ok":true,"service":"mailstack","version":"1.0.0","commit":"<HEAD sha>"}
 ```
+The command fails if the deployed commit differs from HEAD. With no exported
+`MAILSTACK_HEALTH_URL`, it explicitly reports that verification was skipped.
 That's your live email service.
 
 ### 9) Connect your website form
@@ -296,7 +301,7 @@ private brands. Run `npm run setup` again with your external config before a rea
 The JSON example and render snapshots contain only acme/demo data.
 
 ### API (summary)
-- `GET /health` → `{ ok: true }`.
+- `GET /health` → `{ ok: true, service: "mailstack", version, commit }` (`commit: "dev"` locally).
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
   keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template`/`autoreply` (trusted only). Everything else is email content.
