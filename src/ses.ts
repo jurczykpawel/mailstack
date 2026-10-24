@@ -47,6 +47,10 @@ export async function sendEmail(
   const raw = await res.text().catch(error => { if (res.ok) throw error; return ""; });
   let response: unknown = raw;
   try { response = JSON.parse(raw); } catch {}
+  if (!res.ok) {
+    const type = response && typeof response === "object" && "__type" in response ? response.__type : undefined;
+    console.error(JSON.stringify({ status: res.status, ...(typeof type === "string" ? { __type: type } : {}) }));
+  }
   const messageId = response && typeof response === "object" && "MessageId" in response && typeof response.MessageId === "string"
     ? response.MessageId : undefined;
   return { ok: res.ok, status: res.status, messageId, response };

@@ -34,3 +34,27 @@ it('keeps an explicit refusal when its response body cannot be read', async () =
   vi.spyOn(AwsClient.prototype, 'fetch').mockResolvedValue(response);
   expect(await sendEmail(env, params)).toMatchObject({ ok: false, status: 400 });
 });
+
+it('reports the refusal status and provider type in one diagnostic line', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const response = { __type: 'AccessDeniedException', message: 'Denied for buyer@example.com', requestId: 'request-sentinel' };
+  vi.spyOn(AwsClient.prototype, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 403 }));
+  expect(await sendEmail(env, params)).toMatchObject({ ok: false, status: 403, response });
+  expect(error).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ status: 403, __type: 'AccessDeniedException' }));
+  expect(JSON.stringify(error.mock.calls)).not.toContain('buyer@example.com');
+  expect(JSON.stringify(error.mock.calls)).not.toContain('request-sentinel');
+});
+
+it.each(['Denied for buyer@example.com', JSON.stringify({ message: 'Denied for buyer@example.com' })])('reports only the status when the provider type is absent: %s', async body => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(AwsClient.prototype, 'fetch').mockResolvedValue(new Response(body, { status: 400 }));
+  expect(await sendEmail(env, params)).toMatchObject({ ok: false, status: 400 });
+  expect(error).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ status: 400 }));
+});
+
+it('does not emit a refusal diagnostic for a successful send', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(AwsClient.prototype, 'fetch').mockResolvedValue(new Response('{}'));
+  await sendEmail(env, params);
+  expect(error).not.toHaveBeenCalled();
+});
