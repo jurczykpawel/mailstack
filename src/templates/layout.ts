@@ -1,4 +1,4 @@
-import type { Brand, LayoutInput, RenderedEmail } from "../types";
+import type { Brand, LayoutInput, RenderedEmail } from "../types.ts";
 
 const MAILSTACK_HOME_URL = "https://mailstack.techskills.academy/pl";
 

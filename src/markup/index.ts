@@ -1,5 +1,5 @@
-import type { JsonLdBlock } from "../types";
-import * as B from "./builders";
+import type { JsonLdBlock } from "../types.ts";
+import * as B from "./builders.ts";
 
 /** Max JSON-LD blocks emitted per email (anti-abuse). */
 const MAX_BLOCKS = 5;
@@ -58,5 +58,5 @@ export function buildBlocks(input: unknown): JsonLdBlock[] {
   return out;
 }
 
-export { serializeBlock, serializeToHead } from "./serialize";
-export * from "./builders";
+export { serializeBlock, serializeToHead } from "./serialize.ts";
+export * from "./builders.ts";

@@ -4,9 +4,9 @@ import type {
   RenderedBody,
   TemplateData,
   TemplateDef,
-} from "../../types";
-import { ctaButton, ctaText, paragraph, summaryTable } from "../layout";
-import { viewAction } from "../../markup";
+} from "../../types.ts";
+import { ctaButton, ctaText, paragraph, summaryTable } from "../layout.ts";
+import { viewAction } from "../../markup/index.ts";
 
 /** Payment confirmation with an amount summary and optional invoice CTA. */
 export const paymentTemplate: TemplateDef = {

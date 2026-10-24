@@ -10,6 +10,7 @@
  * Vars: MAILSTACK_KV_ID, MAILSTACK_KV_PREVIEW_ID, MAILSTACK_ROUTE (optional).
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { BUILD_CONFIG_SHA } from "../src/core/config/bundled.ts";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +37,7 @@ const routesBlock = route
 
 const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("__ROUTES__", routesBlock)
+  .replace("${BUILD_CONFIG_SHA}", BUILD_CONFIG_SHA)
   .replaceAll("${MAILSTACK_KV_ID}", kvId)
   .replaceAll("${MAILSTACK_KV_PREVIEW_ID}", kvPreview)
   .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand);

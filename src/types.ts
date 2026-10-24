@@ -101,6 +101,7 @@ export interface LayoutInput {
  * subject + content; the shared layout supplies the brand header/footer chrome.
  */
 export interface TemplateDef {
+  secretFields?: string[];
   id: string;
   /** Whether public (browser) requests may select this type. Only 'contact' is true. */
   publicAllowed?: boolean;

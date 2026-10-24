@@ -11,7 +11,11 @@ compatibility_flags = ["nodejs_compat"]
 # *.workers.dev URL is used. The domain's zone must be in the same Cloudflare account.
 __ROUTES__
 
+[build]
+command = "node scripts/bundle-config.ts --verify"
+
 [vars]
+BUILD_CONFIG_SHA = "${BUILD_CONFIG_SHA}"
 SES_REGION = "eu-west-1"
 # Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
 SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"

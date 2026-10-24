@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { getBrand } from "../src/registry";
+import { getBrand } from "../src/core/config";
 import { getTemplate, renderLayout } from "../src/templates/index";
 
 const data = {

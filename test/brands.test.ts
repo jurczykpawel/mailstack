@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getBrand, findBrandByOrigin } from "../src/registry";
+import { getBrand, findBrandByOrigin } from "../src/core/config";
 
 describe("getBrand", () => {
   it("returns a defined brand by id", () => {

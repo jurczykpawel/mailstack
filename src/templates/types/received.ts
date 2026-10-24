@@ -1,5 +1,5 @@
-import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types";
-import { escapeHtml, paragraph } from "../layout";
+import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
+import { escapeHtml, paragraph } from "../layout.ts";
 
 /** Acknowledgement that a submission was received. */
 export const receivedTemplate: TemplateDef = {

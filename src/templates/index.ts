@@ -4,16 +4,16 @@ import type {
   RenderedEmail,
   TemplateData,
   TemplateDef,
-} from "../types";
-import { renderLayout } from "./layout";
-import { contactTemplate, META_KEYS } from "./types/contact";
-import { welcomeTemplate } from "./types/welcome";
-import { receivedTemplate } from "./types/received";
-import { paymentTemplate } from "./types/payment";
-import { noticeTemplate } from "./types/notice";
+} from "../types.ts";
+import { renderLayout } from "./layout.ts";
+import { contactTemplate, META_KEYS } from "./types/contact.ts";
+import { welcomeTemplate } from "./types/welcome.ts";
+import { receivedTemplate } from "./types/received.ts";
+import { paymentTemplate } from "./types/payment.ts";
+import { noticeTemplate } from "./types/notice.ts";
 
 /** Registry of all email types, keyed by id. */
-const TEMPLATES: Record<string, TemplateDef> = {
+export const TEMPLATES: Record<string, TemplateDef> = {
   contact: contactTemplate,
   welcome: welcomeTemplate,
   received: receivedTemplate,

@@ -1,5 +1,5 @@
 import type { Env, SendDeps } from "./types";
-import { findBrandByOrigin, getBrand } from "./registry";
+import { findBrandByOrigin, getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
 import { handleSellfHook } from "./sellf";
