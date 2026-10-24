@@ -56,8 +56,8 @@ describe("configuration schema", () => {
     expect(() => parseConfig(value, { payment: { secretFields: ["key"] } })).toThrow("$.logging.defaults.resend");
   });
   it("accepts replay for projected content without secretFields", () => {
-    const value = config(); value.logging.defaults.level = "masked"; value.logging.defaults.resend = "replay";
-    expect(parseConfig(value).logging.defaults.resend).toBe("replay");
+    const value = parseConfig(config()); value.logging.defaults.level = "masked"; value.logging.brands = { acme: { templates: { payment: { resend: "replay" } } } };
+    expect(parseConfig(value).logging.brands.acme.templates?.payment.resend).toBe("replay");
   });
   it("requires a callback matching the effective brand and template", () => {
     const value = { ...config(), clients: [{ brands: ["demo"], templates: ["payment"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } }] };
@@ -90,7 +90,7 @@ it("applies policy validation through the exported zod schema", () => {
 });
 it("accepts a global source policy covered by clients for every registered template", () => {
   const value = config(); value.logging.defaults.resend = "source";
-  const client = { brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
+  const client = { brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice", "license"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
   expect(() => parseConfig({ ...value, clients: [client] })).not.toThrow();
   client.templates = ["payment"];
   expect(() => parseConfig({ ...value, clients: [client] })).toThrow("$.logging.defaults.resend");

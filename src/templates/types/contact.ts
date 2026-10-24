@@ -26,6 +26,7 @@ function metaValue(data: TemplateData, key: string): string {
 /** Contact form: the original layout — fields table, optional message, meta footer. */
 export const contactTemplate: TemplateDef = {
   id: "contact",
+  subjectRoles: ["email"],
   publicAllowed: true,
 
   subject(brand: Brand, data: TemplateData): string {
