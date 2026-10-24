@@ -48,14 +48,19 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   const secretFields = new Set(template.secretFields);
   const show = new Set(policy.show);
   const partial = (value: string) => "••••" + Array.from(value).slice(-4).join("");
+  const fields = policy.level === "masked" ? Object.entries(data)
+    : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
+  const replacements = fields
+    .filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field))
+      && (policy.level !== "masked" || Array.from(value).length >= 3))
+    .flatMap(([field, value]) => [...new Set([value, escapeHtml(value)])].map((representation) => ({
+      representation, replacement: secretFields.has(field) ? partial(value) : "[ukryte]",
+    })));
+  if (policy.level === "masked") replacements.sort((a, b) => b.representation.length - a.representation.length);
   const mask = (value: string, html = false): string => {
     if (includeSecrets) return value;
-    for (const field of secretFields) {
-      const secret = data[field];
-      if (!secret) continue;
-      for (const representation of new Set([secret, escapeHtml(secret)])) {
-        value = value.split(representation).join(html ? escapeHtml(partial(secret)) : partial(secret));
-      }
+    for (const { representation, replacement } of replacements) {
+      value = value.split(representation).join(html ? escapeHtml(replacement) : replacement);
     }
     return maskPatterns(value, patterns);
   };
@@ -67,9 +72,10 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   const rendered = renderLayout(brand, {
     heading: body.heading, bodyHtml: body.bodyHtml, bodyText: body.bodyText, previewText: body.previewText,
   });
+  const subject = input.subject ?? template.subject(brand, projected);
   return {
     level: policy.level, metadata,
-    subject: mask(input.subject ?? template.subject(brand, projected)),
+    subject: mask(policy.level === "masked" ? subject.replace(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+/gi, "[ukryte]") : subject),
     html: mask(rendered.html, true).replace(/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script\s*>/gi, ""),
     text: mask(rendered.text),
   };

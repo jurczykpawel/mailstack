@@ -28,7 +28,7 @@ const LABELS: Record<string, string> = {
 
 /** Turn a raw content key into a human label: known map, else Title Case. */
 export function humanizeLabel(key: string): string {
-  const mapped = LABELS[key.toLowerCase()];
+  const mapped = Object.hasOwn(LABELS, key.toLowerCase()) ? LABELS[key.toLowerCase()] : undefined;
   if (mapped) return mapped;
   return key
     .replace(/[_-]+/g, " ")

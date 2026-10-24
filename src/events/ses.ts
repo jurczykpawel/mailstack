@@ -4,7 +4,8 @@ import { blindIndexes, seal } from '../core/crypto';
 import type { ContentKey, IndexKey } from '../core/crypto';
 import type { KyselyStore } from '../core/store';
 import { eventId, findMessage, recipients, recordEvents } from '../core/store/events';
-import { boundedText, confirm, envelope } from './sns';
+import { confirm, envelope } from './sns';
+import { boundedText } from '../core/http';
 import type { createVerifier, SesOptions } from './sns';
 
 const affected = z.union([z.string(), z.object({ emailAddress: z.string(), diagnosticCode: z.string().optional() })]);

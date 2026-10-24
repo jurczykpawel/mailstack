@@ -1,3 +1,4 @@
+import { boundedText } from "./core/http";
 import type {
   Brand,
   Env,
@@ -140,14 +141,11 @@ export async function handleSend(
   const origin = req.headers.get("origin") || "";
   const ip = req.headers.get("cf-connecting-ip");
 
-  // Size guard before parsing.
-  const lenHeader = req.headers.get("content-length");
-  if (lenHeader && parseInt(lenHeader, 10) > MAX_BODY_BYTES) {
-    return json({ success: false, message: "payload too large" }, { status: 413 });
-  }
-
-  const rawText = await req.text();
-  if (rawText.length > MAX_BODY_BYTES) {
+  let rawText: string;
+  try {
+    rawText = await boundedText(req, MAX_BODY_BYTES);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
     return json({ success: false, message: "payload too large" }, { status: 413 });
   }
 
