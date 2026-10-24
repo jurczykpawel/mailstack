@@ -21,3 +21,18 @@ it("parses future client options", () => {
   const client = { ...entry(), attachments: true, rate: { perMinute: 30, perDay: 1000 }, resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" }, sellfSignatureSecretEnv: "SELLF_SECRET" };
   expect(parseConfig({ ...original, clients: [client] }).clients).toEqual([client]);
 });
+
+it.each([
+  ["send", "brands"], ["send", "templates"], ["hook:sellf", "brands"], ["hook:sellf", "templates"],
+])("requires explicit %s selections: %s", (scope, field) => {
+  const client: Record<string, unknown> = { ...entry(), scopes: [scope] };
+  delete client[field];
+  expect(() => parseConfig({ ...original, clients: [client] })).toThrow(`$.clients.0.${field}`);
+});
+it("uses empty selections for a panel client", () => {
+  const client = { id: "panel", tokenSha256: "a".repeat(64), scopes: ["panel"] };
+  expect(parseConfig({ ...original, clients: [client] }).clients?.[0]).toMatchObject({ brands: [], templates: [] });
+});
+it("retains wildcard defaults for legacy configuration", () => {
+  expect(parseConfig({ ...original, legacyApiKey: {} }).legacyApiKey).toMatchObject({ brands: "*", templates: "*" });
+});

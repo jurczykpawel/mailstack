@@ -64,7 +64,7 @@ describe("client permissions", () => {
     expect(res.status).toBe(403); expect(await res.json()).toEqual(forbidden); expect(d.sendEmail).not.toHaveBeenCalled();
   });
   it("allows a hook client to use the mapped customer recipient", async () => {
-    configure({ clients: [{ id: "acme-app", tokenSha256: hash(token), scopes: ["hook:sellf"], brands: ["acme"] }] });
+    configure({ clients: [{ id: "acme-app", tokenSha256: hash(token), scopes: ["hook:sellf"], brands: ["acme"], templates: ["payment"] }] });
     const d = deps(); const res = await handleSellfHook(request("/v1/hooks/sellf", purchase), env, d);
     expect(res.status).toBe(200); expect(d.sendEmail).toHaveBeenCalledWith(env, expect.objectContaining({ to: ["buyer@example.com"] }));
   });
@@ -141,11 +141,25 @@ it.each([
   const res = await handleSend(request("/v1/send", { brand: "acme", ...body }, env.API_KEY), env, d);
   expect(res.status).toBe(403); expect(await res.json()).toEqual(forbidden); expect(d.sendEmail).not.toHaveBeenCalled();
 });
-it("creates distinct tokens with default permissions", () => {
-  const run = () => spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "demo-cli", "--scopes", "send,hook:sellf"], { encoding: "utf8" });
+it("creates distinct tokens with explicit selections", () => {
+  const run = () => spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "demo-cli", "--scopes", "send,hook:sellf", "--brands", "*", "--templates", "*"], { encoding: "utf8" });
   const first = run(); const second = run();
   expect(first.status, first.stderr).toBe(0); expect(second.status, second.stderr).toBe(0);
   const output = JSON.parse(first.stdout);
   expect(output.client).toMatchObject({ scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: false, attachments: false });
   expect(output.token).not.toBe(JSON.parse(second.stdout).token);
+});
+
+it.each([
+  ["send", "--brands"], ["send", "--templates"], ["hook:sellf", "--brands"], ["hook:sellf", "--templates"],
+])("requires explicit CLI selections for %s: %s", (scope, missing) => {
+  const selections = missing === "--brands" ? ["--templates", "payment"] : ["--brands", "acme"];
+  const result = spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "acme-app", "--scopes", scope, ...selections], { encoding: "utf8" });
+  expect(result.status).toBe(1); expect(result.stdout).toBe("");
+  expect(result.stderr).toContain(missing); expect(result.stderr).toContain("required");
+});
+it("creates a panel client without CLI selections", () => {
+  const result = spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "panel", "--scopes", "panel"], { encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout).client).toMatchObject({ scopes: ["panel"], brands: [], templates: [] });
 });

@@ -15,6 +15,12 @@ async function createClient(args: string[]) {
     if (!value || value.startsWith("--")) throw new Error("Missing client option value");
     options.set(flag, value);
   }
+  const requestedScopes = options.get("--scopes")?.split(",");
+  if (requestedScopes?.some((scope) => scope === "send" || scope === "hook:sellf")) {
+    for (const flag of ["--brands", "--templates"]) {
+      if (!options.has(flag)) throw new Error(`${flag} is required for send or hook:sellf`);
+    }
+  }
   const token = `msk_${options.get("--id")}_${randomBytes(32).toString("base64url")}`;
   const list = (flag: string) => options.get(flag) === "*" ? "*" : options.get(flag)?.split(",");
   const result = clientSchema.safeParse({

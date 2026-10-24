@@ -28,19 +28,28 @@ const scopes = z.array(z.enum(["send", "hook:sellf", "panel"])).refine(
   (values) => !values.includes("panel") || values.length === 1, "panel requires a separate client");
 const selection = z.union([z.literal("*"), z.array(z.string().min(1))]);
 const permissions = {
-  scopes, brands: selection.default("*"), templates: selection.default("*"),
+  scopes, brands: selection, templates: selection,
   recipientOverride: z.boolean().default(false), attachments: z.boolean().default(false),
 };
 export const clientSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/), tokenSha256: z.string().regex(/^[a-f0-9]{64}$/i), ...permissions,
+  brands: selection.optional(), templates: selection.optional(),
   rate: z.strictObject({ perMinute: days, perDay: days }).optional(),
   resendCallback: z.strictObject({
     url: z.url().refine((value) => /^https?:/.test(value)), secretEnv: z.string().min(1),
   }).optional(),
   sellfSignatureSecretEnv: z.string().min(1).optional(),
-});
+}).superRefine((client, ctx) => {
+  if (client.scopes.some((scope) => scope === "send" || scope === "hook:sellf")) {
+    for (const field of ["brands", "templates"] as const) {
+      if (client[field] === undefined)
+        ctx.addIssue({ code: "custom", path: [field], message: "required for send or hook:sellf" });
+    }
+  }
+}).transform((client) => ({ ...client, brands: client.brands ?? [], templates: client.templates ?? [] }));
 const legacySchema = z.strictObject({
-  ...permissions, enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"),
+  ...permissions, brands: selection.default("*"), templates: selection.default("*"),
+  enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"),
   scopes: scopes.default(["send", "hook:sellf"]), recipientOverride: z.boolean().default(true),
 });
 export type Client = z.infer<typeof clientSchema>;
