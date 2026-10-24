@@ -137,7 +137,7 @@ Error responses:
 
 ## Brands config
 
-Brands live in `src/brands.ts`, keyed by short id:
+Brands live under `brands` in the external `mailstack.json` selected by `MAILSTACK_CONFIG`, keyed by short id:
 
 ```ts
 interface Brand {
@@ -152,17 +152,19 @@ interface Brand {
 }
 ```
 
-Example brands (in `src/brands.example.ts`): `acme` (Acme Inc., `autoReply: true`) and `demo` (Demo Brand). Edit `src/brands.ts` (gitignored) to configure your own.
+Example brands in `config/mailstack.example.json`: `acme` (auto-reply on) and `demo`. Copy the JSON outside the repository and export `MAILSTACK_CONFIG`. Node 24+ runs the TypeScript CLI directly: `node scripts/mailstack.ts config check <file>` or `config import-brands <legacy-brands.ts>` (JSON stdout; trusted local input).
+
+The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. Clients, events and alerts remain optional deferred sections. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; the current Worker rejects it until an audit store is integrated. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
 
 ### How to add a brand
-1. Append an entry to the `BRANDS` map in `src/brands.ts` with a new id.
+1. Append an entry to `brands` in the external JSON with a new id.
 2. Set `from` to a **verified SES sender** (domain/identity must be verified in the
    account region, `SES_REGION`).
 3. Set `to` to the fixed inbox, list the site's `allowedOrigins`, and fill `theme`.
 4. Add a test in `test/brands.test.ts` if you want, then `npm run typecheck && npm run test`.
 5. Redeploy.
 
-No code changes are needed elsewhere — `getBrand` / `findBrandByOrigin` read the map.
+No code changes are needed elsewhere — `getBrand` / `findBrandByOrigin` read the loaded configuration in `src/core/config/index.ts`.
 
 ## Templates
 
@@ -411,9 +413,7 @@ src/
   sellf.ts             POST /v1/hooks/sellf handler: Sellf event -> template mapping (SELLF_EVENT_MAP)
   turnstile.ts         Turnstile siteverify (injectable)
   ses.ts               Amazon SES v2 send via aws4fetch (injectable)
-  brands.ts            brand data (gitignored — copy from brands.example.ts via `npm run setup`)
-  brands.example.ts    demo brand registry (committed)
-  registry.ts          getBrand / findBrandByOrigin (imports from brands.ts)
+  core/config/         strict schema, Node/Worker loaders, brand lookups, generated bundle
   templates.ts         back-compat shim (re-exports escapeHtml/humanizeLabel/renderEmail)
   templates/
     layout.ts          shared brand chrome + helpers (escapeHtml, paragraph, summaryTable, ctaButton)
@@ -449,8 +449,8 @@ npm run deploy      # wrangler deploy
 ## TODO (infra/deploy)
 
 - Copy `.env.example` → `.env` and set `MAILSTACK_KV_ID` / `MAILSTACK_KV_PREVIEW_ID` (+ optional `MAILSTACK_ROUTE`).
-- Run `npm run setup` — generates `wrangler.toml` from `.env` and creates `src/brands.ts` + `src/assets/logo.ts` from the examples.
-- Edit `src/brands.ts` with your real brand(s). (Don't edit the generated `wrangler.toml` — change `.env` instead.)
+- Run `npm run setup` — generates `wrangler.toml` from `.env` and bundles the external `MAILSTACK_CONFIG` and creates `src/assets/logo.ts` from its example.
+- Edit the external JSON with your real brand(s). (Don't edit the generated `wrangler.toml` — change `.env` instead.)
 - Set the four secrets (`SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `TURNSTILE_SECRET`, `API_KEY`).
 - Verify SES senders (domain/email identity for each `from` address) and leave the SES sandbox.
 - Add a custom domain/route for the Worker.
