@@ -13,7 +13,8 @@
     "pretypecheck": "npm run setup",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run setup",
-    "test": "vitest run"
+    "test": "vitest run",
+    "keys": "node scripts/keys.mjs"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",
