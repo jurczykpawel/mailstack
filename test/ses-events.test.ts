@@ -27,7 +27,7 @@ it('validates the SES configuration at startup', () => {
 });
 
 it('routes SES requests through the worker', async () => {
-  const result = await worker.fetch(request({ Type: 'Notification' }), {} as Env, {} as ExecutionContext);
+  const result = await worker.fetch(request({ Type: 'Notification' }), { CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: publicKeys }), INDEX_KEYS: JSON.stringify(indexKeys) } as Env, {} as ExecutionContext);
   expect(result.status).toBe(400);
 });
 

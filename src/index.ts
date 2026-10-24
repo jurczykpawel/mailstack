@@ -1,3 +1,4 @@
+import { parseKeyring } from "./core/keyring";
 import { handleSesEvent } from "./events/ses";
 import { createVerifier } from "./events/sns";
 import { createD1Store } from "./core/store/d1";
@@ -124,7 +125,7 @@ export default {
       try {
         return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
           store: env.DB ? createD1Store(env.DB) : undefined, now: Date.now,
-          contentKeys: JSON.parse(env.CONTENT_PUBLIC_KEYS || '[]'), indexKeys: JSON.parse(env.INDEX_KEYS || '[]') });
+          ...parseKeyring(env) });
       } catch { return Response.json({ ok: false }, { status: 503 }); }
     }
     return notFound();
