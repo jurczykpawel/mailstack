@@ -186,7 +186,7 @@ export async function handleSend(
       captcha === 'altcha'
         ? await deps.verifyAltcha(env.ALTCHA_HMAC_KEY, altchaPayload, deps.now())
           && await consumeAltcha(env.RATE_LIMIT, altchaPayload, deps.now)
-        : await deps.verifyTurnstile(env.TURNSTILE_SECRET, coerceValue(body["cf-turnstile-response"]), ip);
+        : await deps.verifyTurnstile(env.TURNSTILE_SECRET, coerceValue(body["cf-turnstile-response"]), ip, brand);
     if (!captchaOk) {
       return json(
         { success: false, message: "verification failed" },

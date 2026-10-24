@@ -109,3 +109,10 @@ it("reads registered template policy metadata at validation time", () => {
     expect(() => parseConfig(value)).toThrow("$.logging.defaults.resend");
   } finally { TEMPLATES.payment.secretFields = previous; }
 });
+
+it("accepts an optional Turnstile action string", () => {
+  const value = config();
+  const brands = { ...value.brands, acme: { ...value.brands.acme, turnstileAction: "contact" } };
+  expect(parseConfig({ ...value, brands }).brands.acme).toMatchObject({ turnstileAction: "contact" });
+  expect(() => parseConfig({ ...value, brands: { ...brands, acme: { ...brands.acme, turnstileAction: 42 } } })).toThrow("$.brands.acme.turnstileAction");
+});

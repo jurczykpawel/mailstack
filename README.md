@@ -332,6 +332,40 @@ cp .dev.vars.example .dev.vars   # fill in the secret values for local runs
 npm run dev                       # wrangler dev
 ```
 
+### Content and index keys
+The standalone crypto helpers live in `src/core/crypto`; sending emails does not use them yet.
+The CLI requires Node.js 22.18+ with native TypeScript support (verified on Node.js 26.12.1).
+
+```bash
+mkdir -m 700 secrets
+npm run --silent keys -- init secrets/panel-content-keys.json
+# Copy the two printed assignments into .env; the private JWK stays in the 0600 file.
+# Load the existing INDEX_KEYS value into the environment before rotating:
+npm run --silent keys -- rotate-index
+# Replace INDEX_KEYS in .env with the printed assignment, including older keys.
+```
+
+`CONTENT_PUBLIC_KEYS` and the private file use JWK sets (`{"keys":[...]}`). `INDEX_KEYS`
+is a JSON array of `{kid,key}`, where `key` is a base64url-encoded 32-byte key. In both
+arrays the first entry is active; prepend new keys and retain older entries for reads.
+Back up the private file separately from message data. Do not commit it or the environment values.
+
+`seal(data, context, publicKeys)` and `open(value, context, privateKeys)` use a context
+`{brand,messageId,purpose}` and the `ms1` envelope. Both accept an optional fourth
+argument `maxBytes` (positive integer, default 2 MiB), measured in uncompressed UTF-8
+JSON bytes. `seal` checks the size before compression; `open` counts decompressed
+chunks and cancels the reader at the first chunk exceeding the limit. Exactly the
+limit is accepted. `blindIndex(address,key)` returns
+`{kid,index}`; `blindIndexes(address,keys)` returns one result for every active index key.
+`canonicalJson` sorts object keys recursively in UTF-16 order, preserves array order,
+and uses JSON primitive serialization; it rejects non-JSON values and cycles.
+`createMac(data,keys)` returns `{kid,mac}` with a full base64url HMAC for request or
+resend payloads; `verifyMac(data,tag,keys)` selects the matching key and returns a boolean.
+HMAC inputs are UTF-8: `mailstack/v1/idx\n` followed by the normalized address for
+blind indexes, or `mailstack/v1/mac\n` followed by canonical JSON for MACs (`\n` = LF).
+Indexes retain the first 22 base64url characters; MACs retain the full digest.
+Values computed without these context prefixes must be recomputed.
+
 ### Contributing & license
 See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under **MIT** — see [LICENSE](LICENSE).
 

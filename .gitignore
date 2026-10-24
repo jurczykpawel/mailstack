@@ -19,3 +19,5 @@ bruno/environments/*.bru
 
 mailstack.json
 src/core/config/bundled.ts
+# Local key files
+secrets/
