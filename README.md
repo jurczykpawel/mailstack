@@ -312,7 +312,7 @@ The JSON example and render snapshots contain only acme/demo data.
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
   keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template`/`autoreply` (trusted only). Everything else is email content.
-- `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer-only). See [AGENTS.md](AGENTS.md).
+- `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
 
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
@@ -374,3 +374,59 @@ mailstack is free and MIT-licensed. If it's quietly delivering your emails right
 you can buy me a croissant:
 
 [![🥐 Buy me a croissant](https://img.shields.io/badge/🥐_Buy_me_a_croissant-FFDD00)](https://sellf.techskills.academy/checkout/tip-mailstack?utm_source=github&utm_medium=readme&utm_campaign=tip-jar)
+
+## Send logging and idempotency
+
+All outgoing mail, including public submissions and auto-replies, records an encrypted
+intent before contacting SES. The effective `logging` policy comes from global, brand,
+and template settings. `requireLog: true` returns `503` with `code: "log_unavailable"`
+without sending if the intent cannot be recorded. With `requireLog: false`, delivery
+continues without a log when storage or keys are unavailable. `level: "none"` writes no
+message row and needs no encryption keys. Its separate 24-hour idempotency guard is
+not implemented in this phase; deduplication currently requires a message row.
+
+Trusted `POST /v1/send` requests accept:
+
+| Input | Contract |
+|---|---|
+| `ref` | Optional string of 1-128 characters; otherwise `400 invalid_ref`. Stored encrypted with a correlation index. |
+| `Idempotency-Key` header | Optional `[A-Za-z0-9._:-]{1,128}`; otherwise `400 invalid_idempotency_key`. |
+| `resendOf`, `attachments` | Reserved for later phases; their presence returns `400 not_supported`. |
+
+These keys are excluded from template content. Public requests ignore them and the
+idempotency header. Trusted responses include `id: "msg_..."` whenever the send has a
+message row; public response shapes are unchanged. Successful Sellf response shapes
+are also unchanged. Provider failures retain `message: "send failed"`, with additive
+`code: "send_failed"` and HTTP `502`.
+
+Idempotency keys are scoped to the authenticated client (`legacy` for the legacy API
+key; public sends use client id `public` without deduplication). For a matching request:
+
+| Original state | Repeated request |
+|---|---|
+| `sent` or a later delivery state | `200 {success:true,id,idempotent:true}` without another send |
+| `sending` | `409`, `code: "in_progress"` |
+| `send_failed` (explicit provider refusal) | Clear the old key and execute a new attempt |
+| `unknown` (exception, timeout, or uncertain result) | `409`, `code: "outcome_unknown"`; no automatic retry |
+| Different request with the same key | `409`, `code: "idempotency_conflict"` |
+
+An operator must resolve `unknown` through the panel or provider events before another
+send is considered. The SES adapter makes one request per attempt. No idempotency key
+means no deduplication. Generated contact receipt timestamps do not change request
+identity; recipient, subject, content, Reply-To, ref and explicit markup do.
+
+Sellf requires a Bearer client with `hook:sellf` scope. If that client configures
+`sellfSignatureSecretEnv`, the corresponding runtime secret and a valid
+`X-Sellf-Signature: t=<unix>,v1=<hex>` are additionally required. The signature is
+HMAC-SHA256 over `${t}.${rawBody}` with a 300-second tolerance. Missing or invalid
+signatures return `401 unauthorized`. Configure the secret in the runtime, never in
+the JSON file. Sellf uses automatic idempotency key
+`sellf:<event>:<order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]>`
+and the order/payment identifier as `ref` when present. Duplicate delivery sends once;
+conflicts, pending attempts and unknown outcomes follow the table above.
+
+Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
+Worker vars. For local `wrangler dev`, it may also be set in `.dev.vars`. Only sends
+with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
+`ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
+response headers are excluded. No open/click tracking configuration is sent.
