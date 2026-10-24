@@ -7,8 +7,9 @@ export interface ResolvedPolicy {
 }
 
 export async function resolvePolicy(logging: Config["logging"], brand: string, template: string): Promise<ResolvedPolicy> {
-  const overrides = logging.brands[brand];
-  const policy = structuredClone({ ...logging.defaults, ...overrides?.defaults, ...overrides?.templates?.[template] });
+  const overrides = Object.hasOwn(logging.brands, brand) ? logging.brands[brand] : undefined;
+  const templatePolicy = overrides?.templates && Object.hasOwn(overrides.templates, template) ? overrides.templates[template] : undefined;
+  const policy = structuredClone({ ...logging.defaults, ...overrides?.defaults, ...templatePolicy });
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(policy)));
   const policy_hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 16);
   return { policy, policy_hash };

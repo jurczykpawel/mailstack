@@ -216,7 +216,7 @@ export async function handleSellfHook(
       ? envelope.data
       : {};
 
-  const mapper = SELLF_EVENT_MAP[event];
+  const mapper = Object.hasOwn(SELLF_EVENT_MAP, event) ? SELLF_EVENT_MAP[event] : undefined;
   if (!mapper) {
     // Ack so Sellf does not retry an event we intentionally do not email.
     return jsonResponse({ success: true, ignored: event || "unknown" });
