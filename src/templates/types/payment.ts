@@ -24,7 +24,7 @@ export const paymentTemplate: TemplateDef = {
     const item = (data.item || data.description || "").trim();
     const orderId = (data.orderId || "").trim();
     const date = (data.date || "").trim();
-    const invoiceUrl = (data.invoiceUrl || "").trim();
+    const invoiceUrl = data.invoiceUrl || "";
 
     const heading = "Potwierdzenie płatności";
     const greeting = name ? `Witaj ${name},` : "Witaj,";
@@ -54,7 +54,7 @@ export const paymentTemplate: TemplateDef = {
 
     // Auto-markup: a Gmail action button. Prefer an explicit order URL; fall back
     // to the invoice URL. Absent both -> no block (fail-soft, email unchanged).
-    const orderUrl = (data.orderUrl || "").trim();
+    const orderUrl = data.orderUrl || "";
     const actionUrl = orderUrl || invoiceUrl;
     const jsonLd: JsonLdBlock[] = [];
     if (actionUrl) {

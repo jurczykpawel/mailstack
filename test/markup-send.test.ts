@@ -50,6 +50,22 @@ function sentHtml(sendEmail: ReturnType<typeof vi.fn>): string {
 }
 
 describe("markup in /v1/send", () => {
+  it.each([
+    ["welcome", "ctaUrl"], ["notice", "ctaUrl"],
+    ["payment", "invoiceUrl"], ["payment", "orderUrl"], ["license", "activationUrl"],
+  ])("sends %s with an omitted %s", async (template, field) => {
+    const { deps, sendEmail } = makeDeps();
+    const url = "javascript:alert(1)";
+    const res = await handleSend(
+      req({ brand: "acme", template, [field]: url }, bearer), makeEnv(), deps,
+    );
+    expect(res.status).toBe(200);
+    expect(sendEmail).toHaveBeenCalledOnce();
+    const params = sendEmail.mock.calls[0][1];
+    expect(params.html).not.toContain(url);
+    expect(params.text).not.toContain(url);
+  });
+
   it("trusted request injects explicit markup into <head>", async () => {
     const { deps, sendEmail } = makeDeps();
     const res = await handleSend(

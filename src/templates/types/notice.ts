@@ -15,7 +15,7 @@ export const noticeTemplate: TemplateDef = {
     const heading = (data.heading || "").trim() || brand.name;
     const blocks = parseBlocks(data.paragraphs);
     const rendered = blocks.map((block) => renderBlock(brand, block));
-    const ctaUrl = (data.ctaUrl || "").trim();
+    const ctaUrl = data.ctaUrl || "";
     const ctaLabel = (data.ctaLabel || "Dowiedz się więcej").trim();
 
     const htmlParts = rendered.map((block) => block.html);

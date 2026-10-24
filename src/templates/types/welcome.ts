@@ -15,7 +15,7 @@ export const welcomeTemplate: TemplateDef = {
 
     const intro = (data.intro || "").trim();
     const body = (data.body || "").trim();
-    const ctaUrl = (data.ctaUrl || "").trim();
+    const ctaUrl = data.ctaUrl || "";
     const ctaLabel = (data.ctaLabel || "Zaczynamy").trim();
 
     const htmlParts: string[] = [];
