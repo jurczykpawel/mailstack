@@ -1,7 +1,7 @@
 import { createD1Store } from "./core/store/d1";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
-import { findBrandByOrigin, getBrand } from "./core/config";
+import { config, findBrandByOrigin, getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
 import { handleSellfHook } from "./sellf";
@@ -11,6 +11,7 @@ import { createChallenge, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
 
 const defaultDeps: SendDeps = {
+  logging: config.logging,
   verifyTurnstile,
   verifyAltcha,
   sendEmail,
@@ -103,10 +104,8 @@ export default {
       }
     }
 
-    // Sellf webhook (server-to-server, bearer-only). Sends synchronously so a
-    // failed SES call surfaces as 502 and Sellf retries — no waitUntil here.
     if (pathname === "/v1/hooks/sellf" && req.method === "POST") {
-      return handleSellfHook(req, env, defaultDeps);
+      return handleSellfHook(req, env, { ...defaultDeps, store: env.DB ? createD1Store(env.DB) : undefined });
     }
 
     return notFound();

@@ -1,9 +1,12 @@
 import type { Store } from './core/ports';
+import type { Config } from './core/config/schema';
+import type { KeyEnvironment } from './core/keyring';
 
 /** Worker bindings (vars + secrets + D1). Mirrors wrangler.toml + `wrangler secret`. */
-export interface Env {
+export interface Env extends KeyEnvironment {
   // vars
   SES_REGION: string;
+  SES_CONFIGURATION_SET?: string;
   BUILD_COMMIT?: string;
   /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
   SELLF_DEFAULT_BRAND?: string;
@@ -117,10 +120,18 @@ export interface TemplateDef {
 export interface SendResult {
   ok: boolean;
   status: number;
+  messageId?: string;
+  response?: unknown;
+  id?: string;
+  idempotent?: true;
+  code?: string;
+  message?: string;
 }
 
 /** Parameters passed to the SES sender. */
 export interface SendParams {
+  messageId?: string;
+  brand?: string;
   from: string;
   to: string[];
   replyTo?: string;
@@ -131,6 +142,7 @@ export interface SendParams {
 
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
+  logging?: Config["logging"];
   store?: Store;
   verifyTurnstile: (
     secret: string,

@@ -293,6 +293,6 @@ describe("handleSellfHook — send failure", () => {
     });
     const res = await handleSellfHook(hook(purchaseEnvelope()), makeEnv(), deps);
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ success: false, message: "send failed" });
+    expect(await res.json()).toEqual({ success: false, message: "send failed", code: "send_failed" });
   });
 });

@@ -95,7 +95,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`log writer: ${driver}`
     for (const [role, address] of [['recipient', 'jane@example.com'], ['reply_to', input.replyTo], ['submitter', input.data.email]]) {
       expect(subjects).toContainEqual({ message_id: result.id, role, idx_kid: 'i1', addr_idx: (await blindIndex(address, oldKey)).index });
     }
-    expect(await verifyMac({ brand: 'acme', template: 'contact', recipients: input.recipients, data: input.data, subject: input.subject }, JSON.parse(message.request_mac!), [oldKey])).toBe(true);
+    expect(await verifyMac({ brand: 'acme', template: 'contact', recipients: input.recipients, data: input.data, subject: input.subject, replyTo: input.replyTo, ref: input.ref, markup: null }, JSON.parse(message.request_mac!), [oldKey])).toBe(true);
     expect(message.idem_key_hash).toBe(encode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(['acme-app', 'request-1'])))));
     expect(await store.findByIdempotency('acme-app', message.idem_key_hash!)).toEqual(message);
     expect(await store.findByIdempotency('other', message.idem_key_hash!)).toBeUndefined();

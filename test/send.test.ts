@@ -228,7 +228,7 @@ describe("handleSend — public mode", () => {
       deps,
     );
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ success: false, message: "send failed" });
+    expect(await res.json()).toEqual({ success: false, message: "send failed", code: "send_failed" });
   });
 
   it("rejects an oversized payload with 413", async () => {

@@ -15,9 +15,14 @@ export async function sendEmail(
     secretAccessKey: env.SES_SECRET_ACCESS_KEY,
     region,
     service: "ses",
+    retries: 0,
   });
 
   const payload = {
+    ...(env.SES_CONFIGURATION_SET && params.messageId ? {
+      ConfigurationSetName: env.SES_CONFIGURATION_SET,
+      EmailTags: [{ Name: "ms_id", Value: params.messageId }, { Name: "ms_brand", Value: params.brand }],
+    } : {}),
     FromEmailAddress: params.from,
     Destination: { ToAddresses: params.to },
     ...(params.replyTo ? { ReplyToAddresses: [params.replyTo] } : {}),
@@ -39,9 +44,10 @@ export async function sendEmail(
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    console.error(`SES send failed: ${res.status} ${detail}`);
-  }
-  return { ok: res.ok, status: res.status };
+  const raw = await res.text().catch(error => { if (res.ok) throw error; return ""; });
+  let response: unknown = raw;
+  try { response = JSON.parse(raw); } catch {}
+  const messageId = response && typeof response === "object" && "MessageId" in response && typeof response.MessageId === "string"
+    ? response.MessageId : undefined;
+  return { ok: res.ok, status: res.status, messageId, response };
 }

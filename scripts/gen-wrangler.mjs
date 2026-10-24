@@ -38,6 +38,7 @@ const routesBlock = route
 
 const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("__ROUTES__", routesBlock)
+  .replace("${SES_CONFIGURATION_SET}", JSON.stringify(env.SES_CONFIGURATION_SET || ""))
   .replace("${BUILD_CONFIG_SHA}", BUILD_CONFIG_SHA)
   .replaceAll("${MAILSTACK_D1_ID}", d1Id)
   .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)

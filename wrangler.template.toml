@@ -17,6 +17,7 @@ command = "node scripts/bundle-config.ts --verify"
 [vars]
 BUILD_CONFIG_SHA = "${BUILD_CONFIG_SHA}"
 SES_REGION = "eu-west-1"
+SES_CONFIGURATION_SET = ${SES_CONFIGURATION_SET}
 # Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
 SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"
 

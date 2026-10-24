@@ -7,6 +7,7 @@ import type { MessageIntent, MessageStore, RecipientRow, SubjectRow } from '../s
 import type { Brand, TemplateData, TemplateDef } from '../../types';
 import { projectArchive } from './projection';
 import { resolvePolicy } from './policy';
+import { META_KEYS } from '../../templates/types/contact';
 
 export class LogUnavailableError extends Error {
   readonly code = 'log_unavailable';
@@ -20,6 +21,21 @@ export interface RecordInput {
   recipients: { role: RecipientRow['role']; address: string }[];
   replyTo?: string; subject?: string; ref?: string; idempotencyKey?: string; markup?: unknown[];
   provider?: string; providerAccount?: string;
+}
+
+export function intentRequest(input: RecordInput): unknown {
+  return {
+    brand: input.brand.id, template: input.template.id, recipients: input.recipients,
+    data: Object.fromEntries(Object.entries(input.data).filter(([key]) =>
+      input.template.id !== 'contact' || !Object.values<string>(META_KEYS).includes(key))),
+    subject: input.subject ?? input.template.subject(input.brand, input.data),
+    replyTo: input.replyTo ?? null, ref: input.ref ?? null, markup: input.markup ?? null,
+  };
+}
+
+export async function idempotencyHash(clientId: string, key: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson([clientId, key])));
+  return btoa(String.fromCharCode(...new Uint8Array(digest))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
 function messageId(now: number): string {
@@ -69,15 +85,13 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
       const address = input.data[field];
       if (address && /^[^\s@]+@[^\s@]+$/.test(address.trim())) await addSubject('submitter', address);
     }
-    const request = { brand: input.brand.id, template: input.template.id, recipients: input.recipients, data: input.data, subject };
     const replay = { to: input.recipients.filter(r => r.role === 'to').map(r => r.address),
       ...(input.recipients.some(r => r.role === 'cc') ? { cc: input.recipients.filter(r => r.role === 'cc').map(r => r.address) } : {}),
       ...(input.recipients.some(r => r.role === 'bcc') ? { bcc: input.recipients.filter(r => r.role === 'bcc').map(r => r.address) } : {}),
       ...(input.replyTo !== undefined ? { replyTo: input.replyTo } : {}),
       ...(input.subject !== undefined ? { subjectOverride: input.subject } : {}),
       template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
-    const idemHash = input.idempotencyKey === undefined ? null : await crypto.subtle.digest('SHA-256',
-      new TextEncoder().encode(canonicalJson([input.clientId, input.idempotencyKey])));
+    const idemHash = input.idempotencyKey === undefined ? null : await idempotencyHash(input.clientId, input.idempotencyKey);
     const intent: MessageIntent = {
       message: {
         id, client_id: input.clientId, brand: input.brand.id, template: input.template.id, level: policy.level, policy_hash,
@@ -85,8 +99,8 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
         provider_message_id: null, provider_response_sealed: null, subject_sealed: await encrypt(subject, 'subject'),
         ref_idx: input.ref === undefined ? null : (await refIndex(input.ref, active)).index,
         ref_sealed: input.ref === undefined ? null : await encrypt(input.ref, 'ref'),
-        idem_key_hash: idemHash === null ? null : btoa(String.fromCharCode(...new Uint8Array(idemHash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
-        request_mac: canonicalJson(await createMac(request, indexKeys)),
+        idem_key_hash: idemHash,
+        request_mac: canonicalJson(await createMac(intentRequest(input), indexKeys)),
         replay_mac: policy.resend === 'replay' ? canonicalJson(await createMac(replay, indexKeys)) : null,
         resend_of: null, resend_root: null, attachments_meta: null,
         meta_expires_at: at + policy.metaDays * 86400000, content_expires_at: hasContent ? expires : null,

@@ -1,6 +1,7 @@
 import type { Env, SendDeps, TemplateData } from "./types";
 import { config, getBrand } from "./core/config";
-import { authenticate, permits } from "./clients.ts";
+import { deliveryResponse } from "./core/logging/delivery";
+import { authenticate, permits, tokenSha256 } from "./clients.ts";
 import { getTemplate } from "./templates/index";
 import { renderAndSend } from "./send";
 
@@ -194,9 +195,13 @@ export async function handleSellfHook(
     return jsonResponse({ success: false, message: "unknown brand" }, 400);
   }
 
+  const rawBody = await req.text();
+  if (client.sellfSignatureSecretEnv && !await verifySignature(req, rawBody, Reflect.get(env, client.sellfSignatureSecretEnv), deps.now())) {
+    return jsonResponse({ success: false, message: "unauthorized" }, 401);
+  }
   let envelope: SellfEnvelope;
   try {
-    const parsed = JSON.parse((await req.text()) || "{}");
+    const parsed = JSON.parse(rawBody || "{}");
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error("not an object");
     }
@@ -233,14 +238,30 @@ export async function handleSellfHook(
     return jsonResponse({ success: true, ignored: "unknown-template" });
   }
 
+  const order = obj(envelope.data, "order");
+  const payment = obj(envelope.data, "payment");
+  const ref = str(order, "sessionId") || str(order, "paymentIntentId") || str(payment, "sessionId") || str(payment, "paymentIntentId");
+  const idempotencyKey = `sellf:${event}:${ref || (await tokenSha256(rawBody)).slice(0, 32)}`;
   const result = await renderAndSend(deps, env, brand, template, mapped.data, {
     to: [to],
     replyTo: brand.to[0],
     subject: mapped.subject,
+    clientId: client.id,
+    ref: ref || undefined,
+    idempotencyKey,
   });
 
-  if (!result.ok) {
-    return jsonResponse({ success: false, message: "send failed" }, 502);
-  }
+  if (!result.ok) return jsonResponse(deliveryResponse(result, false), result.status);
   return jsonResponse({ success: true });
+}
+
+async function verifySignature(req: Request, rawBody: string, secret: unknown, now: Date): Promise<boolean> {
+  if (typeof secret !== "string" || !secret) return false;
+  const match = /^t=(\d+),v1=([a-fA-F0-9]{64})$/.exec(req.headers.get("X-Sellf-Signature") ?? "");
+  if (!match || Math.abs(now.getTime() / 1000 - Number(match[1])) > 300) return false;
+  try {
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    const signature = Uint8Array.from(match[2].match(/../g)!, value => parseInt(value, 16));
+    return await crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(`${match[1]}.${rawBody}`));
+  } catch { return false; }
 }

@@ -7,6 +7,8 @@ import type {
   TemplateData,
   TemplateDef,
 } from "./types";
+import { deliver, deliveryResponse } from "./core/logging/delivery";
+import type { DeliveryContext } from "./core/logging/delivery";
 import { config, getBrand } from "./core/config";
 import { authenticate, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
@@ -37,6 +39,9 @@ const RESERVED_KEYS = new Set([
   "autoreply",
   "markup",
   "_meta",
+  "ref",
+  "resendOf",
+  "attachments",
 ]);
 
 const DEFAULT_AUTOREPLY_TEMPLATE = "received";
@@ -62,7 +67,7 @@ interface JsonResponseInit {
 }
 
 function json(
-  body: { success: boolean; message?: string; code?: string },
+  body: Record<string, unknown>,
   init: JsonResponseInit = {},
 ): Response {
   const headers: Record<string, string> = {
@@ -221,6 +226,14 @@ export async function handleSend(
     );
   }
 
+  const idempotencyKey = trusted ? req.headers.get("Idempotency-Key") ?? undefined : undefined;
+  if (trusted) {
+    const code = Object.hasOwn(body, "resendOf") || Object.hasOwn(body, "attachments") ? "not_supported"
+      : Object.hasOwn(body, "ref") && (typeof body.ref !== "string" || body.ref.length < 1 || body.ref.length > 128) ? "invalid_ref"
+      : idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey) ? "invalid_idempotency_key" : undefined;
+    if (code) return json({ success: false, message: code.replaceAll("_", " "), code }, { status: 400, cors: corsOrigin });
+  }
+
   // Content fields (reserved keys stripped).
   const data = extractData(body);
   // For the contact template, attach request-time meta (footer small print).
@@ -266,12 +279,15 @@ export async function handleSend(
     replyTo,
     subject: subjectOverride,
     explicitJsonLd,
+    clientId: client?.id ?? "public",
+    ref: trusted ? body.ref as string | undefined : undefined,
+    idempotencyKey,
   });
 
   if (!result.ok) {
     return json(
-      { success: false, message: "send failed" },
-      { status: 502, cors: corsOrigin },
+      deliveryResponse(result, trusted),
+      { status: result.status, cors: corsOrigin },
     );
   }
 
@@ -279,7 +295,7 @@ export async function handleSend(
   // off the request path so it never delays or fails the user's response.
   maybeSendAutoReply({ trusted, brand, templateId: template.id, data, body, env, deps });
 
-  return json({ success: true }, { cors: corsOrigin });
+  return json(deliveryResponse(result, trusted), { cors: corsOrigin });
 }
 
 interface AutoReplyContext {
@@ -327,20 +343,8 @@ function maybeSendAutoReply(ctx: AutoReplyContext): void {
   // through whatever drains the dispatched promise.
   const task = (async () => {
     await Promise.resolve();
-    const rendered = template.render(brand, replyData);
-    const { html, text } = renderLayout(brand, {
-      heading: rendered.heading,
-      bodyHtml: rendered.bodyHtml,
-      bodyText: rendered.bodyText,
-      previewText: rendered.previewText,
-    });
-    await deps.sendEmail(env, {
-      from: brand.from,
-      to: [to],
-      replyTo: brand.to[0],
-      subject: template.subject(brand, replyData),
-      html,
-      text,
+    await renderAndSend(deps, env, brand, template, replyData, {
+      to: [to], replyTo: brand.to[0], clientId: "public",
     });
   })();
 
@@ -370,7 +374,7 @@ function resolveReplyTo(
   return brand.to[0];
 }
 
-export interface RenderAndSendParams {
+export interface RenderAndSendParams extends DeliveryContext {
   to: string[];
   replyTo?: string;
   /** Overrides the template's own subject when set. */
@@ -413,12 +417,12 @@ export async function renderAndSend(
     previewText: rendered.previewText,
     headHtml: serializeToHead(blocks),
   });
-  return deps.sendEmail(env, {
+  return deliver(deps, env, brand, template, data, {
     from: brand.from,
     to: params.to,
     replyTo: params.replyTo,
     subject,
     html,
     text,
-  });
+  }, params);
 }
