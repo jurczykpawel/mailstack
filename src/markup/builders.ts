@@ -1,4 +1,4 @@
-import type { JsonLdBlock } from "../types";
+import type { JsonLdBlock } from "../types.ts";
 
 /** schema.org context every block is emitted with (callers may override in `raw`). */
 export const SCHEMA_CONTEXT = "https://schema.org";

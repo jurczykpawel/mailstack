@@ -4,31 +4,39 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "node scripts/ensure-config.mjs && node scripts/gen-wrangler.mjs",
+    "setup": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts && node scripts/gen-wrangler.mjs",
     "prepare": "husky",
     "predev": "npm run setup",
     "dev": "wrangler dev",
-    "predeploy": "npm run setup",
-    "deploy": "wrangler deploy",
-    "pretypecheck": "npm run setup",
+    "predeploy": "node scripts/deploy-guard.mjs && npm run setup",
+    "deploy": "node scripts/deploy-guard.mjs --deploy",
+    "pretypecheck": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm run setup",
+    "pretest": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
     "test": "vitest run",
+    "mailstack": "node scripts/mailstack.ts",
     "keys": "node scripts/keys.mjs"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",
     "@hpke/dhkem-x25519": "1.8.0",
-    "aws4fetch": "^1.0.20"
+    "aws4fetch": "^1.0.20",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260719.1",
+    "@types/node": "^26.6.5",
     "husky": "^9.1.7",
     "typescript": "^5.8.3",
-    "vitest": "4.1.12",
+    "vitest": "^5.0.5",
     "wrangler": "^4.112.0"
   },
   "overrides": {
-    "undici": "7.30.1"
+    "miniflare": {
+      "undici": "^7.30.1"
+    }
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

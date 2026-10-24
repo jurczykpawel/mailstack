@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getTemplate } from "../src/templates/index";
 import { renderLayout } from "../src/templates/layout";
-import { getBrand } from "../src/registry";
+import { getBrand } from "../src/core/config";
 import type { TemplateData, TemplateDef } from "../src/types";
 
 // Use the demo `acme` brand (has name, address, phone, autoReply, theme)

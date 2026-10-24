@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "brands": {
+    "acme": {
+      "id": "acme",
+      "name": "Acme Inc.",
+      "from": "Acme Inc. <hello@acme.example>",
+      "to": [
+        "inbox@acme.example"
+      ],
+      "allowedOrigins": [
+        "https://acme.example",
+        "https://www.acme.example",
+        "http://localhost:4321",
+        "http://localhost:4322",
+        "http://localhost:4323"
+      ],
+      "subjectPrefix": "New message from",
+      "autoReply": true,
+      "theme": {
+        "accent": "#0064BC",
+        "accent2": "#A8D603",
+        "logoUrl": "https://mail.example.com/brand/logo.png",
+        "siteUrl": "https://acme.example",
+        "address": "123 Example Street, 00-000 Example City",
+        "phone": "+00 000 000 000"
+      }
+    },
+    "demo": {
+      "id": "demo",
+      "name": "Demo Brand",
+      "from": "Demo Brand <noreply@demo.example>",
+      "to": [
+        "team@demo.example"
+      ],
+      "allowedOrigins": [
+        "https://demo.example",
+        "http://localhost:4321"
+      ],
+      "subjectPrefix": "New message",
+      "captcha": "altcha",
+      "theme": {
+        "accent": "#008AFF",
+        "accent2": "#A8D603",
+        "siteUrl": "https://demo.example"
+      }
+    }
+  },
+  "logging": {
+    "defaults": {
+      "level": "meta",
+      "contentDays": 30,
+      "metaDays": 90,
+      "requireLog": false,
+      "resend": "off",
+      "alertOn": [],
+      "show": [],
+      "includeSecrets": false
+    },
+    "ceilings": {
+      "contentDays": 90,
+      "metaDays": 400,
+      "auditDays": 400
+    },
+    "patterns": [],
+    "brands": {}
+  }
+}

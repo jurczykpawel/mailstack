@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import worker from "../src/index";
+import { version } from "../package.json";
 import type { Env } from "../src/types";
 
 const env: Env = {
@@ -21,7 +22,13 @@ describe("router", () => {
   it("GET /health returns service ok", async () => {
     const res = await call("https://mail.example.com/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, service: "mailstack" });
+    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "dev" });
+  });
+
+  it("GET /health returns the build commit", async () => {
+    const res = await worker.fetch(new Request("https://mail.example.com/health"),
+      { ...env, BUILD_COMMIT: "abc123" }, ctx);
+    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "abc123" });
   });
 
   it("unknown route returns 404 JSON", async () => {

@@ -1,5 +1,5 @@
-import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types";
-import { ctaButton, ctaText, paragraph } from "../layout";
+import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
+import { ctaButton, ctaText, paragraph } from "../layout.ts";
 
 /** Welcome / onboarding email with an optional CTA button. */
 export const welcomeTemplate: TemplateDef = {

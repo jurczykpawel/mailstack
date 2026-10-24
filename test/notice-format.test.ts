@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BRANDS } from "../src/brands.example";
+import example from "../config/mailstack.example.json";
 import { noticeTemplate } from "../src/templates/types/notice";
 import { renderLayout } from "../src/templates/layout";
 
-const brand = BRANDS.acme;
+const brand = example.brands.acme;
 const render = (paragraphs: string) => noticeTemplate.render(brand, { paragraphs });
 
 describe("notice formatting", () => {

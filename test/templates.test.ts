@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { escapeHtml, humanizeLabel, renderEmail } from "../src/templates";
-import { getBrand } from "../src/registry";
+import { getBrand } from "../src/core/config";
 import type { RenderInput } from "../src/types";
 
 describe("escapeHtml", () => {

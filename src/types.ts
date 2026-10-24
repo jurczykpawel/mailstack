@@ -2,6 +2,7 @@
 export interface Env {
   // vars
   SES_REGION: string;
+  BUILD_COMMIT?: string;
   /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
   SELLF_DEFAULT_BRAND?: string;
   // secrets (set via `wrangler secret put`)
@@ -101,6 +102,7 @@ export interface LayoutInput {
  * subject + content; the shared layout supplies the brand header/footer chrome.
  */
 export interface TemplateDef {
+  secretFields?: string[];
   id: string;
   /** Whether public (browser) requests may select this type. Only 'contact' is true. */
   publicAllowed?: boolean;

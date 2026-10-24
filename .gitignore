@@ -8,10 +8,8 @@ priv/
 
 # Generated / private config (created by `npm run setup`, never committed):
 #  - wrangler.toml      generated from wrangler.template.toml + .env (gen-wrangler.mjs)
-#  - src/brands.ts      business brands, copied from src/brands.example.ts (ensure-config.mjs)
 #  - src/assets/logo.ts brand logo, copied from src/assets/logo.example.ts
 wrangler.toml
-src/brands.ts
 src/assets/logo.ts
 docs/superpowers/
 
@@ -19,5 +17,7 @@ docs/superpowers/
 bruno/environments/*.bru
 !bruno/environments/*.bru.example
 
+mailstack.json
+src/core/config/bundled.ts
 # Local key files
 secrets/

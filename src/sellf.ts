@@ -1,5 +1,5 @@
 import type { Env, SendDeps, TemplateData } from "./types";
-import { getBrand } from "./registry";
+import { getBrand } from "./core/config";
 import { getTemplate } from "./templates/index";
 import { isTrusted, renderAndSend } from "./send";
 

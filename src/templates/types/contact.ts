@@ -1,5 +1,5 @@
-import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types";
-import { escapeHtml, humanizeLabel, summaryTable } from "../layout";
+import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
+import { escapeHtml, humanizeLabel, summaryTable } from "../layout.ts";
 
 /**
  * Meta keys injected by the handler (request-time context, not user content).

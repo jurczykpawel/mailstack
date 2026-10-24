@@ -1,4 +1,4 @@
-import type { JsonLdBlock } from "../types";
+import type { JsonLdBlock } from "../types.ts";
 
 /** Total serialized markup budget across all blocks (anti-abuse). */
 const MAX_TOTAL_BYTES = 16 * 1024;

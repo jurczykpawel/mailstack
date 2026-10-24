@@ -1,5 +1,6 @@
+import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
-import { findBrandByOrigin, getBrand } from "./registry";
+import { findBrandByOrigin, getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
 import { handleSellfHook } from "./sellf";
@@ -49,7 +50,7 @@ export default {
 
     if (pathname === "/health" && req.method === "GET") {
       return new Response(
-        JSON.stringify({ ok: true, service: "mailstack" }),
+        JSON.stringify({ ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev" }),
         { headers: { "content-type": "application/json; charset=utf-8" } },
       );
     }

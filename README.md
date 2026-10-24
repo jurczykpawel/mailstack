@@ -114,18 +114,20 @@ MAILSTACK_ROUTE=
 ```
 
 ### 6) Describe your "brand" (who the email is from and to)
-Open **`src/brands.ts`**. There's an example called `acme` — change it to yours:
-```ts
-acme: {
-  id: "acme",
-  name: "My Website",
-  from: "My Website <hello@yourdomain.com>",   // MUST be the address you verified in SES (step 3)
-  to: ["me@yourdomain.com"],                    // where contact-form submissions land
-  allowedOrigins: ["https://yourwebsite.com"],  // your site's web address
-  subjectPrefix: "New message from",
-  autoReply: true,                              // auto "thanks" reply to the visitor (optional)
-  theme: { accent: "#0064BC", siteUrl: "https://yourwebsite.com" },
-},
+Copy `config/mailstack.example.json` to a private location outside this repository, then
+export `MAILSTACK_CONFIG` pointing to that file. Use Node 24 or newer (tested on Node 26).
+Edit `brands.acme` in that JSON file:
+```json
+"acme": {
+  "id": "acme",
+  "name": "My Website",
+  "from": "My Website <hello@acme.example>",
+  "to": ["inbox@acme.example"],
+  "allowedOrigins": ["https://acme.example"],
+  "subjectPrefix": "New message from",
+  "autoReply": true,
+  "theme": { "accent": "#0064BC", "siteUrl": "https://acme.example" }
+}
 ```
 You can rename `acme` to anything (e.g. `mysite`). Remember that id — you'll use it when you
 connect your form in step 9.
@@ -142,14 +144,19 @@ wrangler secret put API_KEY                 # a long random password (for app-to
 Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
 
 ### 8) Deploy 🚀
+Use a clean checkout at `origin/main`, or a tag reachable from it. The deploy guard
+fetches origin before setup and passes HEAD to Wrangler as `BUILD_COMMIT`.
 ```bash
+export MAILSTACK_HEALTH_URL=https://mail.example.com/health
 npm run deploy
 ```
 Cloudflare gives you a URL like `https://mailstack.<your-name>.workers.dev`. Check it works:
 ```bash
 curl https://mailstack.<your-name>.workers.dev/health
-# → {"ok":true,"service":"mailstack"}
+# → {"ok":true,"service":"mailstack","version":"1.0.0","commit":"<HEAD sha>"}
 ```
+The command fails if the deployed commit differs from HEAD. With no exported
+`MAILSTACK_HEALTH_URL`, it explicitly reports that verification was skipped.
 That's your live email service.
 
 ### 9) Connect your website form
@@ -228,14 +235,14 @@ Built-in templates: `payment`, `welcome`, `received`, `notice` (and `contact` fo
   contact form will almost certainly stay free.
 
 ## Updating it later
-Change a setting (edit `.env` or `src/brands.ts`) and run `npm run deploy` again. That's the
+Change a setting (edit `.env` or `mailstack.json`) and run `npm run deploy` again. That's the
 *entire* maintenance — there's no server to patch or keep running.
 
 ## Troubleshooting
 - **Email not arriving?** You're probably still in SES "sandbox" — verify the recipient address
   (or request production access). Also check your spam folder.
 - **"verification failed"?** The Turnstile widget wasn't solved, or your Site/Secret keys don't match.
-- **"origin not allowed"?** Add your site's address to `allowedOrigins` in `src/brands.ts`, redeploy.
+- **"origin not allowed"?** Add your site's address to `allowedOrigins` in `mailstack.json`, redeploy.
 - **"send failed"?** Your `from` address isn't verified in SES, or the SES region doesn't match
   where you verified it (set it in `.env` is for KV; the region is in `wrangler.template.toml` →
   `SES_REGION`).
@@ -255,20 +262,46 @@ Change a setting (edit `.env` or `src/brands.ts`) and run `npm run deploy` again
 - **No database** — rate limit and ALTCHA usage records in KV. **Secret scanning** in pre-commit + CI.
 
 ### Config files
-Nothing deployment-specific is committed — `npm run setup` (also run before `dev`/`deploy`/`test`/
-`typecheck`) generates it from committed templates:
+Nothing deployment-specific is committed. `npm run setup` (also run before `dev`/`deploy`)
+generates these files. Test/typecheck hooks use the committed JSON example:
 
 | Generated (gitignored) | From | Holds |
 |---|---|---|
 | `wrangler.toml` | `wrangler.template.toml` + `.env` | KV ids + custom domain (`MAILSTACK_*` vars) |
-| `src/brands.ts` | `src/brands.example.ts` | Brand registry (sender, recipients, theme) |
+| `src/core/config/bundled.ts` | external `MAILSTACK_CONFIG` JSON | Validated brands and logging policy + SHA-256 |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` | Brand logo PNG (base64) |
 
-Configure via **`.env`** and **`src/brands.ts`**; secrets via `wrangler secret put`. Full
+Configure via **`.env`** and the external **`MAILSTACK_CONFIG`** file; secrets via `wrangler secret put`. Full
 deployment notes and architecture: see [AGENTS.md](AGENTS.md).
 
+### Configuration commands
+
+```bash
+export MAILSTACK_CONFIG=/config/mailstack.json
+npm run mailstack -- config check "$MAILSTACK_CONFIG"
+node scripts/mailstack.ts config import-brands ./legacy/brands.ts > mailstack.json
+```
+
+The importer executes a trusted local TypeScript registry and writes JSON only to stdout.
+Move its output outside the repository and set `MAILSTACK_CONFIG` before `npm run setup`.
+`version`, `brands` (the previous Brand fields), and `logging` are required. `clients`,
+`events`, and `alerts` are reserved optional sections. Unknown keys in declared schemas
+are errors, reported as JSON paths. Logging policies inherit global → brand → template;
+retention ceilings and the resend/includeSecrets combinations are validated before startup.
+`source` needs a matching client callback for each effective brand/template. The loaders
+read classification from the template registry (`secretFields` is optional).
+Enabling `includeSecrets` also requires a boot audit sink; the current Worker has none and
+refuses that configuration until the audit store is integrated.
+
+Node reads the file through `loadNodeConfig()`. Worker setup validates and bundles the external
+file and sets `BUILD_CONFIG_SHA` in Wrangler vars. Its build step verifies that the source
+still matches the bundle; rerun setup after editing the source. `npm test` and
+`npm run typecheck` generate the committed example configuration locally, without reading
+private brands. Run `npm run setup` again with your external config before a real build.
+The JSON example and render snapshots contain only acme/demo data.
+
 ### API (summary)
-- `GET /health` → `{ ok: true }`.
+- `GET /health` → `{ ok: true, service: "mailstack", version, commit }` (`commit: "dev"` locally).
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
   keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template`/`autoreply` (trusted only). Everything else is email content.

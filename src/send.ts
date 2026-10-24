@@ -7,7 +7,7 @@ import type {
   TemplateData,
   TemplateDef,
 } from "./types";
-import { getBrand } from "./registry";
+import { getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { consumeAltcha } from "./altcha";
 import { checkRateLimit } from "./ratelimit";

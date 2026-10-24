@@ -1,5 +1,5 @@
-import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types";
-import { ctaButton, ctaText, escapeHtml, paragraph } from "../layout";
+import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
+import { ctaButton, ctaText, escapeHtml, paragraph } from "../layout.ts";
 
 /** Generic catch-all notice: heading + paragraphs + optional CTA. */
 export const noticeTemplate: TemplateDef = {
