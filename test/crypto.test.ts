@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Aes256Gcm, CipherSuite, HkdfSha256 } from '@hpke/core';
 import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
 import { blindIndex, blindIndexes, canonicalJson, createMac, open, seal, verifyMac } from '../src/core/crypto';
@@ -16,6 +16,72 @@ beforeAll(async () => {
 });
 
 describe('content envelopes', () => {
+  it('accepts exactly the configured UTF-8 byte limit on both paths', async () => {
+    const data = 'ą'.repeat(31);
+    expect(new TextEncoder().encode(canonicalJson(data)).byteLength).toBe(64);
+    const value = await seal(data, context, [publicKey], 64);
+    expect(await open(value, context, [privateKey], 64)).toBe(data);
+    await expect(seal(data + 'ą', context, [publicKey], 64)).rejects.toThrow(/^Unable to seal content$/);
+    await expect(open(await independentEnvelope(data + 'ą'), context, [privateKey], 64)).rejects.toThrow(/^Unable to open content$/);
+  });
+
+  it('uses a default limit of two MiB for JSON bytes', async () => {
+    const data = 'x'.repeat(2 * 1024 * 1024 - 2);
+    const value = await seal(data, context, [publicKey]);
+    expect(await open(value, context, [privateKey])).toBe(data);
+    await expect(seal(data + 'x', context, [publicKey])).rejects.toThrow(/^Unable to seal content$/);
+    await expect(open(await independentEnvelope(data + 'x'), context, [privateKey])).rejects.toThrow(/^Unable to open content$/);
+    expect(await open(await seal(data + 'x', context, [publicKey], 3 * 1024 * 1024), context, [privateKey], 3 * 1024 * 1024)).toBe(data + 'x');
+  });
+
+  it('stops reading and cancels gzip output when it exceeds the limit', async () => {
+    const data = 'x'.repeat(8 * 1024 * 1024);
+    const value = await independentEnvelope(data);
+    const NativeDecompressionStream = DecompressionStream;
+    let readBytes = 0;
+    let lastChunkBytes = 0;
+    let cancelled = false;
+    vi.stubGlobal('DecompressionStream', class {
+      readonly readable: ReadableStream<Uint8Array>;
+      readonly writable: WritableStream;
+      constructor(format: 'gzip') {
+        const stream = new NativeDecompressionStream(format);
+        const reader = stream.readable.getReader();
+        this.writable = stream.writable;
+        this.readable = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            const next = await reader.read();
+            if (next.done) controller.close();
+            else {
+              lastChunkBytes = next.value.byteLength;
+              readBytes += lastChunkBytes;
+              controller.enqueue(next.value);
+            }
+          },
+          cancel() {
+            cancelled = true;
+            return reader.cancel();
+          },
+        }, { highWaterMark: 0 });
+      }
+    });
+    try {
+      await expect(open(value, context, [privateKey], 64 * 1024)).rejects.toThrow(/^Unable to open content$/);
+      expect(cancelled).toBe(true);
+      expect(readBytes).toBeGreaterThan(64 * 1024);
+      expect(readBytes - lastChunkBytes).toBeLessThanOrEqual(64 * 1024);
+      expect(readBytes).toBeLessThan(new TextEncoder().encode(canonicalJson(data)).byteLength);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([0, -1, NaN, Infinity, 1.5])('requires a positive integer byte limit: %s', async (limit) => {
+    const value = await independentEnvelope(null);
+    await expect(seal(null, context, [publicKey], limit)).rejects.toThrow(/^Unable to seal content$/);
+    await expect(open(value, context, [privateKey], limit)).rejects.toThrow(/^Unable to open content$/);
+  });
+
   it('opens a fixed envelope produced with HPKE and Node gzip', async () => {
     const pair = await suite.kem.deriveKeyPair(new Uint8Array(32).fill(7));
     const encode = (raw: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -66,6 +132,13 @@ describe('content envelopes', () => {
     await expect(seal({}, context, [])).rejects.toThrow();
   });
 });
+
+async function independentEnvelope(data: unknown): Promise<string> {
+  const plaintext = await new Response(new Blob([canonicalJson(data)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  const { enc, ct } = await suite.seal({ recipientPublicKey: await suite.kem.importKey('jwk', publicKey), info: new TextEncoder().encode('mailstack/v1/content') }, plaintext, new TextEncoder().encode('acme|msg-1|content'));
+  const encode = (raw: ArrayBuffer) => btoa(Array.from(new Uint8Array(raw), (b) => String.fromCharCode(b)).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `ms1.c1.${encode(enc)}.${encode(ct)}`;
+}
 
 function decode(value: string): ArrayBuffer {
   return Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)).buffer;

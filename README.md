@@ -310,7 +310,11 @@ arrays the first entry is active; prepend new keys and retain older entries for 
 Back up the private file separately from message data. Do not commit it or the environment values.
 
 `seal(data, context, publicKeys)` and `open(value, context, privateKeys)` use a context
-`{brand,messageId,purpose}` and the `ms1` envelope. `blindIndex(address,key)` returns
+`{brand,messageId,purpose}` and the `ms1` envelope. Both accept an optional fourth
+argument `maxBytes` (positive integer, default 2 MiB), measured in uncompressed UTF-8
+JSON bytes. `seal` checks the size before compression; `open` counts decompressed
+chunks and cancels the reader at the first chunk exceeding the limit. Exactly the
+limit is accepted. `blindIndex(address,key)` returns
 `{kid,index}`; `blindIndexes(address,keys)` returns one result for every active index key.
 `canonicalJson` sorts object keys recursively in UTF-16 order, preserves array order,
 and uses JSON primitive serialization; it rejects non-JSON values and cycles.

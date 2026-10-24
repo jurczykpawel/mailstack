@@ -12,6 +12,7 @@ export interface SealContext {
 
 const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm() });
 const utf8 = new TextEncoder();
+const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const purposes = new Set(['rcpt', 'subject', 'ref', 'content', 'replay', 'evidence', 'provider_response']);
 const invalid = () => new Error('Invalid key configuration');
 
@@ -38,14 +39,17 @@ function binding(context: SealContext): { info: ArrayBuffer; aad: ArrayBuffer } 
   return { info: new Uint8Array(utf8.encode(`mailstack/v1/${purpose}`)).buffer, aad: new Uint8Array(utf8.encode(`${brand}|${messageId}|${purpose}`)).buffer };
 }
 
-export async function seal(data: unknown, context: SealContext, keys: readonly ContentKey[]): Promise<string> {
+export async function seal(data: unknown, context: SealContext, keys: readonly ContentKey[], maxBytes = DEFAULT_MAX_BYTES): Promise<string> {
   try {
+    checkLimit(maxBytes);
     checkKids(keys);
     const { info, aad } = binding(context);
     const key = keys[0];
     if (key.d !== undefined || key.kty !== 'OKP' || key.crv !== 'X25519') throw invalid();
     const recipientPublicKey = await suite.kem.importKey('jwk', key);
-    const compressed = await new Response(new Blob([canonicalJson(data)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+    const json = new Blob([canonicalJson(data)]);
+    if (json.size > maxBytes) throw new Error();
+    const compressed = await new Response(json.stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
     const { enc, ct } = await suite.seal({ recipientPublicKey, info }, compressed, aad);
     return `ms1.${key.kid}.${encode(enc)}.${encode(ct)}`;
   } catch {
@@ -53,8 +57,9 @@ export async function seal(data: unknown, context: SealContext, keys: readonly C
   }
 }
 
-export async function open(value: string, context: SealContext, keys: readonly ContentKey[]): Promise<unknown> {
+export async function open(value: string, context: SealContext, keys: readonly ContentKey[], maxBytes = DEFAULT_MAX_BYTES): Promise<unknown> {
   try {
+    checkLimit(maxBytes);
     checkKids(keys);
     const { info, aad } = binding(context);
     const [version, kid, enc, ciphertext, extra] = value.split('.');
@@ -63,10 +68,35 @@ export async function open(value: string, context: SealContext, keys: readonly C
     if (!key?.d || key.kty !== 'OKP' || key.crv !== 'X25519') throw invalid();
     const recipientKey = await suite.kem.importKey('jwk', key, false);
     const plaintext = await suite.open({ recipientKey, enc: decode(enc), info }, decode(ciphertext), aad);
-    const json = await new Response(new Blob([plaintext]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
-    return JSON.parse(json);
+    return await readJson(new Blob([plaintext]).stream().pipeThrough(new DecompressionStream('gzip')), maxBytes);
   } catch {
     throw new Error('Unable to open content');
+  }
+}
+
+function checkLimit(maxBytes: number): void {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error();
+}
+
+async function readJson(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<unknown> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new Error();
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    return JSON.parse(chunks.join('') + decoder.decode());
+  } finally {
+    reader.releaseLock();
   }
 }
 
