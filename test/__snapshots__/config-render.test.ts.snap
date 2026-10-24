@@ -1,0 +1,1367 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`acme/contact retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+              </tr>
+            </table>
+                <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
+                <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Hello
+World</div>
+                <p style="margin:18px 0 0 0;font-size:11px;color:#b0b0b0;line-height:1.6;">
+                  Otrzymano: -<br>
+                  Źródło: -<br>
+                  IP: -
+                </p>",
+    "bodyText": "Imię i nazwisko: Jane & Smith
+E-mail: jane@example.com
+Rodzaj konsultacji: Consultation
+Intro: Welcome
+Body: Details
+CtaUrl: https://example.com/start
+CtaLabel: Open
+RefId: REF-1
+Summary: Consultation
+Amount: 149.00
+Currency: USD
+Item: Pro
+OrderId: ORD-1
+Date: 2026-06-10
+InvoiceUrl: https://example.com/invoice
+Heading: Notice
+Paragraphs: First
+
+Second
+
+Wiadomość:
+Hello
+World
+
+Otrzymano: -
+Źródło: -
+IP: -",
+    "heading": "New message from — Consultation — Acme Inc.",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>New message from — Consultation — Acme Inc.</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">New message from — Consultation — Acme Inc.</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+              </tr>
+            </table>
+                <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
+                <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Hello
+World</div>
+                <p style="margin:18px 0 0 0;font-size:11px;color:#b0b0b0;line-height:1.6;">
+                  Otrzymano: -<br>
+                  Źródło: -<br>
+                  IP: -
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Acme Inc. &middot; 123 Example Street, 00-000 Example City &middot; tel: +00 000 000 000 &middot; <a href="https://acme.example" style="color:#0064BC;text-decoration:none;">acme.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "New message from — Consultation — Acme Inc.",
+  "text": "New message from — Consultation — Acme Inc.
+===========================================
+
+Imię i nazwisko: Jane & Smith
+E-mail: jane@example.com
+Rodzaj konsultacji: Consultation
+Intro: Welcome
+Body: Details
+CtaUrl: https://example.com/start
+CtaLabel: Open
+RefId: REF-1
+Summary: Consultation
+Amount: 149.00
+Currency: USD
+Item: Pro
+OrderId: ORD-1
+Date: 2026-06-10
+InvoiceUrl: https://example.com/invoice
+Heading: Notice
+Paragraphs: First
+
+Second
+
+Wiadomość:
+Hello
+World
+
+Otrzymano: -
+Źródło: -
+IP: -
+
+----------------------------------------
+Acme Inc.
+123 Example Street, 00-000 Example City
+tel: +00 000 000 000
+https://acme.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`acme/notice retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>",
+    "bodyText": "First
+
+Second
+
+Open: https://example.com/start",
+    "heading": "Notice",
+    "previewText": "First",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Notice</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">First</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Notice</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Acme Inc. &middot; 123 Example Street, 00-000 Example City &middot; tel: +00 000 000 000 &middot; <a href="https://acme.example" style="color:#0064BC;text-decoration:none;">acme.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Notice",
+  "text": "Notice
+======
+
+First
+
+Second
+
+Open: https://example.com/start
+
+----------------------------------------
+Acme Inc.
+123 Example Street, 00-000 Example City
+tel: +00 000 000 000
+https://acme.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`acme/payment retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+            </table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                </td>
+              </tr>
+            </table>",
+    "bodyText": "Witaj Jane & Smith,
+
+Dziękujemy za płatność. Poniżej podsumowanie:
+
+Kwota: 149.00 USD
+
+Pozycja: Pro
+
+Nr zamówienia: ORD-1
+
+Data: 2026-06-10
+
+Pobierz fakturę: https://example.com/invoice",
+    "heading": "Potwierdzenie płatności",
+    "jsonLd": [
+      {
+        "@context": "https://schema.org",
+        "@type": "EmailMessage",
+        "potentialAction": {
+          "@type": "ViewAction",
+          "name": "Pobierz fakturę",
+          "url": "https://example.com/invoice",
+        },
+      },
+    ],
+    "previewText": "Potwierdzenie płatności: 149.00 USD",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Potwierdzenie płatności</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Potwierdzenie płatności: 149.00 USD</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Potwierdzenie płatności</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+            </table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                </td>
+              </tr>
+            </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Acme Inc. &middot; 123 Example Street, 00-000 Example City &middot; tel: +00 000 000 000 &middot; <a href="https://acme.example" style="color:#0064BC;text-decoration:none;">acme.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Potwierdzenie płatności - ORD-1",
+  "text": "Potwierdzenie płatności
+=======================
+
+Witaj Jane & Smith,
+
+Dziękujemy za płatność. Poniżej podsumowanie:
+
+Kwota: 149.00 USD
+
+Pozycja: Pro
+
+Nr zamówienia: ORD-1
+
+Data: 2026-06-10
+
+Pobierz fakturę: https://example.com/invoice
+
+----------------------------------------
+Acme Inc.
+123 Example Street, 00-000 Example City
+tel: +00 000 000 000
+https://acme.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`acme/received retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
+<div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>",
+    "bodyText": "Witaj Jane & Smith,
+
+Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
+
+Numer zgłoszenia: REF-1
+
+Consultation",
+    "heading": "Dziękujemy za wiadomość",
+    "previewText": "Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Dziękujemy za wiadomość</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Dziękujemy za wiadomość</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
+<div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Acme Inc. &middot; 123 Example Street, 00-000 Example City &middot; tel: +00 000 000 000 &middot; <a href="https://acme.example" style="color:#0064BC;text-decoration:none;">acme.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Potwierdzenie: otrzymaliśmy Twoje zgłoszenie",
+  "text": "Dziękujemy za wiadomość
+=======================
+
+Witaj Jane & Smith,
+
+Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
+
+Numer zgłoszenia: REF-1
+
+Consultation
+
+----------------------------------------
+Acme Inc.
+123 Example Street, 00-000 Example City
+tel: +00 000 000 000
+https://acme.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`acme/welcome retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>",
+    "bodyText": "Welcome
+
+Details
+
+Open: https://example.com/start",
+    "heading": "Witaj, Jane & Smith w Acme Inc.!",
+    "previewText": "Welcome",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Witaj, Jane &amp; Smith w Acme Inc.!</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Welcome</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Witaj, Jane &amp; Smith w Acme Inc.!</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Acme Inc. &middot; 123 Example Street, 00-000 Example City &middot; tel: +00 000 000 000 &middot; <a href="https://acme.example" style="color:#0064BC;text-decoration:none;">acme.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Witaj w Acme Inc.",
+  "text": "Witaj, Jane & Smith w Acme Inc.!
+================================
+
+Welcome
+
+Details
+
+Open: https://example.com/start
+
+----------------------------------------
+Acme Inc.
+123 Example Street, 00-000 Example City
+tel: +00 000 000 000
+https://acme.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`demo/contact retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+              </tr>
+            </table>
+                <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
+                <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Hello
+World</div>
+                <p style="margin:18px 0 0 0;font-size:11px;color:#b0b0b0;line-height:1.6;">
+                  Otrzymano: -<br>
+                  Źródło: -<br>
+                  IP: -
+                </p>",
+    "bodyText": "Imię i nazwisko: Jane & Smith
+E-mail: jane@example.com
+Rodzaj konsultacji: Consultation
+Intro: Welcome
+Body: Details
+CtaUrl: https://example.com/start
+CtaLabel: Open
+RefId: REF-1
+Summary: Consultation
+Amount: 149.00
+Currency: USD
+Item: Pro
+OrderId: ORD-1
+Date: 2026-06-10
+InvoiceUrl: https://example.com/invoice
+Heading: Notice
+Paragraphs: First
+
+Second
+
+Wiadomość:
+Hello
+World
+
+Otrzymano: -
+Źródło: -
+IP: -",
+    "heading": "New message — Consultation — Demo Brand",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>New message — Consultation — Demo Brand</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">New message — Consultation — Demo Brand</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Imię i nazwisko</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Jane &amp; Smith</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">E-mail</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">jane@example.com</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Rodzaj konsultacji</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Intro</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Welcome</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Body</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Details</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/start</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">CtaLabel</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Open</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">RefId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">REF-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Summary</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Consultation</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Amount</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Currency</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Item</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">OrderId</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Date</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">InvoiceUrl</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">https://example.com/invoice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Heading</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Notice</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Paragraphs</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">First<br><br>Second</td>
+              </tr>
+            </table>
+                <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">Wiadomość</p>
+                <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Hello
+World</div>
+                <p style="margin:18px 0 0 0;font-size:11px;color:#b0b0b0;line-height:1.6;">
+                  Otrzymano: -<br>
+                  Źródło: -<br>
+                  IP: -
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Demo Brand &middot; <a href="https://demo.example" style="color:#008AFF;text-decoration:none;">demo.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "New message — Consultation — Demo Brand",
+  "text": "New message — Consultation — Demo Brand
+=======================================
+
+Imię i nazwisko: Jane & Smith
+E-mail: jane@example.com
+Rodzaj konsultacji: Consultation
+Intro: Welcome
+Body: Details
+CtaUrl: https://example.com/start
+CtaLabel: Open
+RefId: REF-1
+Summary: Consultation
+Amount: 149.00
+Currency: USD
+Item: Pro
+OrderId: ORD-1
+Date: 2026-06-10
+InvoiceUrl: https://example.com/invoice
+Heading: Notice
+Paragraphs: First
+
+Second
+
+Wiadomość:
+Hello
+World
+
+Otrzymano: -
+Źródło: -
+IP: -
+
+----------------------------------------
+Demo Brand
+https://demo.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`demo/notice retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#008AFF;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>",
+    "bodyText": "First
+
+Second
+
+Open: https://example.com/start",
+    "heading": "Notice",
+    "previewText": "First",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Notice</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">First</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Notice</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#008AFF;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Demo Brand &middot; <a href="https://demo.example" style="color:#008AFF;text-decoration:none;">demo.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Notice",
+  "text": "Notice
+======
+
+First
+
+Second
+
+Open: https://example.com/start
+
+----------------------------------------
+Demo Brand
+https://demo.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`demo/payment retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+            </table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#008AFF;">
+                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                </td>
+              </tr>
+            </table>",
+    "bodyText": "Witaj Jane & Smith,
+
+Dziękujemy za płatność. Poniżej podsumowanie:
+
+Kwota: 149.00 USD
+
+Pozycja: Pro
+
+Nr zamówienia: ORD-1
+
+Data: 2026-06-10
+
+Pobierz fakturę: https://example.com/invoice",
+    "heading": "Potwierdzenie płatności",
+    "jsonLd": [
+      {
+        "@context": "https://schema.org",
+        "@type": "EmailMessage",
+        "potentialAction": {
+          "@type": "ViewAction",
+          "name": "Pobierz fakturę",
+          "url": "https://example.com/invoice",
+        },
+      },
+    ],
+    "previewText": "Potwierdzenie płatności: 149.00 USD",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Potwierdzenie płatności</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Potwierdzenie płatności: 149.00 USD</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Potwierdzenie płatności</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Kwota</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">149.00 USD</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Pozycja</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Nr zamówienia</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">ORD-1</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Data</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">2026-06-10</td>
+              </tr>
+            </table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#008AFF;">
+                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                </td>
+              </tr>
+            </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Demo Brand &middot; <a href="https://demo.example" style="color:#008AFF;text-decoration:none;">demo.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Potwierdzenie płatności - ORD-1",
+  "text": "Potwierdzenie płatności
+=======================
+
+Witaj Jane & Smith,
+
+Dziękujemy za płatność. Poniżej podsumowanie:
+
+Kwota: 149.00 USD
+
+Pozycja: Pro
+
+Nr zamówienia: ORD-1
+
+Data: 2026-06-10
+
+Pobierz fakturę: https://example.com/invoice
+
+----------------------------------------
+Demo Brand
+https://demo.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`demo/received retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
+<div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>",
+    "bodyText": "Witaj Jane & Smith,
+
+Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
+
+Numer zgłoszenia: REF-1
+
+Consultation",
+    "heading": "Dziękujemy za wiadomość",
+    "previewText": "Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Dziękujemy za wiadomość</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Dziękujemy za wiadomość</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
+<div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Demo Brand &middot; <a href="https://demo.example" style="color:#008AFF;text-decoration:none;">demo.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Potwierdzenie: otrzymaliśmy Twoje zgłoszenie",
+  "text": "Dziękujemy za wiadomość
+=======================
+
+Witaj Jane & Smith,
+
+Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
+
+Numer zgłoszenia: REF-1
+
+Consultation
+
+----------------------------------------
+Demo Brand
+https://demo.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
+
+exports[`demo/welcome retains its rendering 1`] = `
+{
+  "body": {
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#008AFF;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>",
+    "bodyText": "Welcome
+
+Details
+
+Open: https://example.com/start",
+    "heading": "Witaj, Jane & Smith w Demo Brand!",
+    "previewText": "Welcome",
+  },
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Witaj, Jane &amp; Smith w Demo Brand!</title>
+    
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Welcome</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Witaj, Jane &amp; Smith w Demo Brand!</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#008AFF;">
+                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                </td>
+              </tr>
+            </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Demo Brand &middot; <a href="https://demo.example" style="color:#008AFF;text-decoration:none;">demo.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Witaj w Demo Brand",
+  "text": "Witaj, Jane & Smith w Demo Brand!
+=================================
+
+Welcome
+
+Details
+
+Open: https://example.com/start
+
+----------------------------------------
+Demo Brand
+https://demo.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;
