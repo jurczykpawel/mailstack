@@ -41,8 +41,8 @@ export async function recordEvents(store: KyselyStore, rows: EventRow[]): Promis
     status=coalesce((select status from recipients where message_id=${id} order by ${rank('status')} desc,pos limit 1),status),
     complained=case when exists(select 1 from events where message_id=${id} and type='complaint') then 1 else complained end
     where id=${id}`.compile(store.db));
-  const results = await store.atomic(statements);
-  return results.slice(0, rows.length).some(r => r.numAffectedRows === 1n);
+  const results = await store.batch(statements);
+  return results.slice(0, rows.length).some(changes => changes === 1);
 }
 export async function auditConfirmation(store: KyselyStore, at: number): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt++) {

@@ -394,3 +394,31 @@ mailstack is free and MIT-licensed. If it's quietly delivering your emails right
 you can buy me a croissant:
 
 [![🥐 Buy me a croissant](https://img.shields.io/badge/🥐_Buy_me_a_croissant-FFDD00)](https://sellf.techskills.academy/checkout/tip-mailstack?utm_source=github&utm_medium=readme&utm_campaign=tip-jar)
+
+### Retention and snapshots
+
+The Worker runs retention hourly at minute 17 (UTC). Expired content, resend data
+and guards are removed; message metadata and its children are deleted in atomic
+batches of at most 500 messages. Logging ceilings also apply to existing rows.
+Content readers must call `isContentReadable(row, now)` before returning content,
+including when scheduled maintenance has not run yet. Sending rows older than
+15 minutes become `unknown` with a local event; this does not resend mail.
+
+`appendAudit(store, entry)` accepts internal metadata only: actors, actions,
+message identifiers, counts and configuration identifiers; callers must exclude
+personal data from targets and details. Details use canonical JSON. The first
+`prev_hash` is 64 zeroes; absent target/details contribute empty strings to the
+newline-separated SHA-256 input. Appends assign consecutive sequence numbers
+inside an atomic write and retry a conflicting head at most three times.
+Pruning removes a contiguous expired prefix only after recording
+`audit.pruned {upTo, hashAtUpTo}`. `verifyChain(rows, anchor?)` checks ordered rows
+and an optional independently stored `(seq, hash)` anchor. Supply the last known
+head to detect a shortened tail; rows alone cannot establish a missing tail.
+A pruned prefix can be checked from its marker or a matching boundary anchor.
+
+Node exposes `backupSqlite(db, dir, now, keep=7)` for consistent daily snapshots
+named `mailstack-YYYYMMDD.db` using UTC dates. It retains the seven newest matching
+files and leaves other files untouched. Runtime scheduling is deferred to the
+Node runtime integration; with daily scheduling, backups expire within seven
+days. Keep keys outside the database and backup directory. Worker databases use
+[D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).

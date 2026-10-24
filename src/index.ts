@@ -1,6 +1,7 @@
 import { handleSesEvent } from "./events/ses";
 import { createVerifier } from "./events/sns";
 import { createD1Store } from "./core/store/d1";
+import { runRetention } from "./core/retention";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
@@ -44,7 +45,13 @@ function handlePreflight(req: Request, url: URL): Response {
   return new Response(null, { status: 403 });
 }
 
+export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
+  if (!env.DB) throw new Error("Retention storage unavailable");
+  ctx.waitUntil(runRetention(createD1Store(env.DB), event.scheduledTime, config));
+}
+
 export default {
+  scheduled,
   async fetch(
     req: Request,
     env: Env,
