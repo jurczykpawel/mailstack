@@ -65,7 +65,7 @@ No bearer token (or an invalid one). The Worker enforces **all** of:
    is atomically recorded in D1 before sending. Subsequent uses return the same 403.
    Missing storage or write errors also return 403. Trusted mode skips guards.
 4. **Rate limit** — D1 fixed window, 8 requests/hour per `brand`+IP, else `429`.
-   Missing storage or storage errors also return 429.
+   The rate limiter degrades open when storage is missing or fails; captcha is still required.
 5. **Fixed recipient** — mail always goes to `brand.to`; any `to`/`from` in the body is ignored (anti-relay).
 
 ALTCHA records expire at the signed validity timestamp. Fetch and solve a new challenge
@@ -358,8 +358,9 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
 - **Fixed recipient / anti-relay:** the recipient is always `brand.to` from server config
   in public mode. `to`/`from` in the request body are ignored, so the endpoint can never be
   used as an open relay. Covered by a regression test.
-- **Rate limit:** D1-backed fixed window (8/hour per brand+IP). Missing or unavailable
-  storage declines public requests with 429.
+- **Rate limit:** D1-backed fixed window (8/hour per brand+IP). Degrades open when
+  storage is missing or fails; public requests still require captcha. ALTCHA single-use
+  recording remains fail-closed and returns 403 when storage is unavailable.
 - **Bearer compare:** trusted-mode token is compared in constant time.
 - **Output escaping:** every field value is HTML-escaped before rendering (no stored/reflected XSS).
 - **Markup safety:** JSON-LD is embedded via a JSON-safe serializer that escapes `<` (neutralizes

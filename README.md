@@ -206,8 +206,9 @@ The Worker atomically records usage in D1 before sending; missing storage or sto
 errors also return 403. Fetch a new challenge for each submission or retry, including
 after `send failed`. Records expire at the signed expiry; concurrent submissions of
 one solution allow only one submission to proceed. Trusted sends skip guards.
-Public Turnstile sends still require the D1 rate limiter (8 attempts per brand/IP/hour);
-unavailable storage returns 429.
+The D1 rate limiter allows 8 attempts per brand/IP/hour and degrades open when storage
+is missing or fails; public requests still require captcha. ALTCHA single-use recording
+remains fail-closed: missing storage or storage errors return 403.
 
 ## Sending emails from your app (payments, welcome, etc.)
 

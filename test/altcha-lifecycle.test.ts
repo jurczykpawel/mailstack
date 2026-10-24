@@ -103,12 +103,12 @@ describe('ALTCHA submission lifecycle', () => {
     expect(f.deps.sendEmail).toHaveBeenCalledTimes(1);
   });
 
-  it('allows trusted sends and declines public sends without storage', async () => {
+  it('allows trusted and Turnstile sends without storage', async () => {
     const f = fixture();
     delete f.deps.store;
     expect((await f.send('', { authorization: 'Bearer test-api-key' })).status).toBe(200);
-    expect((await f.send('', {}, 'acme')).status).toBe(429);
+    expect((await f.send('', {}, 'acme')).status).toBe(200);
     expect(f.deps.verifyTurnstile).toHaveBeenCalledTimes(1);
-    expect(f.deps.sendEmail).toHaveBeenCalledTimes(1);
+    expect(f.deps.sendEmail).toHaveBeenCalledTimes(2);
   });
 });

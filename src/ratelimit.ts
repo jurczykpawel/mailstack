@@ -10,11 +10,11 @@ export async function checkRateLimit(
   now = new Date(),
 ): Promise<boolean> {
   try {
-    if (!store) return false;
+    if (!store) return true;
     const window = Math.floor(now.getTime() / WINDOW_MS);
     const key = `rl:${brand}:${ip || 'unknown'}:${window}`;
     return await store.increment(key, (window + 1) * WINDOW_MS) <= MAX_REQUESTS;
   } catch {
-    return false;
+    return true;
   }
 }

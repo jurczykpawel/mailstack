@@ -196,15 +196,23 @@ describe("handleSend — public mode", () => {
     expect(deps.sendEmail).toHaveBeenCalledTimes(8);
   });
 
-  it("declines public sends when the counter is unavailable", async () => {
+  it.each(["missing", "error"])("allows public sends with captcha when the counter is %s", async failure => {
     const store = memoryStore();
     vi.spyOn(store, "increment").mockRejectedValue(new Error("unavailable"));
-    const deps = makeDeps({ store });
-    const response = await handleSend(req({ brand: "acme", "cf-turnstile-response": "ok" },
+    const deps = makeDeps({ store: failure === "missing" ? undefined : store });
+    const submit = () => handleSend(req({ brand: "acme", "cf-turnstile-response": "ok" },
       { origin: ACME_ORIGIN }), makeEnv(), deps);
-    expect(response.status).toBe(429);
-    expect(await response.json()).toEqual({ success: false, message: "rate limit exceeded" });
-    expect(deps.sendEmail).not.toHaveBeenCalled();
+    const response = await submit();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(deps.verifyTurnstile).toHaveBeenCalledOnce();
+    expect(deps.sendEmail).toHaveBeenCalledOnce();
+
+    deps.verifyTurnstile.mockResolvedValue(false);
+    const declined = await submit();
+    expect(declined.status).toBe(403);
+    expect(await declined.json()).toEqual({ success: false, message: "verification failed" });
+    expect(deps.sendEmail).toHaveBeenCalledOnce();
   });
 
   it("returns 502 when SES reports a failure", async () => {
