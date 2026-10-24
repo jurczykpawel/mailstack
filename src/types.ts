@@ -14,6 +14,8 @@ export interface Env {
   API_KEY: string;
   ALTCHA_HMAC_KEY: string;
   DB?: D1Database;
+  CONTENT_PUBLIC_KEYS?: string;
+  INDEX_KEYS?: string;
 }
 
 /** Visual + contact identity used to render a brand's email. */

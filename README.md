@@ -313,6 +313,26 @@ The JSON example and render snapshots contain only acme/demo data.
   keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template`/`autoreply` (trusted only). Everything else is email content.
 - `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer-only). See [AGENTS.md](AGENTS.md).
+- `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
+  `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
+
+### SES events
+
+Configure `events.ses` with `topicArns` (SNS ARN list), `accountIds` (12-digit account list),
+and optional `allowSignatureV1` (default `false`). SNS topics should use SignatureVersion 2.
+The endpoint accepts bodies up to 256 KB. Invalid envelopes return 400, unverified messages
+403, oversized bodies 413, and unavailable storage or evidence keys 503 so SNS can retry.
+Set the JSON bindings `CONTENT_PUBLIC_KEYS` and `INDEX_KEYS` using the output of the keys CLI.
+
+Events match existing messages through `ms_id` tags or account/provider identifiers and
+recipients through blind indexes across active index keys. Event insertion and status
+projection run atomically with SQLite transactions or D1 batches. Evidence contains the
+complete SNS envelope sealed with purpose `evidence`; complaint events set the message's
+`complained` flag. Unknown/deleted messages are acknowledged without creating rows.
+
+Certificate parsing uses a small DER extractor for SPKI followed by WebCrypto RSA verification,
+with no X.509 package dependency. Tests generate local RSA certificates and exercise both
+Node and workerd. A real SNS notification remains a deployment validation step.
 
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails

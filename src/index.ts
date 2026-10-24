@@ -1,7 +1,9 @@
+import { handleSesEvent } from "./events/ses";
+import { createVerifier } from "./events/sns";
 import { createD1Store } from "./core/store/d1";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
-import { findBrandByOrigin, getBrand } from "./core/config";
+import { config, findBrandByOrigin, getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
 import { handleSellfHook } from "./sellf";
@@ -9,6 +11,8 @@ import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
 import { createChallenge, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
+
+const verifySns = createVerifier();
 
 const defaultDeps: SendDeps = {
   verifyTurnstile,
@@ -109,6 +113,13 @@ export default {
       return handleSellfHook(req, env, defaultDeps);
     }
 
+    if (pathname === "/v1/events/ses" && req.method === "POST") {
+      try {
+        return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
+          store: env.DB ? createD1Store(env.DB) : undefined, now: Date.now,
+          contentKeys: JSON.parse(env.CONTENT_PUBLIC_KEYS || '[]'), indexKeys: JSON.parse(env.INDEX_KEYS || '[]') });
+      } catch { return Response.json({ ok: false }, { status: 503 }); }
+    }
     return notFound();
   },
 };
