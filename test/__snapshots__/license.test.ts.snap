@@ -1,0 +1,100 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renders the license template with shared layout 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Twój klucz licencji</title>
+
+  </head>
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Licencja: Example Pro</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 24px 4px 24px;">
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Twój klucz licencji</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Produkt</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Example Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Plan</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">Pro</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:13px;color:#666;font-weight:600;vertical-align:top;width:38%;">Domena</td>
+                <td style="padding:10px 16px;border-bottom:1px solid #eaeaea;font-size:14px;color:#1a1a1a;vertical-align:top;">example.com</td>
+              </tr>
+            </table>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Klucz licencji</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px 0;"><tr><td style="background:#f6f7f9;border:1px solid #e0e3e8;border-radius:8px;padding:16px;"><pre style="margin:0;font-family:Consolas,Monaco,'Courier New',monospace;font-size:13px;color:#1a1a1a;line-height:1.6;word-break:break-all;white-space:pre-wrap;user-select:text;">EXAMPLE-1234</pre></td></tr></table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+              <tr>
+                <td style="border-radius:8px;background:#0064BC;">
+                  <a href="https://example.com/activate" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Aktywuj licencję</a>
+                </td>
+              </tr>
+            </table>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Wklej klucz w ustawieniach.<br>Zapisz zmiany.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <hr style="border:none;border-top:1px solid #eaeaea;margin:0 0 14px 0;">
+                <p style="margin:0;font-size:12px;color:#888;line-height:1.6;">Acme Inc. &middot; 123 Example Street, 00-000 Example City &middot; tel: +00 000 000 000 &middot; <a href="https://acme.example" style="color:#0064BC;text-decoration:none;">acme.example</a></p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Twój klucz licencji: Example Pro",
+  "text": "Twój klucz licencji
+===================
+
+Witaj Jane & Smith,
+
+Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:
+
+Produkt: Example Pro
+
+Plan: Pro
+
+Domena: example.com
+
+Klucz licencji: EXAMPLE-1234
+
+Aktywuj licencję: https://example.com/activate
+
+Wklej klucz w ustawieniach.
+Zapisz zmiany.
+
+----------------------------------------
+Acme Inc.
+123 Example Street, 00-000 Example City
+tel: +00 000 000 000
+https://acme.example
+
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+}
+`;

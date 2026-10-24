@@ -105,6 +105,7 @@ export interface LayoutInput {
  */
 export interface TemplateDef {
   secretFields?: string[];
+  subjectRoles?: string[];
   id: string;
   /** Whether public (browser) requests may select this type. Only 'contact' is true. */
   publicAllowed?: boolean;

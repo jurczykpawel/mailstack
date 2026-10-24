@@ -11,6 +11,7 @@ import { welcomeTemplate } from "./types/welcome.ts";
 import { receivedTemplate } from "./types/received.ts";
 import { paymentTemplate } from "./types/payment.ts";
 import { noticeTemplate } from "./types/notice.ts";
+import { licenseTemplate } from "./types/license.ts";
 
 /** Registry of all email types, keyed by id. */
 export const TEMPLATES: Record<string, TemplateDef> = {
@@ -19,6 +20,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   received: receivedTemplate,
   payment: paymentTemplate,
   notice: noticeTemplate,
+  license: licenseTemplate,
 };
 
 export function getTemplate(id: string): TemplateDef | undefined {

@@ -279,12 +279,20 @@ deployment notes and architecture: see [AGENTS.md](AGENTS.md).
 export MAILSTACK_CONFIG=/config/mailstack.json
 npm run mailstack -- config check "$MAILSTACK_CONFIG"
 node scripts/mailstack.ts config import-brands ./legacy/brands.ts > mailstack.json
+node scripts/mailstack.ts client create --id acme-app --scopes send --brands acme --templates notice,payment
+node scripts/mailstack.ts client create --id panel --scopes panel
 ```
+
+`client create` prints the token once alongside its configuration entry containing `tokenSha256`.
+Clients with `send` or `hook:sellf` require explicit `brands` and `templates` selections:
+pass comma-separated lists or quote `'*'` for all values. The CLI requires both `--brands`
+and `--templates` for these scopes. Panel-only clients may omit both; omitted selections
+become empty lists. Legacy key defaults remain `brands: "*"` and `templates: "*"`.
 
 The importer executes a trusted local TypeScript registry and writes JSON only to stdout.
 Move its output outside the repository and set `MAILSTACK_CONFIG` before `npm run setup`.
 `version`, `brands` (the previous Brand fields), and `logging` are required. `clients`,
-`events`, and `alerts` are reserved optional sections. Unknown keys in declared schemas
+`legacyApiKey`, `events`, and `alerts` are optional sections. Unknown keys in declared schemas
 are errors, reported as JSON paths. Logging policies inherit global → brand → template;
 retention ceilings and the resend/includeSecrets combinations are validated before startup.
 `source` needs a matching client callback for each effective brand/template. The loaders

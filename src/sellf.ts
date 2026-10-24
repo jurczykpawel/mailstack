@@ -1,7 +1,8 @@
 import type { Env, SendDeps, TemplateData } from "./types";
-import { getBrand } from "./core/config";
+import { config, getBrand } from "./core/config";
+import { authenticate, permits } from "./clients.ts";
 import { getTemplate } from "./templates/index";
-import { isTrusted, renderAndSend } from "./send";
+import { renderAndSend } from "./send";
 
 // Brand used when the request omits `?brand=`. Override per deployment with the
 // SELLF_DEFAULT_BRAND var (wrangler.toml [vars]); falls back to "acme" (demo).
@@ -171,29 +172,23 @@ const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
   },
 };
 
-/**
- * Handle POST /v1/hooks/sellf. Bearer-only (the existing API_KEY) — Sellf calls
- * us as a trusted client, so there is no HMAC and any X-Sellf-* headers are
- * ignored. Maps the event to a brand-themed email reusing the trusted send
- * pipeline; the recipient is the customer from the payload.
- *
- * Acknowledges (200) unmapped events and missing/invalid recipients so Sellf
- * does not retry them; only a genuine SES failure returns 502 (retryable). The
- * send is awaited (not backgrounded) to stay within Sellf's request timeout.
- */
+/** Handle Sellf events for authenticated clients through the shared send pipeline. */
 export async function handleSellfHook(
   req: Request,
   env: Env,
   deps: SendDeps,
 ): Promise<Response> {
-  // Bearer-only auth (constant-time). No HMAC.
-  if (!isTrusted(req, env)) {
+  const client = await authenticate(req, env, config);
+  if (!client) {
     return jsonResponse({ success: false, message: "unauthorized" }, 401);
   }
 
   const url = new URL(req.url);
   const brandId =
     url.searchParams.get("brand") || env.SELLF_DEFAULT_BRAND || FALLBACK_BRAND;
+  if (!permits(client, "hook:sellf", brandId)) {
+    return jsonResponse({ success: false, message: "forbidden", code: "scope" }, 403);
+  }
   const brand = getBrand(brandId);
   if (!brand) {
     return jsonResponse({ success: false, message: "unknown brand" }, 400);
@@ -223,6 +218,9 @@ export async function handleSellfHook(
   }
 
   const mapped = mapper(envelope);
+  if (mapped && !permits(client, "hook:sellf", brandId, mapped.template)) {
+    return jsonResponse({ success: false, message: "forbidden", code: "scope" }, 403);
+  }
   const to = (mapped?.to || "").trim();
   if (!mapped || !EMAIL_RE.test(to)) {
     return jsonResponse({ success: true, ignored: "no-email" });
