@@ -91,6 +91,17 @@ describe('public form nonce', () => {
     expect(mail.text).not.toMatch(/^(Nonce|Product):/m);
     expect(mail.html).not.toMatch(/<td[^>]*>\s*(Nonce|Product)\s*</i);
   });
+  it('accepts marketing consent fields and passes them to the owner mail', async () => {
+    const body = await submission();
+    const response = await send({ ...body, marketingConsent: true, consentVersion: 'v1', consentText: 'I agree to news' });
+    expect(response.status).toBe(200);
+    const mail = vi.mocked(deps.sendEmail).mock.calls[0][1];
+    expect(mail.text).toContain('I agree to news');
+    expect(mail.text).toContain('v1');
+  });
+  it('accepts an unchecked marketing consent field', async () => {
+    expect((await send({ ...await submission(), marketingConsent: false })).status).toBe(200);
+  });
   it('uses the product from nonce when POST omits product', async () => {
     expect((await send(await submission())).status).toBe(200);
     expect(vi.mocked(deps.sendEmail).mock.calls[0][1].subject).toContain(PRODUCT);
