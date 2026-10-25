@@ -64,7 +64,7 @@ export function createVerifier(fetcher: typeof fetch = fetch, now: () => number 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 5000);
         try {
-          const response = await fetcher(url.href, { redirect: 'error', signal: controller.signal });
+          const response = await fetcher(url.href, { redirect: 'manual', signal: controller.signal });
           if (!response.ok) { await response.body?.cancel(); return false; }
           entry = { pem: await boundedText(response, 65536), expires: now() + 86400000 };
           spki(entry.pem);
@@ -83,7 +83,7 @@ export function createVerifier(fetcher: typeof fetch = fetch, now: () => number 
 }
 export async function confirm(b: Envelope, fetcher: typeof fetch): Promise<void> {
   const url = awsUrl(b.SubscribeURL, b.TopicArn, false);
-  const response = await fetcher(url.href, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(5000) });
+  const response = await fetcher(url.href, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(5000) });
   await response.body?.cancel();
   if (!response.ok) throw new Error();
 }

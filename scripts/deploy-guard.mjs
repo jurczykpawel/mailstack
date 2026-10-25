@@ -40,7 +40,7 @@ export async function deploy({
     return;
   }
   const response = await fetchHealth(healthUrl, {
-    cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000),
+    cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}.`);
   if ((await response.json())?.commit !== sha) throw new Error("Health commit does not match HEAD.");

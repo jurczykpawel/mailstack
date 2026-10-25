@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { generateKeyPairSync } from 'node:crypto';
 import { buildSync } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { createNtfyNotifier } from '../src/adapters/notify/ntfy';
 import { createVerifier } from '../src/events/sns';
 import { handleSesEvent } from '../src/events/ses';
 import worker from '../src/index';
@@ -35,13 +36,16 @@ it('routes SES requests through the worker', async () => {
 
 describe('SNS verification', () => {
   it('verifies local signatures with optional subject and a final newline', async () => {
-    const fetcher = vi.fn(async () => new Response(cert));
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      if (init?.redirect === 'error') throw new TypeError('Invalid redirect value');
+      return new Response(cert);
+    });
     const verify = createVerifier(fetcher);
     const body = signed(key, notification(), { Subject: 'A\nB' });
     expect(await verify(body, body.Type, options)).toBe(true);
     expect(await verify(body, body.Type, options)).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]).toEqual([body.SigningCertURL, expect.objectContaining({ redirect: 'error', signal: expect.any(AbortSignal) })]);
+    expect(fetcher.mock.calls[0]).toEqual([body.SigningCertURL, expect.objectContaining({ redirect: 'manual', signal: expect.any(AbortSignal) })]);
     expect(await verify({ ...body, Message: '{}' }, body.Type, options)).toBe(false);
   });
   it('expires the certificate cache after 24 hours', async () => {
@@ -245,7 +249,8 @@ it('alerts once per message and type using the effective template policy', async
     expect(await store.db.selectFrom('guards').selectAll().execute()).toMatchObject([{ key: 'alert:msg_1:bounce_permanent', expires_at: 1000 + logging.defaults.metaDays * 86400000 }]);
     await handleSesEvent(request(signed(key, notification('Send'))), deps);
     expect(notify).toHaveBeenCalledTimes(1);
-    notify.mockRejectedValue(new Error('private notification detail'));
+    notify.mockImplementationOnce(createNtfyNotifier({ NTFY_URL: 'https://ntfy.example/demo' },
+      async () => new Response(null, { status: 302, headers: { location: 'https://other.example/' } })).notify);
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect((await handleSesEvent(request(signed(key, notification('Complaint', { complaint: { complainedRecipients: ['one@example.com'] } }))), deps)).status).toBe(200);
     expect(log).toHaveBeenCalledWith('mailstack: alert failed');

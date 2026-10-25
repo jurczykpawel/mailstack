@@ -83,11 +83,22 @@ describe("deploy execution", () => {
   const options = () => ({ cwd, healthUrl: "https://mail.example.com/health", runWrangler: vi.fn(), fetchHealth: vi.fn(), log: vi.fn() });
   it("passes HEAD to Wrangler and checks health after success", async () => {
     const opts = options(), sha = git(cwd, "rev-parse", "HEAD");
-    opts.fetchHealth.mockResolvedValue(Response.json({ commit: sha }));
+    opts.fetchHealth.mockImplementation(async (_url, init) => {
+      if (init?.redirect === "error") throw new TypeError("Invalid redirect value");
+      return Response.json({ commit: sha });
+    });
     await deploy(opts);
     expect(opts.runWrangler).toHaveBeenCalledWith(["deploy", "--var", `BUILD_COMMIT:${sha}`]);
-    expect(opts.fetchHealth).toHaveBeenCalledWith(opts.healthUrl, expect.objectContaining({ cache: "no-store", redirect: "error", signal: expect.any(AbortSignal) }));
+    expect(opts.fetchHealth).toHaveBeenCalledWith(opts.healthUrl, expect.objectContaining({ cache: "no-store", redirect: "manual", signal: expect.any(AbortSignal) }));
     expect(opts.runWrangler.mock.invocationCallOrder[0]).toBeLessThan(opts.fetchHealth.mock.invocationCallOrder[0]);
+  });
+  it.each([300, 301, 302, 303, 304, 305, 306, 307, 308, 399, "opaqueredirect"])("rejects health response %s", async (status) => {
+    const opts = options();
+    const response = status === "opaqueredirect" ? Response.error() : new Response(null, { status });
+    if (status === "opaqueredirect") Object.defineProperty(response, "type", { value: status });
+    opts.fetchHealth.mockResolvedValue(response);
+    await expect(deploy(opts)).rejects.toThrow(/Health check failed/);
+    expect(opts.fetchHealth).toHaveBeenCalledOnce();
   });
   it("stops before Wrangler when repository checks fail", async () => {
     const opts = options(); commit(cwd, "local");
