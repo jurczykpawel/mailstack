@@ -29,7 +29,8 @@ Edit `mailstack.json` with your brand settings. Select the global sender with
 Append an `API_KEY` generated with `openssl rand -hex 32` to `.env` for trusted requests.
 For SMTP append `SMTP_URL=smtps://user:password@smtp.example.com:465`, or use
 `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE=true|false`
-(default false; STARTTLS is negotiated when offered). URL credentials must be percent-encoded.
+(default false). With credentials and `secure=false`, STARTTLS is required;
+certificate verification remains enabled. Without credentials, STARTTLS remains opportunistic. URL credentials must be percent-encoded.
 For SES set `SES_REGION`, `SES_ACCESS_KEY_ID` and `SES_SECRET_ACCESS_KEY` instead.
 Public forms also need `TURNSTILE_SECRET` or `ALTCHA_HMAC_KEY` for their configured captcha.
 

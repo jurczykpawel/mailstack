@@ -41,3 +41,23 @@ it('uses URL connection values with a single bounded SMTP transport', async () =
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ host: 'smtp.example.com', port: 465, secure: true, auth: { user: 'user', pass: 'p@ss' }, pool: false, socketTimeout: 30000 }));
   } finally { create.mockRestore(); }
 });
+it.each([
+  [{ SMTP_HOST: 'smtp.example.com', SMTP_USER: 'user', SMTP_PASS: 'pass' }, true],
+  [{ SMTP_URL: 'smtp://user:pass@smtp.example.com:587' }, true],
+  [{ SMTP_HOST: 'smtp.example.com', SMTP_USER: 'user', SMTP_PASS: 'pass', SMTP_SECURE: 'true' }, undefined],
+  [{ SMTP_URL: 'smtps://user:pass@smtp.example.com:465' }, undefined],
+  [{ SMTP_HOST: 'mailpit', SMTP_PORT: '1025' }, undefined],
+  [{ SMTP_URL: 'smtp://mailpit:1025' }, undefined],
+])('sets the SMTP TLS requirement for %j', async (env, expected) => {
+  const nodemailer = (await import('nodemailer')).default;
+  const create = vi.spyOn(nodemailer, 'createTransport');
+  const { smtpFromEnv } = await import('../src/adapters/sender/smtp');
+  try {
+    smtpFromEnv(env);
+    const options = create.mock.calls[0][0];
+    if (!options || typeof options !== 'object') throw new Error('Expected SMTP options');
+    expect(options).toHaveProperty('secure');
+    expect(Reflect.get(options, 'requireTLS')).toBe(expected);
+    expect(Reflect.get(options, 'tls')).toBeUndefined();
+  } finally { create.mockRestore(); }
+});

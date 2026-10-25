@@ -32,5 +32,6 @@ export function smtpFromEnv(env: NodeJS.ProcessEnv): Sender {
   }).refine(v => !!v.user === !!v.pass).parse({ host: env.SMTP_HOST, port: env.SMTP_PORT ?? '587',
     secure: env.SMTP_SECURE ?? 'false', user: env.SMTP_USER, pass: env.SMTP_PASS });
   return createSmtpSender(nodemailer.createTransport({ ...common, host: options.host, port: options.port, secure: options.secure,
+    ...(options.user && !options.secure ? { requireTLS: true } : {}),
     ...(options.user ? { auth: { user: options.user, pass: options.pass } } : {}) }));
 }
