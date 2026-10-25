@@ -9,6 +9,7 @@ export function memoryStore(): Store {
     async markFailed() { throw new Error('Unsupported operation'); },
     async setStatus() { throw new Error('Unsupported operation'); },
     async findByIdempotency() { throw new Error('Unsupported operation'); },
+    async health() {},
     async migrate() {},
     async consume(key, expires) {
       if (guards.has(key)) return false;

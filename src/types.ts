@@ -1,4 +1,4 @@
-import type { Store } from './core/ports';
+import type { Sender, Store } from './core/ports';
 import type { Config } from './core/config/schema';
 import type { KeyEnvironment } from './core/keyring';
 
@@ -118,8 +118,9 @@ export interface TemplateDef {
   render(brand: Brand, data: TemplateData): RenderedBody;
 }
 
-/** Result of an SES send attempt. */
+/** Result of a send attempt. */
 export interface SendResult {
+  smtp?: { accepted: string[]; rejected: string[] };
   ok: boolean;
   status: number;
   messageId?: string;
@@ -130,7 +131,7 @@ export interface SendResult {
   message?: string;
 }
 
-/** Parameters passed to the SES sender. */
+/** Parameters passed to the sender. */
 export interface SendParams {
   messageId?: string;
   brand?: string;
@@ -144,6 +145,7 @@ export interface SendParams {
 
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
+  provider?: 'ses' | 'smtp';
   logging?: Config["logging"];
   store?: Store;
   verifyTurnstile: (
@@ -153,7 +155,7 @@ export interface SendDeps {
     brand: Brand,
   ) => Promise<boolean>;
   verifyAltcha: (hmacKey: string, payloadB64: string, now?: Date) => Promise<boolean>;
-  sendEmail: (env: Env, params: SendParams) => Promise<SendResult>;
+  sendEmail: Sender;
   now: () => Date;
   /**
    * Keep a background task alive past the response (Worker `ctx.waitUntil`). Used

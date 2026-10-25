@@ -4,6 +4,7 @@ import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
 import { config } from '../src/core/config';
 import { open } from '../src/core/crypto';
 import { createSqliteStore } from '../src/core/store/sqlite';
+import { createSmtpSender } from '../src/adapters/sender/smtp';
 import { handleSend } from '../src/send';
 import { handleSellfHook } from '../src/sellf';
 import { tokenSha256 } from '../src/clients';
@@ -262,4 +263,29 @@ it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf'])('
   expect(await response.json()).toEqual({ success: true, ignored: event });
   expect(deps.sendEmail).not.toHaveBeenCalled();
   expect(await rows()).toEqual([]);
+});
+
+it('records SMTP acceptance evidence for each recipient while retaining sent status', async () => {
+  deps.provider = 'smtp';
+  vi.mocked(deps.sendEmail).mockResolvedValue({ ok: true, status: 250, messageId: 'queue-1', response: { response: '250 queued as queue-1' }, smtp: { accepted: ['buyer@example.com', 'second@example.com'], rejected: [] } });
+  expect((await send({ ...body, to: ['buyer@example.com', 'second@example.com'] })).status).toBe(200);
+  const [row] = await rows();
+  expect(row).toMatchObject({ status: 'sent', provider: 'smtp', provider_message_id: 'queue-1' });
+  expect(await open(row.provider_response_sealed!, { brand: 'acme', messageId: row.id, purpose: 'provider_response' }, [privateKey])).toEqual({ response: '250 queued as queue-1' });
+  const { sql } = await import('kysely');
+  const events = (await sql<{ recipient_pos: number; evidence_sealed: string }>`select * from events where message_id=${row.id} order by recipient_pos`.execute(store.db)).rows;
+  expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ id: expect.stringMatching(/^evt_[0-9A-HJKMNP-TV-Z]{26}$/) })]));
+  expect(events).toMatchObject([0, 1].map(recipient_pos => ({ recipient_pos, source: 'smtp-response', auth: 'smtp-response', type: 'accepted' })));
+  expect(await open(events[0].evidence_sealed, { brand: 'acme', messageId: row.id, purpose: 'evidence' }, [privateKey])).toEqual({ response: '250 queued as queue-1' });
+});
+
+it.each([450, 550, undefined])('persists the SMTP outcome for reply %s', async responseCode => {
+  deps.provider = 'smtp';
+  const sendMail = vi.fn().mockRejectedValue(Object.assign(new Error('connection result'), responseCode ? { responseCode, response: `${responseCode} refused` } : {}));
+  deps.sendEmail = createSmtpSender({ sendMail });
+  expect((await send()).status).toBe(502);
+  const [row] = await rows();
+  expect(row.status).toBe(responseCode ? 'send_failed' : 'unknown');
+  if (responseCode) expect(await open(row.provider_response_sealed!, { brand: 'acme', messageId: row.id, purpose: 'provider_response' }, [privateKey])).toEqual({ response: `${responseCode} refused` });
+  expect(sendMail).toHaveBeenCalledTimes(1);
 });

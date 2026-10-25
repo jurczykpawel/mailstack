@@ -33,7 +33,7 @@ export async function deliver(
   const input = {
     clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
     subject: params.subject, replyTo: params.replyTo, ref: context.ref,
-    idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: 'ses',
+    idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: deps.provider ?? 'ses',
   };
   const request = intentRequest(input);
   let id: string | undefined;
@@ -82,7 +82,13 @@ export async function deliver(
     try {
       const sealed = await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'provider_response' }, parseKeyring(env).contentKeys);
       if (result.ok) {
-        await deps.store!.markSent(id, { providerMessageId: result.messageId ?? '', providerResponseSealed: sealed, sentAt: deps.now().getTime() });
+        await deps.store!.markSent(id, { providerMessageId: result.messageId ?? '', providerResponseSealed: sealed, sentAt: deps.now().getTime(),
+          ...(result.smtp ? { smtp: {
+            accepted: params.to.flatMap((address, pos) => result.smtp!.accepted.includes(address) ? [pos] : []),
+            rejected: params.to.flatMap((address, pos) => result.smtp!.rejected.includes(address) ? [pos] : []),
+            evidence: await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'evidence' }, parseKeyring(env).contentKeys),
+          } } : {}),
+        });
       } else await deps.store!.markFailed(id, sealed);
     } catch {
       await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed').catch(() => {});

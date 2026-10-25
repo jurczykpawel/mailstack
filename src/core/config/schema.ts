@@ -55,6 +55,7 @@ const legacySchema = z.strictObject({
 });
 export type Client = z.infer<typeof clientSchema>;
 const shape = z.strictObject({
+  sender: z.strictObject({ type: z.enum(["ses", "smtp"]) }).optional(),
   version: z.literal(1), brands: z.record(z.string(), brand),
   logging: z.strictObject({
     defaults: policy, ceilings: z.strictObject({ contentDays: days, metaDays: days, auditDays: days }),

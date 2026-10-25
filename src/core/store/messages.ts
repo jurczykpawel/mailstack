@@ -1,3 +1,5 @@
+import { sql } from 'kysely';
+import { eventId } from './events';
 import type { CompiledQuery, Generated, Insertable, Kysely, Selectable } from 'kysely';
 
 export type MessageStatus = 'sending' | 'sent' | 'send_failed' | 'unknown' | 'accepted' | 'delay' | 'delivered' | 'bounce_permanent' | 'bounce_transient' | 'bounce_undetermined' | 'reject' | 'render_failure';
@@ -30,7 +32,7 @@ export interface MessageIntent {
   message: Insertable<MessageTable>; recipients: RecipientRow[]; subjects: SubjectRow[];
   content?: SealedRow; replay?: SealedRow;
 }
-export interface SentUpdate { providerMessageId: string; providerResponseSealed: string; sentAt: number }
+export interface SentUpdate { providerMessageId: string; providerResponseSealed: string; sentAt: number; smtp?: { accepted: number[]; rejected: number[]; evidence: string } }
 export interface MessageStore {
   clearIdempotency(id: string, keyHash: string): Promise<void>;
   insertMessage(intent: MessageIntent): Promise<void>;
@@ -71,8 +73,18 @@ export class MessageOperations implements MessageStore {
   }
 
   async markSent(id: string, update: SentUpdate): Promise<void> {
-    await this.db.updateTable('messages').set({ status: 'sent', provider_message_id: update.providerMessageId,
-      provider_response_sealed: update.providerResponseSealed, sent_at: update.sentAt }).where('id', '=', id).execute();
+    const queries = [this.db.updateTable('messages').set({ status: 'sent', provider_message_id: update.providerMessageId,
+      provider_response_sealed: update.providerResponseSealed, sent_at: update.sentAt }).where('id', '=', id).compile()];
+    if (update.smtp) {
+      for (const [type, positions] of [['accepted', update.smtp.accepted], ['send_failed', update.smtp.rejected]] as const) {
+        for (const pos of positions) {
+          queries.push(sql`insert into events(id,message_id,recipient_pos,source,source_event_id,type,occurred_at,received_at,auth,summary,evidence_sealed)
+            values (${eventId(update.sentAt)},${id},${pos},'smtp-response',${id + ':' + pos},${type},${update.sentAt},${update.sentAt},'smtp-response',${type === 'accepted' ? 'Relay accepted' : 'Relay refused'},${update.smtp.evidence})`.compile(this.db));
+          queries.push(this.db.updateTable('recipients').set({ status: type, last_event_at: update.sentAt }).where('message_id', '=', id).where('pos', '=', pos).compile());
+        }
+      }
+    }
+    await this.batch(queries);
   }
 
   async markFailed(id: string, providerResponseSealed: string): Promise<void> {
