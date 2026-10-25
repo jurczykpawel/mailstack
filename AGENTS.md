@@ -47,7 +47,8 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `template` | email type to render (trusted mode only); public is always `contact` |
 | `autoreply` | per-request toggle for the submitter confirmation (`1`/`true`/`yes`/`on` vs `0`/`false`); overrides `brand.autoReply`. See [Auto-reply](#auto-reply). |
 | `ref` | trusted correlation string (1-128 characters) |
-| `resendOf`, `attachments` | trusted: reserved, return `400 not_supported`; public: ignored |
+| `resendOf` | trusted: reserved, return `400 not_supported`; public: ignored |
+| `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
 | `_meta` | reserved, ignored as content |
 
 Everything else (`name`, `email`, `phone`, `message`, `type`, `topic`, `person`, `gdpr`,
@@ -128,7 +129,9 @@ Error responses:
 |---|---|---|
 | 400 | `unknown brand` / `invalid JSON` / `invalid recipient` / `unknown template` | bad input |
 | 403 | `origin not allowed` / `verification failed` | public-mode gate failed |
-| 413 | `payload too large` | body > 64 KB |
+| 413 | `payload too large` | body > 64 KiB (10 MiB for attachment-enabled send clients) |
+| 415 | `attachment type not allowed`, code `attachment_type` | MIME type outside attachment allowlist |
+| 422 | `invalid attachment`, code `attachment_invalid` | invalid attachment shape, name, base64, signature or decoded limits |
 | 429 | `rate limit exceeded` | public-mode rate limit hit |
 | 502 | `send failed` | SES returned a non-2xx response |
 
@@ -381,7 +384,7 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
 - **Markup safety:** JSON-LD is embedded via a JSON-safe serializer that escapes `<` (neutralizes
   a `</script>` breakout) and U+2028/U+2029; action URLs must be http(s); markup is trusted-mode
   only and capped in count/size (never injectable by public requests).
-- **Size/shape guards:** body capped at 64 KB, ~40 fields, 5000 chars/value; non-object JSON rejected.
+- **Size/shape guards:** body capped at 64 KiB (10 MiB for attachment-enabled send clients), ~40 fields, 5000 chars/value; non-object JSON rejected.
 - **No secrets in code:** SES/Turnstile/API credentials are read from `env` at runtime only.
 
 ## Secrets
@@ -488,7 +491,8 @@ Trusted `POST /v1/send` requests accept:
 |---|---|
 | `ref` | Optional string of 1-128 characters; otherwise `400 invalid_ref`. Stored encrypted with a correlation index. |
 | `Idempotency-Key` header | Optional `[A-Za-z0-9._:-]{1,128}`; otherwise `400 invalid_idempotency_key`. |
-| `resendOf`, `attachments` | Reserved for later phases; their presence returns `400 not_supported`. |
+| `resendOf` | Reserved for a later phase; its presence returns `400 not_supported`. |
+| `attachments` | Array of `{ filename, contentType, contentBase64 }`; requires `attachments: true` on a trusted client. |
 
 These keys are excluded from template content. Public requests ignore them and the
 idempotency header. Trusted responses include `id: "msg_..."` whenever the send has a
@@ -527,3 +531,31 @@ Worker vars. For local `wrangler dev`, it may also be set in `.dev.vars`. Only s
 with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
 `ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
 response headers are excluded. No open/click tracking configuration is sent.
+
+### Attachments
+
+Trusted send clients must set `attachments: true` in their configuration (default false,
+including the legacy key). Public requests ignore the `attachments` control key.
+
+```json
+{"brand":"acme","template":"notice","attachments":[{"filename":"note.txt","contentType":"text/plain","contentBase64":"SGVsbG8="}]}
+```
+
+Allowed MIME types and extensions: `application/pdf` (`.pdf`), `image/png` (`.png`),
+`image/jpeg` (`.jpg`, `.jpeg`), `text/plain` (`.txt`), `text/csv` (`.csv`),
+`text/calendar` (`.ics`), `application/xml` and `text/xml` (`.xml`). Filenames must
+match `[\w .()-]{1,100}` and have a matching extension. Base64 must be canonical,
+with padding and no whitespace. PDF, PNG and JPEG require matching magic bytes.
+Maximum: 5 files and 7 MiB decoded in total. Request bodies remain limited to
+64 KiB; authenticated send clients with attachment permission have a 10 MiB limit.
+Both declared and streamed body sizes are checked before parsing.
+
+Missing client permission returns `403` with `code: "scope"`; unsupported MIME types
+return `415 attachment_type`; invalid shape, filename, base64, magic bytes, count or
+decoded total returns `422 attachment_invalid`. Oversized bodies return `413` with
+`message: "payload too large"`.
+
+SES uses `Content.Simple.Attachments`; SMTP receives decoded buffers. Files and their
+names are excluded from archives and replays. Only `{count,totalBytes,types}` is stored
+in `attachments_meta`. Request MACs include each file's SHA-256, name and type; changing
+a file with the same idempotency key returns `409 idempotency_conflict`.

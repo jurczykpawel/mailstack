@@ -409,7 +409,7 @@ Node and workerd. A real SNS notification remains a deployment validation step.
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
 closed) · honeypot · fixed recipient / anti-relay · D1 rate limit (8/hour per brand+IP) ·
-constant-time bearer compare · all field values HTML-escaped · 64 KB / ~40 fields / 5000
+constant-time bearer compare · all field values HTML-escaped · 64 KiB (10 MiB for attachment-enabled send clients) / ~40 fields / 5000
 chars-per-value guards · no secrets in code.
 
 ### Secret scanning
@@ -483,7 +483,8 @@ Trusted `POST /v1/send` requests accept:
 |---|---|
 | `ref` | Optional string of 1-128 characters; otherwise `400 invalid_ref`. Stored encrypted with a correlation index. |
 | `Idempotency-Key` header | Optional `[A-Za-z0-9._:-]{1,128}`; otherwise `400 invalid_idempotency_key`. |
-| `resendOf`, `attachments` | Reserved for later phases; their presence returns `400 not_supported`. |
+| `resendOf` | Reserved for a later phase; its presence returns `400 not_supported`. |
+| `attachments` | Array of `{ filename, contentType, contentBase64 }`; requires `attachments: true` on a trusted client. |
 
 These keys are excluded from template content. Public requests ignore them and the
 idempotency header. Trusted responses include `id: "msg_..."` whenever the send has a
@@ -569,3 +570,31 @@ and does not change event or send results. Requests time out after five seconds
 and do not follow redirects.
 
 Alerts are best-effort: an ntfy failure at event time does not retry the alert; the message remains visible in the log.
+
+### Attachments
+
+Trusted send clients must set `attachments: true` in their configuration (default false,
+including the legacy key). Public requests ignore the `attachments` control key.
+
+```json
+{"brand":"acme","template":"notice","attachments":[{"filename":"note.txt","contentType":"text/plain","contentBase64":"SGVsbG8="}]}
+```
+
+Allowed MIME types and extensions: `application/pdf` (`.pdf`), `image/png` (`.png`),
+`image/jpeg` (`.jpg`, `.jpeg`), `text/plain` (`.txt`), `text/csv` (`.csv`),
+`text/calendar` (`.ics`), `application/xml` and `text/xml` (`.xml`). Filenames must
+match `[\w .()-]{1,100}` and have a matching extension. Base64 must be canonical,
+with padding and no whitespace. PDF, PNG and JPEG require matching magic bytes.
+Maximum: 5 files and 7 MiB decoded in total. Request bodies remain limited to
+64 KiB; authenticated send clients with attachment permission have a 10 MiB limit.
+Both declared and streamed body sizes are checked before parsing.
+
+Missing client permission returns `403` with `code: "scope"`; unsupported MIME types
+return `415 attachment_type`; invalid shape, filename, base64, magic bytes, count or
+decoded total returns `422 attachment_invalid`. Oversized bodies return `413` with
+`message: "payload too large"`.
+
+SES uses `Content.Simple.Attachments`; SMTP receives decoded buffers. Files and their
+names are excluded from archives and replays. Only `{count,totalBytes,types}` is stored
+in `attachments_meta`. Request MACs include each file's SHA-256, name and type; changing
+a file with the same idempotency key returns `409 idempotency_conflict`.
