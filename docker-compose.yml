@@ -3,7 +3,7 @@ services:
     build: .
     image: ${MAILSTACK_IMAGE:-mailstack-local}
     ports:
-      - "${MAILSTACK_PORT:-8080}:8080"
+      - "${MAILSTACK_BIND:-127.0.0.1}:${MAILSTACK_PORT:-8080}:8080"
     volumes:
       - data:/data
       - ${MAILSTACK_CONFIG:-./mailstack.json}:/config/mailstack.json:ro

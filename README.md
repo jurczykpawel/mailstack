@@ -39,7 +39,9 @@ Start the API with one command:
 docker compose up --build -d
 ```
 
-The API listens on port 8080. `/health` reports `store: "ok"` after a database query;
+The API is published on `127.0.0.1:8080` by default. For public traffic, put a reverse
+proxy in front and configure `TRUSTED_PROXY` as described below, or deliberately set
+`MAILSTACK_BIND=0.0.0.0` to publish on all host interfaces. `/health` reports `store: "ok"` after a database query;
 `ok` remains true if storage goes down, while the container healthcheck reports unhealthy.
 Use `MAILSTACK_CONFIG` to mount a different configuration file and `MAILSTACK_PORT` to
 change the published port. The container runs as a non-root user on a read-only root filesystem;
