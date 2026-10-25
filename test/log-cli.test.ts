@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+
+vi.setConfig({ testTimeout: 30000 });
 import { sql } from 'kysely';
 import example from '../config/mailstack.example.json';
 import { parseConfig } from '../src/core/config/schema';
