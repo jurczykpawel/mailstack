@@ -73,8 +73,13 @@ export async function deliver(
       break;
     }
   }
-  const alert = (type: string) => id ? alertMessage(deps.store, deps.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
-    id, type, deps.now().getTime(), logging, env.PANEL_URL) : Promise.resolve();
+  const alert = (type: string) => {
+    if (!id) return;
+    const task = alertMessage(deps.store, deps.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
+      id, type, deps.now().getTime(), logging, env.PANEL_URL);
+    if (deps.waitUntil) deps.waitUntil(task);
+    else return task;
+  };
   let result: SendResult;
   try {
     result = await deps.sendEmail(env, { ...params, ...(id ? { messageId: id, brand: brand.id } : {}) });

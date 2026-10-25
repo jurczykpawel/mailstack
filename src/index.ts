@@ -118,7 +118,8 @@ export default {
     }
 
     if (pathname === "/v1/hooks/sellf" && req.method === "POST") {
-      return handleSellfHook(req, env, { ...defaultDeps, store: env.DB ? createD1Store(env.DB) : undefined });
+      return handleSellfHook(req, env, { ...defaultDeps, store: env.DB ? createD1Store(env.DB) : undefined,
+        waitUntil: ctx.waitUntil.bind(ctx) });
     }
 
     if (pathname === "/v1/events/ses" && req.method === "POST") {

@@ -300,3 +300,39 @@ it('alerts when recording an accepted send becomes unknown', async () => {
   expect((await send()).status).toBe(502);
   expect(deps.notifier.notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'mailstack: unknown acme/notice', priority: 'default' }));
 });
+
+it.each([true, false])('handles a slow alert with waitUntil=%s', async background => {
+  vi.useFakeTimers();
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const tasks: Promise<unknown>[] = [];
+  let alertFinished = false;
+  let responded = false;
+  deps.logging!.defaults.alertOn = ['send_failed'];
+  deps.notifier = { notify: vi.fn(() => {
+    entered();
+    return new Promise<void>(resolve => setTimeout(() => { alertFinished = true; resolve(); }, 6000));
+  }) };
+  if (background) deps.waitUntil = task => { tasks.push(task); };
+  vi.mocked(deps.sendEmail).mockResolvedValue({ ok: false, status: 400 });
+  const response = send().then(result => { responded = true; return result; });
+  try {
+    await started;
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(responded).toBe(background);
+    expect(alertFinished).toBe(false);
+    expect(tasks).toHaveLength(background ? 1 : 0);
+    if (background) {
+      expect(tasks[0]).toBeInstanceOf(Promise);
+      let taskFinished = false;
+      void tasks[0].then(() => { taskFinished = true; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(taskFinished).toBe(false);
+    }
+  } finally {
+    await vi.advanceTimersByTimeAsync(6000);
+    await Promise.all(tasks);
+    expect((await response).status).toBe(502);
+    vi.useRealTimers();
+  }
+});

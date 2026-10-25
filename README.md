@@ -495,3 +495,5 @@ One attempt per message/type is claimed in guards for the effective `metaDays`
 (or seven days when absent). A failed notification is logged without its details
 and does not change event or send results. Requests time out after five seconds
 and do not follow redirects.
+
+Alerts are best-effort: an ntfy failure at event time does not retry the alert; the message remains visible in the log.
