@@ -17,6 +17,7 @@ export function memoryStore(): Store {
       guards.set(key, { count: 1, expires });
       return true;
     },
+    async release(key) { guards.delete(key); },
     async increment(key, expires) {
       const value = guards.get(key) ?? { count: 0, expires };
       value.count++;

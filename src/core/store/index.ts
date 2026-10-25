@@ -26,6 +26,10 @@ export class KyselyStore extends MessageOperations implements Store {
     return result.numInsertedOrUpdatedRows === 1n;
   }
 
+  async release(key: string): Promise<void> {
+    await this.db.deleteFrom('guards').where('key', '=', key).execute();
+  }
+
   async increment(key: string, expiresAt: number): Promise<number> {
     const result = await this.db.insertInto('guards')
       .values({ key, count: 1, expires_at: expiresAt })

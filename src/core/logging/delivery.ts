@@ -82,6 +82,14 @@ export async function deliver(
     else return task;
   };
   let result: SendResult;
+  let guardKey: string | undefined;
+  if (policy.level === 'none' && context.idempotencyKey !== undefined && deps.store) {
+    try {
+      const key = 'idem:' + clientId + ':' + await idempotencyHash(clientId, context.idempotencyKey);
+      if (!await deps.store.consume(key, deps.now().getTime() + 86400000)) return { ok: true, status: 200, idempotent: true };
+      guardKey = key;
+    } catch {}
+  }
   try {
     result = await deps.sendEmail(env, { ...params, ...(id ? { messageId: id, brand: brand.id } : {}) });
   } catch {
@@ -89,6 +97,7 @@ export async function deliver(
     await alert('unknown');
     return { ...failure(502, 'send_failed'), id };
   }
+  if (!result.ok && guardKey) await deps.store!.release(guardKey).catch(() => {});
   if (id) {
     try {
       const sealed = await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'provider_response' }, parseKeyring(env).contentKeys);

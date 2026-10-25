@@ -7,6 +7,7 @@ export interface Store extends MessageStore {
   health(): Promise<void>;
   migrate(): Promise<void>;
   consume(key: string, expiresAt: number): Promise<boolean>;
+  release(key: string): Promise<void>;
   increment(key: string, expiresAt: number): Promise<number>;
   purgeGuards(now: number): Promise<void>;
 }
