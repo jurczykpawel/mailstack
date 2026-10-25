@@ -294,6 +294,40 @@ The D1 rate limiter allows 8 attempts per brand/IP/hour and degrades open when s
 is missing or fails; public requests still require captcha. ALTCHA single-use recording
 remains fail-closed: missing storage or storage errors return 403.
 
+For a public form with a product selection, a brand may opt into `requireNonce`:
+
+```json
+{ "captcha": "altcha", "requireNonce": true, "products": ["Demo Product"] }
+```
+
+`requireNonce` defaults to false when omitted. `products` is an optional array of
+allowed product names, each 1-100 characters. Existing brands keep the flat challenge
+response. For a brand with `requireNonce: true`, request
+`GET /altcha/challenge?brand=demo&product=Demo%20Product` from an allowed origin.
+An absent or unlisted product returns 400. The response is:
+
+```json
+{ "altcha": { "algorithm": "SHA-256", "challenge": "...", "maxnumber": 100000, "salt": "...", "signature": "..." }, "nonce": "..." }
+```
+
+Solve the nested `altcha` challenge and submit flat JSON to `POST /v1/send`:
+
+```json
+{ "brand": "demo", "email": "viewer@example.com", "src": "demo-video", "product": "Demo Product", "nonce": "...", "altcha": "<base64 solution>" }
+```
+
+The nonce uses `ALTCHA_HMAC_KEY`, is valid for 10 minutes, and carries the brand and
+product. `product` in POST is optional; when present, it must match the nonce exactly.
+The product must still be in the brand's configured list when submitting. Mailstack
+sets `type` from that product, including for the confirmation email when auto-reply
+is enabled. `nonce` and `product` are control fields and are omitted from email content.
+
+Mailstack atomically consumes the nonce before checking ALTCHA, including when ALTCHA
+is invalid. Fetch a new challenge and nonce for every attempt, including after a failed
+delivery. Nonce, ALTCHA and origin rejection returns `403 verification failed` for
+these brands; missing or unavailable nonce storage returns 503. Rate limits still
+return 429, and trusted sends skip nonce checks.
+
 ## Sending emails from your app (payments, welcome, etc.)
 
 For server-to-server emails (no spam check needed), call the same endpoint with your `API_KEY`
