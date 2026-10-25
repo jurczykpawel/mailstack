@@ -810,3 +810,58 @@ names are excluded from archives and replays. Only `{count,totalBytes,types}` is
 in `attachments_meta`. Request MACs include each file's SHA-256, name and type; changing
 a file with the same idempotency key returns `409 idempotency_conflict` at levels
 `meta`, `masked` and `full`. Level `none` deduplicates by key alone.
+
+## Extensions
+
+Node can load optional modules at startup; Worker does not load or execute them.
+Omitting `extensions` is equivalent to `"extensions": []`.
+
+```json
+{
+  "extensions": [
+    { "module": "mailstack-addon", "options": {} }
+  ]
+}
+```
+
+`module` is an installed package name (optionally a package subpath) or an absolute
+file path, such as `/opt/mailstack/addon.mjs`. Relative paths are rejected. A module
+exports an `Extension` as its default export, or a default factory receiving
+`options` and returning an `Extension` (a promise is supported). Import or
+initialization errors stop startup and identify `$.extensions.<index>.module`
+without printing module values or exception details.
+
+The contracts live in `src/core/extensions.ts`. Extension names match
+`[a-z][a-z0-9_]{0,39}` and must be unique. All hooks are optional:
+
+- `migrate(db)` runs before listening. Use Kysely schema/query builders and tables
+  beginning with `ext_<name>_`; referenced tables must use the same prefix. Raw SQL,
+  schema-qualified tables and dropping indexes are not supported. Index names also
+  use this prefix. Migrations should be repeatable, for example with `ifNotExists()`.
+- `onEvent(event, ctx)` receives send outcomes (`message.sent`,
+  `message.send_failed`, `message.unknown`), projected SES outcomes
+  (`message.delivered`, `message.bounced`, `message.complained`, or
+  `message.send_failed` for rejection/rendering failure), and `form.submitted`
+  after a successful public contact submission. Duplicate SES notifications and
+  idempotent send responses do not emit another outcome. Explicit send retries
+  are new attempts. Events contain only `id`, `type`, `at` (epoch milliseconds),
+  `brand`, `template`, `status`, and optional `ref`/`messageId` (the local log id).
+  Address, subject and message content are absent. Keep correlation refs opaque.
+- `routes(app)` registers exact paths with
+  `app.route('GET', '/ping', (request, ctx) => Response.json({ ok: true }))`.
+  They are mounted only on Node's internal port **8081**, at
+  `/internal/ext/<name>/ping`. Requests require a configured `panel` client bearer
+  token and a nonempty `X-Panel-Actor` header. Do not publish this port externally.
+  Extensions must append an audit entry before content reads or state mutations.
+
+`ctx` provides a Kysely `db` handle, `appendAudit(entry)`, `now()` (epoch
+milliseconds), and `config` containing brand ids and logging policies only.
+It does not include runtime environment variables, sending keys or client tokens.
+Module-specific options are passed only to the factory. Modules run as trusted
+in-process Node code, not in a sandbox.
+
+Event hooks run in the background with a five-second wait limit. Exceptions and
+timeouts produce a generic log entry and never change the email/API result.
+The limit stops waiting; it cannot cancel a module's ongoing work. Modules should
+bound their own I/O and avoid blocking the Node event loop. Delivery is best-effort;
+there is no persistent event queue in the core.
