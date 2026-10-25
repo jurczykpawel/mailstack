@@ -1,6 +1,7 @@
 import { parseKeyring } from "./core/keyring";
 import { handleSesEvent } from "./events/ses";
 import { createVerifier } from "./events/sns";
+import type { KyselyStore } from "./core/store";
 import { createD1Store } from "./core/store/d1";
 import { runRetention } from "./core/retention";
 import { version } from "../package.json";
@@ -52,81 +53,87 @@ export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionCo
   ctx.waitUntil(runRetention(createD1Store(env.DB), event.scheduledTime, config));
 }
 
-export default {
-  scheduled,
-  async fetch(
-    req: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
-    const url = new URL(req.url);
-    const { pathname } = url;
+export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore } = {}) {
+  return {
+    scheduled,
+    async fetch(
+      req: Request,
+      env: Env,
+      ctx: ExecutionContext,
+    ): Promise<Response> {
+      const store = overrides.store ?? (env.DB ? createD1Store(env.DB) : undefined);
+      const deps = { ...defaultDeps, ...overrides, store };
+      const url = new URL(req.url);
+      const { pathname } = url;
 
-    if (pathname === "/health" && req.method === "GET") {
-      return new Response(
-        JSON.stringify({ ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev" }),
-        { headers: { "content-type": "application/json; charset=utf-8" } },
-      );
-    }
+      if (pathname === "/health" && req.method === "GET") {
+        let storeState = "down";
+        try { if (store) { await store.health(); storeState = "ok"; } } catch {}
+        return new Response(
+          JSON.stringify({ store: storeState, ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev" }),
+          { headers: { "content-type": "application/json; charset=utf-8" } },
+        );
+      }
 
-    // Serve the brand logo for email headers.
-    if (pathname === "/brand/logo.png" && req.method === "GET") {
-      const bin = Uint8Array.from(atob(LOGO_PNG_BASE64), (c) => c.charCodeAt(0));
-      return new Response(bin, {
-        headers: {
-          "content-type": "image/png",
-          "cache-control": "public, max-age=31536000, immutable",
-          "access-control-allow-origin": "*",
-        },
-      });
-    }
-
-    if (pathname === "/altcha/challenge") {
-      if (req.method === "OPTIONS") return handlePreflight(req, url);
-      if (req.method === "GET") {
-        const origin = req.headers.get("origin") || "";
-        const brandId = url.searchParams.get("brand");
-        const brand = brandId ? getBrand(brandId) : findBrandByOrigin(origin);
-        if (!brand || !isOriginAllowed(brand, origin)) {
-          return new Response(JSON.stringify({ success: false, message: "forbidden" }), {
-            status: 403,
-            headers: { "content-type": "application/json" },
-          });
-        }
-        const challenge = await createChallenge(env.ALTCHA_HMAC_KEY);
-        return new Response(JSON.stringify(challenge), {
+      // Serve the brand logo for email headers.
+      if (pathname === "/brand/logo.png" && req.method === "GET") {
+        const bin = Uint8Array.from(atob(LOGO_PNG_BASE64), (c) => c.charCodeAt(0));
+        return new Response(bin, {
           headers: {
-            ...corsHeaders(origin),
-            "content-type": "application/json; charset=utf-8",
-            "cache-control": "no-store",
+            "content-type": "image/png",
+            "cache-control": "public, max-age=31536000, immutable",
+            "access-control-allow-origin": "*",
           },
         });
       }
-    }
 
-    if (pathname === "/v1/send") {
-      if (req.method === "OPTIONS") return handlePreflight(req, url);
-      if (req.method === "POST") {
-        // Bind ctx.waitUntil so the best-effort auto-reply outlives the response.
-        return handleSend(req, env, {
-          ...defaultDeps,
-          store: env.DB ? createD1Store(env.DB) : undefined,
-          waitUntil: ctx.waitUntil.bind(ctx),
-        });
+      if (pathname === "/altcha/challenge") {
+        if (req.method === "OPTIONS") return handlePreflight(req, url);
+        if (req.method === "GET") {
+          const origin = req.headers.get("origin") || "";
+          const brandId = url.searchParams.get("brand");
+          const brand = brandId ? getBrand(brandId) : findBrandByOrigin(origin);
+          if (!brand || !isOriginAllowed(brand, origin)) {
+            return new Response(JSON.stringify({ success: false, message: "forbidden" }), {
+              status: 403,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          const challenge = await createChallenge(env.ALTCHA_HMAC_KEY);
+          return new Response(JSON.stringify(challenge), {
+            headers: {
+              ...corsHeaders(origin),
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        }
       }
-    }
 
-    if (pathname === "/v1/hooks/sellf" && req.method === "POST") {
-      return handleSellfHook(req, env, { ...defaultDeps, store: env.DB ? createD1Store(env.DB) : undefined });
-    }
+      if (pathname === "/v1/send") {
+        if (req.method === "OPTIONS") return handlePreflight(req, url);
+        if (req.method === "POST") {
+          // Bind ctx.waitUntil so the best-effort auto-reply outlives the response.
+          return handleSend(req, env, {
+            ...deps,
+            waitUntil: ctx.waitUntil.bind(ctx),
+          });
+        }
+      }
 
-    if (pathname === "/v1/events/ses" && req.method === "POST") {
-      try {
-        return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
-          store: env.DB ? createD1Store(env.DB) : undefined, now: Date.now,
-          ...parseKeyring(env) });
-      } catch { return Response.json({ ok: false }, { status: 503 }); }
-    }
-    return notFound();
-  },
-};
+      if (pathname === "/v1/hooks/sellf" && req.method === "POST") {
+        return handleSellfHook(req, env, deps);
+      }
+
+      if (pathname === "/v1/events/ses" && req.method === "POST") {
+        try {
+          return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
+            store, now: Date.now,
+            ...parseKeyring(env) });
+        } catch { return Response.json({ ok: false }, { status: 503 }); }
+      }
+      return notFound();
+    },
+  };
+}
+export default createApp();

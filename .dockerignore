@@ -1,0 +1,10 @@
+*
+!Dockerfile
+!package.json
+!package-lock.json
+!src/
+!src/**
+src/core/config/bundled.ts
+src/assets/logo.ts
+!scripts/
+!scripts/build-node.mjs

@@ -15,7 +15,9 @@
     "pretest": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
     "test": "vitest run",
     "mailstack": "node scripts/mailstack.ts",
-    "keys": "node scripts/keys.mjs"
+    "keys": "node scripts/keys.mjs",
+    "build:node": "node scripts/build-node.mjs",
+    "start": "node dist/node-api.mjs"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",

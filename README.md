@@ -10,6 +10,65 @@ submission, blocks spam, and sends you a clean, branded email. You run it on you
 Cloudflare account and it sends through Amazon's email service — so there are **no monthly fees**
 and your data only ever passes through accounts **you** control.
 
+## Run with Docker (Node + SQLite)
+
+Requires Docker Compose and Node 24+ for key generation. Prepare the local files once:
+
+```bash
+npm ci
+cp config/mailstack.example.json mailstack.json
+mkdir -p secrets
+npm run --silent keys -- init secrets/panel-private.json > .env
+chmod 600 .env
+```
+
+Keep `secrets/panel-private.json` separately from the data volume and its backups; the API
+only needs the public key and index key printed into `.env`. Keys are never baked into the image.
+Edit `mailstack.json` with your brand settings. Select the global sender with
+`"sender": {"type": "smtp"}` or `"sender": {"type": "ses"}` (the default).
+Append an `API_KEY` generated with `openssl rand -hex 32` to `.env` for trusted requests.
+For SMTP append `SMTP_URL=smtps://user:password@smtp.example.com:465`, or use
+`SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE=true|false`
+(default false; STARTTLS is negotiated when offered). URL credentials must be percent-encoded.
+For SES set `SES_REGION`, `SES_ACCESS_KEY_ID` and `SES_SECRET_ACCESS_KEY` instead.
+Public forms also need `TURNSTILE_SECRET` or `ALTCHA_HMAC_KEY` for their configured captcha.
+
+Start the API with one command:
+
+```bash
+docker compose up --build -d
+```
+
+The API listens on port 8080. `/health` reports `store: "ok"` after a database query;
+`ok` remains true if storage goes down, while the container healthcheck reports unhealthy.
+Use `MAILSTACK_CONFIG` to mount a different configuration file and `MAILSTACK_PORT` to
+change the published port. The container runs as a non-root user on a read-only root filesystem;
+only `/data` and the `/tmp` tmpfs are writable. The named data volume survives container restarts.
+No panel listener is included yet.
+
+Retention runs hourly. Daily SQLite snapshots in `/data/backups` keep seven copies;
+deleted message data can remain in those backups for up to seven days. Back up the data
+volume and keys separately. SIGTERM stops accepting requests, drains requests and background
+work, stops maintenance, and closes SQLite. Configure a longer `stop_grace_period` if needed.
+
+To try SMTP locally, select `smtp` in the config and run:
+
+```bash
+docker compose -p mailstack-smtp -f docker-compose.yml -f docker-compose.test.yml up --build -d
+```
+
+Mailpit is available at `http://localhost:8025`. A send records the final SMTP response and
+queue identifier, with sealed evidence labelled `smtp-response`. This proves relay acceptance;
+it does not prove delivery to the recipient. SMTP refusals become `send_failed`; network
+exceptions become `unknown` and are never retried automatically. With multiple recipients,
+partial acceptance remains a successful send and per-recipient events record refusals.
+Remove the disposable test environment with
+`docker compose -p mailstack-smtp -f docker-compose.yml -f docker-compose.test.yml down -v --rmi local`.
+
+For Node without Docker: `npm run build:node`, then `MAILSTACK_CONFIG=/path/to/mailstack.json npm start`.
+The process needs a writable `/data` directory. Configuration is read and validated at startup;
+invalid configuration stops the process before listening. The Node bundle includes no brand configuration.
+
 ## What it does, in plain words
 
 1. Someone fills in the contact form on your website.

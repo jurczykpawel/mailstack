@@ -1,0 +1,25 @@
+services:
+  api:
+    environment:
+      SMTP_URL: smtp://mailpit:1025
+    depends_on:
+      mailpit:
+        condition: service_healthy
+  mailpit:
+    image: axllent/mailpit:v1.29.7
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=32m
+    environment:
+      MP_DATABASE: /tmp/mailpit.db
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, /mailpit, readyz]
+      interval: 2s
+      timeout: 3s
+      retries: 15

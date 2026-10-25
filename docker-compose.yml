@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .
+    image: ${MAILSTACK_IMAGE:-mailstack-local}
+    ports:
+      - "${MAILSTACK_PORT:-8080}:8080"
+    volumes:
+      - data:/data
+      - ${MAILSTACK_CONFIG:-./mailstack.json}:/config/mailstack.json:ro
+    env_file: ${MAILSTACK_ENV_FILE:-.env}
+    environment:
+      MAILSTACK_CONFIG: /config/mailstack.json
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=32m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/health').then(async r=>{const h=await r.json();if(!r.ok||h.store!=='ok')process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+volumes:
+  data:

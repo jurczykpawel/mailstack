@@ -22,13 +22,13 @@ describe("router", () => {
   it("GET /health returns service ok", async () => {
     const res = await call("https://mail.example.com/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "dev" });
+    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "dev", store: "down" });
   });
 
   it("GET /health returns the build commit", async () => {
     const res = await worker.fetch(new Request("https://mail.example.com/health"),
       { ...env, BUILD_COMMIT: "abc123" }, ctx);
-    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "abc123" });
+    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "abc123", store: "down" });
   });
 
   it("unknown route returns 404 JSON", async () => {
