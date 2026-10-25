@@ -1,3 +1,4 @@
+import { createNtfyNotifier } from './adapters/notify/ntfy';
 import { parseKeyring } from "./core/keyring";
 import { handleSesEvent } from "./events/ses";
 import { createVerifier } from "./events/sns";
@@ -124,7 +125,7 @@ export default {
       try {
         return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
           store: env.DB ? createD1Store(env.DB) : undefined, now: Date.now,
-          ...parseKeyring(env) });
+          ...parseKeyring(env), notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, panelUrl: env.PANEL_URL });
       } catch { return Response.json({ ok: false }, { status: 503 }); }
     }
     return notFound();

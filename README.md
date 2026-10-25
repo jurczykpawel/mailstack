@@ -478,3 +478,20 @@ files and leaves other files untouched. Runtime scheduling is deferred to the
 Node runtime integration; with daily scheduling, backups expire within seven
 days. Keep keys outside the database and backup directory. Worker databases use
 [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
+
+### ntfy alerts
+
+Set optional runtime variables `NTFY_URL` (topic endpoint), `NTFY_TOKEN`
+(Bearer secret), and `PANEL_URL` (panel base URL). Without `NTFY_URL`,
+alerts are disabled. Configure `logging.defaults.alertOn` or brand/template
+overrides with `bounce_permanent`, `complaint`, `reject`, `send_failed`,
+`unknown`, or `render_failure`.
+
+Alerts use the stored recipient hint and a bounded summary of diagnostic status
+codes and bounce classification; arbitrary provider prose is omitted. They contain
+no subject or message content. Templates declaring secret fields use high priority;
+others use default priority. `PANEL_URL` adds a link to `/m/<messageId>`.
+One attempt per message/type is claimed in guards for the effective `metaDays`
+(or seven days when absent). A failed notification is logged without its details
+and does not change event or send results. Requests time out after five seconds
+and do not follow redirects.

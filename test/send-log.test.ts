@@ -263,3 +263,40 @@ it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf'])('
   expect(deps.sendEmail).not.toHaveBeenCalled();
   expect(await rows()).toEqual([]);
 });
+
+it.each(['send_failed', 'unknown'] as const)('alerts on %s without changing delivery results', async type => {
+  deps.logging!.defaults.alertOn = [type];
+  deps.notifier = { notify: vi.fn().mockRejectedValue(new Error('notification detail')) };
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  if (type === 'unknown') vi.mocked(deps.sendEmail).mockRejectedValue(new Error('provider detail'));
+  else vi.mocked(deps.sendEmail).mockResolvedValue({ ok: false, status: 400 });
+  expect((await send()).status).toBe(502);
+  expect(deps.notifier.notify).toHaveBeenCalledTimes(1);
+  const alert = vi.mocked(deps.notifier.notify).mock.calls[0][0];
+  for (const value of [body.to, body.heading, body.paragraphs]) expect(JSON.stringify(alert)).not.toContain(value);
+  expect(alert.title).toBe('mailstack: ' + type + ' acme/notice');
+  expect(log).toHaveBeenCalledWith('mailstack: alert failed');
+});
+
+it('keeps notifications disabled without a URL and skips types outside alertOn', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  try {
+    deps.logging!.defaults.alertOn = ['send_failed'];
+    vi.mocked(deps.sendEmail).mockResolvedValue({ ok: false, status: 400 });
+    expect((await send()).status).toBe(502);
+    expect(fetcher).not.toHaveBeenCalled();
+    deps.notifier = { notify: vi.fn() };
+    deps.logging!.defaults.alertOn = [];
+    expect((await send(body, null)).status).toBe(502);
+    expect(deps.notifier.notify).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('alerts when recording an accepted send becomes unknown', async () => {
+  deps.logging!.defaults.alertOn = ['unknown'];
+  deps.notifier = { notify: vi.fn().mockResolvedValue(undefined) };
+  vi.spyOn(store, 'markSent').mockRejectedValue(new Error('unavailable'));
+  expect((await send()).status).toBe(502);
+  expect(deps.notifier.notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'mailstack: unknown acme/notice', priority: 'default' }));
+});

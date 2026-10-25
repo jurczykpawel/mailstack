@@ -6,3 +6,7 @@ export interface Store extends MessageStore {
   increment(key: string, expiresAt: number): Promise<number>;
   purgeGuards(now: number): Promise<void>;
 }
+
+export interface Notifier {
+  notify(alert: { title: string; body: string; priority: 'high' | 'default'; click?: string }): Promise<void>;
+}

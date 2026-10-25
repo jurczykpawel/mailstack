@@ -32,6 +32,7 @@ export interface MessageIntent {
 }
 export interface SentUpdate { providerMessageId: string; providerResponseSealed: string; sentAt: number }
 export interface MessageStore {
+  alertContext(id: string, pos?: number): Promise<{ brand: string; template: string; addr_hint: string } | undefined>;
   clearIdempotency(id: string, keyHash: string): Promise<void>;
   insertMessage(intent: MessageIntent): Promise<void>;
   markSent(id: string, update: SentUpdate): Promise<void>;
@@ -43,6 +44,12 @@ export type AtomicBatch = (queries: CompiledQuery[]) => Promise<number[]>;
 
 export class MessageOperations implements MessageStore {
   constructor(readonly db: Kysely<Database>, private readonly atomic?: AtomicBatch) {}
+
+  async alertContext(id: string, pos?: number) {
+    return this.db.selectFrom('messages').leftJoin('recipients', join => join.onRef('recipients.message_id', '=', 'messages.id')
+      .on('recipients.pos', '=', pos ?? 0)).select(['brand', 'template', 'addr_hint']).where('messages.id', '=', id)
+      .executeTakeFirst().then(row => row ? { ...row, addr_hint: row.addr_hint ?? 'unassigned' } : undefined);
+  }
 
   async batch(queries: CompiledQuery[]): Promise<number[]> {
     if (this.atomic) return this.atomic(queries);

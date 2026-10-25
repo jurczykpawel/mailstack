@@ -1,3 +1,5 @@
+import { alertMessage } from '../alerts';
+import { createNtfyNotifier } from '../../adapters/notify/ntfy';
 import type { Brand, Env, SendDeps, SendParams, SendResult, TemplateData, TemplateDef } from '../../types';
 import { config } from '../config';
 import { seal, verifyMac } from '../crypto';
@@ -71,11 +73,14 @@ export async function deliver(
       break;
     }
   }
+  const alert = (type: string) => id ? alertMessage(deps.store, deps.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
+    id, type, deps.now().getTime(), logging, env.PANEL_URL) : Promise.resolve();
   let result: SendResult;
   try {
     result = await deps.sendEmail(env, { ...params, ...(id ? { messageId: id, brand: brand.id } : {}) });
   } catch {
     if (id) await deps.store!.setStatus(id, 'unknown').catch(() => {});
+    await alert('unknown');
     return { ...failure(502, 'send_failed'), id };
   }
   if (id) {
@@ -86,8 +91,9 @@ export async function deliver(
       } else await deps.store!.markFailed(id, sealed);
     } catch {
       await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed').catch(() => {});
-      if (result.ok) return { ...failure(502, 'send_failed'), id };
+      if (result.ok) { await alert('unknown'); return { ...failure(502, 'send_failed'), id }; }
     }
   }
+  if (!result.ok) await alert('send_failed');
   return result.ok ? { ok: true, status: 200, id } : { ...failure(502, 'send_failed'), id };
 }
