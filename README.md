@@ -57,7 +57,9 @@ append the real client address to `X-Forwarded-For`; the API uses the last entry
 Restrict direct access to the API when trusting either header. Missing or invalid address
 headers fall back to the socket address. Unknown `TRUSTED_PROXY` values stop startup.
 
-Retention runs hourly. Daily SQLite snapshots in `/data/backups` keep seven copies;
+Retention first runs after 30 seconds, then hourly. Startup reads the newest backup mtime
+from `mailstack-*.db` in `/data/backups` and immediately creates a snapshot if none exists
+or the last is at least 24 hours old. Daily SQLite snapshots keep seven copies;
 deleted message data can remain in those backups for up to seven days. Back up the data
 volume and keys separately. SIGTERM stops accepting requests, drains requests and background
 work, stops maintenance, and closes SQLite. Configure a longer `stop_grace_period` if needed.

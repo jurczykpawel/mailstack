@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { isIP } from 'node:net';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../core/config';
 import { effectivePolicies } from '../core/config/schema';
@@ -16,16 +17,33 @@ import { smtpFromEnv } from '../adapters/sender/smtp';
 import type { Env } from '../types';
 
 type Fetch = (req: Request, env: Env, ctx: Pick<ExecutionContext, 'waitUntil'>) => Promise<Response>;
-export function startScheduler(retention: () => Promise<unknown>, backup: () => Promise<unknown>) {
-  let running: Promise<void> | undefined, backedUp = Date.now();
-  const timer = setInterval(() => {
+async function latestBackup(dir: string): Promise<number> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    const times = await Promise.all(entries.filter(entry => entry.isFile() && /^mailstack-.+\.db$/.test(entry.name))
+      .map(async entry => (await stat(join(dir, entry.name))).mtimeMs));
+    return Math.max(0, ...times);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return 0;
+    throw error;
+  }
+}
+export async function startScheduler(retention: () => Promise<unknown>, backup: () => Promise<unknown>, dir = '/data/backups') {
+  let backedUp = await latestBackup(dir), running: Promise<void> | undefined;
+  const attempt = async (task: () => Promise<unknown>) => {
+    try { await task(); } catch { console.error('Scheduled maintenance failed'); }
+  };
+  const run = (retain: boolean) => {
     if (running) return;
     running = (async () => {
-      await retention();
-      if (Date.now() - backedUp >= 86400000) { await backup(); backedUp = Date.now(); }
-    })().catch(() => { console.error('Scheduled maintenance failed'); }).finally(() => { running = undefined; });
-  }, 3600000);
-  return async () => { clearInterval(timer); await running; };
+      if (retain) await attempt(retention);
+      if (Date.now() - backedUp >= 86400000) await attempt(async () => { await backup(); backedUp = Date.now(); });
+    })().finally(() => { running = undefined; });
+  };
+  run(false);
+  const initial = setTimeout(() => run(true), 30000);
+  const timer = setInterval(() => run(true), 3600000);
+  return async () => { clearTimeout(initial); clearInterval(timer); await running; };
 }
 export async function startServer(handler: Fetch, env: Env, port = 8080) {
   const proxy = env.TRUSTED_PROXY;
@@ -78,8 +96,9 @@ async function main() {
   try {
     await store.migrate();
     const app = createApp({ store, sendEmail: sender, provider });
-    const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env);
-    const stop = startScheduler(() => runRetention(store, Date.now(), config), () => backupSqlite(database, '/data/backups', Date.now()));
+    const stop = await startScheduler(() => runRetention(store, Date.now(), config), () => backupSqlite(database, '/data/backups', Date.now()));
+    const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
+      .catch(async error => { await stop(); throw error; });
     let closing = false;
     const shutdown = async () => {
       if (closing) return; closing = true;
