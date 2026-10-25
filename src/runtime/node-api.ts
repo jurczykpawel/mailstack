@@ -1,3 +1,4 @@
+import { loadExtensions } from './extensions';
 import { createServer } from 'node:http';
 import { isIP } from 'node:net';
 import { Readable } from 'node:stream';
@@ -95,18 +96,21 @@ async function main() {
   const store = createSqliteStore(database);
   try {
     await store.migrate();
-    const app = createApp({ store, sendEmail: sender, provider });
+    const extensions = await loadExtensions(config, store);
+    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent });
     const stop = await startScheduler(() => runRetention(store, Date.now(), config), () => backupSqlite(database, '/data/backups', Date.now()));
     const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
       .catch(async error => { await stop(); throw error; });
+    const internal = await startServer((req, env) => extensions.fetch(req, env), env, 8081)
+      .catch(async error => { await Promise.all([server.close(), stop()]); throw error; });
     let closing = false;
     const shutdown = async () => {
       if (closing) return; closing = true;
-      await Promise.all([server.close(), stop()]); await store.db.destroy();
+      await Promise.all([server.close(), internal.close(), stop()]); await store.db.destroy();
     };
     for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { void shutdown().catch(() => { process.exitCode = 1; }); });
   } catch (error) { await store.db.destroy(); throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(() => { console.error('Node API startup failed'); process.exitCode = 1; });
+  main().catch(error => { console.error(error instanceof Error && /^\$\.extensions\.\d+\.module:/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
 }

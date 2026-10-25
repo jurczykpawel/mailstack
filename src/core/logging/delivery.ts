@@ -74,6 +74,10 @@ export async function deliver(
       break;
     }
   }
+  const emit = (status: 'sent' | 'send_failed' | 'unknown') => deps.emitEvent?.({
+    type: `message.${status}`, at: deps.now().getTime(), brand: brand.id, template: template.id, status,
+    ...(id ? { messageId: id } : {}), ...(context.ref === undefined ? {} : { ref: context.ref }),
+  }, deps.waitUntil);
   const alert = (type: string) => {
     if (!id) return;
     const task = alertMessage(deps.store, deps.notifier,
@@ -94,6 +98,7 @@ export async function deliver(
     result = await deps.sendEmail(env, { ...params, ...(id ? { messageId: id, brand: brand.id } : {}) });
   } catch {
     if (id) await deps.store!.setStatus(id, 'unknown').catch(() => {});
+    emit('unknown');
     await alert('unknown');
     return { ...failure(502, 'send_failed'), id };
   }
@@ -112,9 +117,10 @@ export async function deliver(
       } else await deps.store!.markFailed(id, sealed);
     } catch {
       await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed').catch(() => {});
-      if (result.ok) { await alert('unknown'); return { ...failure(502, 'send_failed'), id }; }
+      if (result.ok) { emit('unknown'); await alert('unknown'); return { ...failure(502, 'send_failed'), id }; }
     }
   }
+  emit(result.ok ? 'sent' : 'send_failed');
   if (!result.ok) await alert('send_failed');
   return result.ok ? { ok: true, status: 200, id } : { ...failure(502, 'send_failed'), id };
 }

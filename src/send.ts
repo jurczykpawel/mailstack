@@ -311,6 +311,11 @@ export async function handleSend(
     );
   }
 
+  if (!trusted && template.id === 'contact') deps.emitEvent?.({
+    type: 'form.submitted', at: deps.now().getTime(), brand: brand.id, template: template.id, status: 'sent',
+    ...(result.id ? { messageId: result.id } : {}),
+  }, deps.waitUntil);
+
   // Best-effort auto-reply to the submitter (public contact form only), dispatched
   // off the request path so it never delays or fails the user's response.
   maybeSendAutoReply({ trusted, brand, templateId: template.id, data, body, env, deps });

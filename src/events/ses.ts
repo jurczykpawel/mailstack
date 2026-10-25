@@ -26,6 +26,7 @@ const mapping: Record<string, [string, string, string?]> = {
   DeliveryDelay: ['delay', 'deliveryDelay', 'delayedRecipients'], 'Rendering Failure': ['render_failure', 'failure'],
 };
 export interface EventDeps {
+  emitEvent?: import("../core/extensions").EmitEvent;
   notifier?: Notifier; logging?: Config['logging']; panelUrl?: string;
   waitUntil?: (task: Promise<unknown>) => void;
   options?: SesOptions; store?: KyselyStore; contentKeys: ContentKey[]; indexKeys: IndexKey[];
@@ -80,6 +81,16 @@ export async function handleSesEvent(req: Request, deps: EventDeps): Promise<Res
       received_at: now, auth: body.SignatureVersion === '2' ? 'sns-sig-v2' : 'sns-sig-v1', summary, evidence_sealed: evidence }));
     const inserted = await recordEvents(deps.store, rows);
     if (inserted) {
+      const types = { Delivery: 'message.delivered', Bounce: 'message.bounced', Complaint: 'message.complained', Reject: 'message.send_failed', 'Rendering Failure': 'message.send_failed' } as const;
+      const domainType = types[event.eventType as keyof typeof types];
+      if (domainType && deps.emitEvent) {
+        const task = Promise.resolve().then(async () => {
+          const projected = await deps.store!.db.selectFrom('messages').select(['template', 'status']).where('id', '=', message.id).executeTakeFirst();
+          if (projected) deps.emitEvent!({ type: domainType, at: now, brand: message.brand, template: projected.template,
+            status: projected.status, messageId: message.id }, deps.waitUntil);
+        }).catch(() => { console.error('mailstack: extension event failed'); });
+        if (deps.waitUntil) deps.waitUntil(task);
+      }
       const task = alertMessage(deps.store, deps.notifier, message.id, type, now, deps.logging, deps.panelUrl, matched[0]?.pos, summary);
       if (deps.waitUntil) deps.waitUntil(task);
       else await task;

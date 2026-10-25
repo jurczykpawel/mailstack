@@ -57,6 +57,10 @@ const legacySchema = z.strictObject({
 });
 export type Client = z.infer<typeof clientSchema>;
 const shape = z.strictObject({
+  extensions: z.array(z.strictObject({
+    module: z.string().regex(/^(?:\/[^\s?#]+|(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*)$/),
+    options: z.record(z.string(), z.unknown()).optional(),
+  })).default([]),
   sender: z.strictObject({ type: z.enum(["ses", "smtp"]) }).optional(),
   version: z.literal(1), brands: z.record(z.string(), brand),
   logging: z.strictObject({

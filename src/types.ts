@@ -154,6 +154,7 @@ export interface SendParams {
 
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
+  emitEvent?: import("./core/extensions").EmitEvent;
   provider?: 'ses' | 'smtp';
   notifier?: Notifier;
   logging?: Config["logging"];
