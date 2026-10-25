@@ -82,6 +82,18 @@ For Node without Docker: `npm run build:node`, then `MAILSTACK_CONFIG=/path/to/m
 The process needs a writable `/data` directory. Configuration is read and validated at startup;
 invalid configuration stops the process before listening. The Node bundle includes no brand configuration.
 
+## Releases
+
+Pushing a `v*` release tag runs typecheck and tests, then builds the image for
+`linux/amd64` and `linux/arm64`. CI smoke-tests the amd64 image with read-only example
+configuration and SQLite on tmpfs; `/health` must report `ok: true` and `store: "ok"`
+before the same OCI archive is published to `ghcr.io/jurczykpawel/mailstack`.
+Tags are the version without `v` (for example `1.2.3`), `sha-<full-commit-sha>`, and
+`latest` for stable `vMAJOR.MINOR.PATCH` releases only. Prereleases do not update `latest`.
+OCI labels record the source, revision, release version and MIT license. Configuration
+and secrets are supplied at runtime. The complete publication path will be verified
+on the first release tag.
+
 ## What it does, in plain words
 
 1. Someone fills in the contact form on your website.
