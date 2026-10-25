@@ -49,3 +49,28 @@ it('checks the actual store and retains liveness after storage closes', async ()
   await store.db.destroy();
   expect(await (await call()).json()).toMatchObject({ ok: true, store: 'down' });
 });
+
+it.each([undefined, 'cloudflare', 'proxy'])('uses the configured client address for rate limits: %s', async mode => {
+  const { memoryStore } = await import('./store-fixture');
+  const { checkRateLimit } = await import('../src/ratelimit');
+  const store = memoryStore();
+  const runtime = await startServer(async req => {
+    const ip = req.headers.get('cf-connecting-ip')!;
+    const allowed = await checkRateLimit(store, 'acme', ip, new Date('2026-10-25T12:00:00Z'));
+    return Response.json({ ip, forwarded: req.headers.get('x-forwarded-for') }, { status: allowed ? 200 : 429 });
+  }, { TRUSTED_PROXY: mode } as Env, 0);
+  try {
+    for (let i = 1; i <= 9; i++) {
+      const cf = `192.0.2.${i}`, last = `198.51.100.${i}`;
+      const response = await fetch(`http://127.0.0.1:${runtime.port}/v1/send`, { headers: {
+        connection: 'close', 'cf-connecting-ip': cf, 'x-forwarded-for': `203.0.113.1, ${last}`,
+      } });
+      const expected = mode === 'cloudflare' ? cf : mode === 'proxy' ? last : '127.0.0.1';
+      expect(await response.json()).toEqual({ ip: expected, forwarded: expected });
+      expect(response.status).toBe(!mode && i === 9 ? 429 : 200);
+    }
+  } finally { await runtime.close(); }
+});
+it.each(['other', 'forwarded'])('refuses an unknown proxy mode before listening: %s', async mode => {
+  await expect(startServer(async () => new Response(), { TRUSTED_PROXY: mode } as Env, 0)).rejects.toThrow('TRUSTED_PROXY');
+});

@@ -46,6 +46,14 @@ change the published port. The container runs as a non-root user on a read-only 
 only `/data` and the `/tmp` tmpfs are writable. The named data volume survives container restarts.
 No panel listener is included yet.
 
+`TRUSTED_PROXY` is unset by default: the socket address is used and incoming
+`CF-Connecting-IP` and `X-Forwarded-For` are overwritten. Set `TRUSTED_PROXY=cloudflare`
+only when requests arrive through a trusted Cloudflare proxy that supplies `CF-Connecting-IP`.
+Set `TRUSTED_PROXY=proxy` for exactly one trusted reverse proxy hop: that proxy must
+append the real client address to `X-Forwarded-For`; the API uses the last entry.
+Restrict direct access to the API when trusting either header. Missing or invalid address
+headers fall back to the socket address. Unknown `TRUSTED_PROXY` values stop startup.
+
 Retention runs hourly. Daily SQLite snapshots in `/data/backups` keep seven copies;
 deleted message data can remain in those backups for up to seven days. Back up the data
 volume and keys separately. SIGTERM stops accepting requests, drains requests and background

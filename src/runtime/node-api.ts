@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { isIP } from 'node:net';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { mkdir } from 'node:fs/promises';
@@ -27,6 +28,8 @@ export function startScheduler(retention: () => Promise<unknown>, backup: () => 
   return async () => { clearInterval(timer); await running; };
 }
 export async function startServer(handler: Fetch, env: Env, port = 8080) {
+  const proxy = env.TRUSTED_PROXY;
+  if (proxy !== undefined && proxy !== 'cloudflare' && proxy !== 'proxy') throw new Error('Invalid TRUSTED_PROXY');
   const pending = new Set<Promise<unknown>>();
   const ctx = { waitUntil(task: Promise<unknown>) {
     const tracked = task.catch(() => {}).finally(() => pending.delete(tracked)); pending.add(tracked);
@@ -37,7 +40,11 @@ export async function startServer(handler: Fetch, env: Env, port = 8080) {
       for (const [name, value] of Object.entries(incoming.headers)) {
         if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(', ') : value);
       }
-      headers.set('cf-connecting-ip', incoming.socket.remoteAddress ?? '');
+      const forwarded = proxy === 'cloudflare' ? headers.get('cf-connecting-ip')
+        : proxy === 'proxy' ? headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() : undefined;
+      const ip = forwarded && isIP(forwarded) ? forwarded : incoming.socket.remoteAddress ?? '';
+      headers.set('cf-connecting-ip', ip);
+      headers.set('x-forwarded-for', ip);
       const init: RequestInit & { duplex?: 'half' } = { method: incoming.method, headers };
       if (incoming.method !== 'GET' && incoming.method !== 'HEAD') {
         init.body = Readable.toWeb(incoming) as unknown as ReadableStream<Uint8Array>; init.duplex = 'half';
