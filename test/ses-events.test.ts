@@ -218,3 +218,62 @@ it('resolves tags before provider identifiers are available', async () => {
       verify: createVerifier(async () => new Response(cert)), now: Date.now })).json()).toEqual({ ok: true, result: 'processed' });
   } finally { await store.db.destroy(); }
 });
+
+it('alerts once per message and type using the effective template policy', async () => {
+  const store = createSqliteStore(':memory:');
+  const logging = parseConfig(example).logging;
+  logging.brands.acme = { templates: { license: { alertOn: ['bounce_permanent', 'complaint'] } } };
+  const notify = vi.fn().mockResolvedValue(undefined);
+  try {
+    await store.migrate();
+    const idx = await blindIndex('one@example.com', indexKeys[0]);
+    await sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at)
+      values('msg_1','demo','acme','license','meta','hash','sent',0,9999999999999)`.execute(store.db);
+    await sql`insert into recipients values('msg_1',0,'to',${idx.index},'i1','sealed','o***@e***.com','sent',null)`.execute(store.db);
+    const deps = { options, store, contentKeys: publicKeys, indexKeys, verify: createVerifier(async () => new Response(cert)),
+      now: () => 1000, logging, notifier: { notify }, panelUrl: 'https://panel.example/' };
+    const event = notification('Bounce', { bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'one@example.com', diagnosticCode: '5.1.1 one@example.com Subject sentinel Body sentinel' }] } });
+    const body = signed(key, event);
+    expect((await handleSesEvent(request(body), deps)).status).toBe(200);
+    expect((await handleSesEvent(request(body), deps)).status).toBe(200);
+    expect((await handleSesEvent(request(signed(key, event)), deps)).status).toBe(200);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0][0]).toMatchObject({ title: 'mailstack: bounce_permanent acme/license', priority: 'high', click: 'https://panel.example/m/msg_1' });
+    expect(notify.mock.calls[0][0].body).toContain('o***@e***.com');
+    for (const value of ['one@example.com', 'Subject sentinel', 'Body sentinel']) expect(notify.mock.calls[0][0].body).not.toContain(value);
+    expect(notify.mock.calls[0][0].body).toContain('5.1.1');
+    expect(await store.db.selectFrom('guards').selectAll().execute()).toMatchObject([{ key: 'alert:msg_1:bounce_permanent', expires_at: 1000 + logging.defaults.metaDays * 86400000 }]);
+    await handleSesEvent(request(signed(key, notification('Send'))), deps);
+    expect(notify).toHaveBeenCalledTimes(1);
+    notify.mockRejectedValue(new Error('private notification detail'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await handleSesEvent(request(signed(key, notification('Complaint', { complaint: { complainedRecipients: ['one@example.com'] } }))), deps)).status).toBe(200);
+    expect(log).toHaveBeenCalledWith('mailstack: alert failed');
+    log.mockRestore();
+  } finally { await store.db.destroy(); }
+});
+
+it('tracks SES alerts without delaying the event response', async () => {
+  const store = createSqliteStore(':memory:');
+  const logging = parseConfig(example).logging; logging.defaults.alertOn = ['complaint'];
+  let entered!: () => void, finish!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const tasks: Promise<unknown>[] = [];
+  let result: Promise<Response> | undefined;
+  try {
+    await store.migrate();
+    const idx = await blindIndex('one@example.com', indexKeys[0]);
+    await sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at)
+      values('msg_1','demo','acme','notice','meta','hash','sent',0,9999999999999)`.execute(store.db);
+    await sql`insert into recipients values('msg_1',0,'to',${idx.index},'i1','sealed','o***@e***.com','sent',null)`.execute(store.db);
+    result = handleSesEvent(request(signed(key, notification('Complaint', { complaint: { complainedRecipients: ['one@example.com'] } }))), {
+      options, store, contentKeys: publicKeys, indexKeys, verify: createVerifier(async () => new Response(cert)), now: Date.now, logging,
+      notifier: { notify: async () => { entered(); await pending; } }, waitUntil: task => { tasks.push(task); },
+    });
+    await started;
+    expect(tasks).toHaveLength(1);
+    expect(await Promise.race([result.then(() => true), new Promise(resolve => setImmediate(() => resolve(false)))])).toBe(true);
+    expect((await result).status).toBe(200);
+  } finally { finish(); await result; await Promise.all(tasks); await store.db.destroy(); }
+});

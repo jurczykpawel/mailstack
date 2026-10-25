@@ -289,3 +289,76 @@ it.each([450, 550, undefined])('persists the SMTP outcome for reply %s', async r
   if (responseCode) expect(await open(row.provider_response_sealed!, { brand: 'acme', messageId: row.id, purpose: 'provider_response' }, [privateKey])).toEqual({ response: `${responseCode} refused` });
   expect(sendMail).toHaveBeenCalledTimes(1);
 });
+
+it.each(['send_failed', 'unknown'] as const)('alerts on %s without changing delivery results', async type => {
+  deps.logging!.defaults.alertOn = [type];
+  deps.notifier = { notify: vi.fn().mockRejectedValue(new Error('notification detail')) };
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  if (type === 'unknown') vi.mocked(deps.sendEmail).mockRejectedValue(new Error('provider detail'));
+  else vi.mocked(deps.sendEmail).mockResolvedValue({ ok: false, status: 400 });
+  expect((await send()).status).toBe(502);
+  expect(deps.notifier.notify).toHaveBeenCalledTimes(1);
+  const alert = vi.mocked(deps.notifier.notify).mock.calls[0][0];
+  for (const value of [body.to, body.heading, body.paragraphs]) expect(JSON.stringify(alert)).not.toContain(value);
+  expect(alert.title).toBe('mailstack: ' + type + ' acme/notice');
+  expect(log).toHaveBeenCalledWith('mailstack: alert failed');
+});
+
+it('keeps notifications disabled without a URL and skips types outside alertOn', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  try {
+    deps.logging!.defaults.alertOn = ['send_failed'];
+    vi.mocked(deps.sendEmail).mockResolvedValue({ ok: false, status: 400 });
+    expect((await send()).status).toBe(502);
+    expect(fetcher).not.toHaveBeenCalled();
+    deps.notifier = { notify: vi.fn() };
+    deps.logging!.defaults.alertOn = [];
+    expect((await send(body, null)).status).toBe(502);
+    expect(deps.notifier.notify).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('alerts when recording an accepted send becomes unknown', async () => {
+  deps.logging!.defaults.alertOn = ['unknown'];
+  deps.notifier = { notify: vi.fn().mockResolvedValue(undefined) };
+  vi.spyOn(store, 'markSent').mockRejectedValue(new Error('unavailable'));
+  expect((await send()).status).toBe(502);
+  expect(deps.notifier.notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'mailstack: unknown acme/notice', priority: 'default' }));
+});
+
+it.each([true, false])('handles a slow alert with waitUntil=%s', async background => {
+  vi.useFakeTimers();
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const tasks: Promise<unknown>[] = [];
+  let alertFinished = false;
+  let responded = false;
+  deps.logging!.defaults.alertOn = ['send_failed'];
+  deps.notifier = { notify: vi.fn(() => {
+    entered();
+    return new Promise<void>(resolve => setTimeout(() => { alertFinished = true; resolve(); }, 6000));
+  }) };
+  if (background) deps.waitUntil = task => { tasks.push(task); };
+  vi.mocked(deps.sendEmail).mockResolvedValue({ ok: false, status: 400 });
+  const response = send().then(result => { responded = true; return result; });
+  try {
+    await started;
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(responded).toBe(background);
+    expect(alertFinished).toBe(false);
+    expect(tasks).toHaveLength(background ? 1 : 0);
+    if (background) {
+      expect(tasks[0]).toBeInstanceOf(Promise);
+      let taskFinished = false;
+      void tasks[0].then(() => { taskFinished = true; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(taskFinished).toBe(false);
+    }
+  } finally {
+    await vi.advanceTimersByTimeAsync(6000);
+    await Promise.all(tasks);
+    expect((await response).status).toBe(502);
+    vi.useRealTimers();
+  }
+});

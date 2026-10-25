@@ -1,10 +1,13 @@
-import type { Sender, Store } from './core/ports';
+import type { Notifier, Sender, Store } from './core/ports';
 import type { Config } from './core/config/schema';
 import type { KeyEnvironment } from './core/keyring';
 
 /** Worker bindings (vars + secrets + D1). Mirrors wrangler.toml + `wrangler secret`. */
 export interface Env extends KeyEnvironment {
   // vars
+  NTFY_URL?: string;
+  NTFY_TOKEN?: string;
+  PANEL_URL?: string;
   SES_REGION: string;
   SES_CONFIGURATION_SET?: string;
   BUILD_COMMIT?: string;
@@ -147,6 +150,7 @@ export interface SendParams {
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
   provider?: 'ses' | 'smtp';
+  notifier?: Notifier;
   logging?: Config["logging"];
   store?: Store;
   verifyTurnstile: (

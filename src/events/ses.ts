@@ -1,3 +1,6 @@
+import { alertMessage } from '../core/alerts';
+import type { Notifier } from '../core/ports';
+import type { Config } from '../core/config/schema';
 import { appendAudit } from '../core/audit';
 import { z } from 'zod';
 import { blindIndexes, seal } from '../core/crypto';
@@ -23,6 +26,8 @@ const mapping: Record<string, [string, string, string?]> = {
   DeliveryDelay: ['delay', 'deliveryDelay', 'delayedRecipients'], 'Rendering Failure': ['render_failure', 'failure'],
 };
 export interface EventDeps {
+  notifier?: Notifier; logging?: Config['logging']; panelUrl?: string;
+  waitUntil?: (task: Promise<unknown>) => void;
   options?: SesOptions; store?: KyselyStore; contentKeys: ContentKey[]; indexKeys: IndexKey[];
   verify: ReturnType<typeof createVerifier>; now: () => number; fetcher?: typeof fetch;
 }
@@ -73,6 +78,12 @@ export async function handleSesEvent(req: Request, deps: EventDeps): Promise<Res
     const rows = positions.map(pos => ({ id: eventId(now), message_id: message.id, recipient_pos: pos, source: 'ses-sns',
       source_event_id: `${body.MessageId}:${pos ?? 'msg'}`, type, occurred_at: Date.parse(data?.timestamp ?? body.Timestamp),
       received_at: now, auth: body.SignatureVersion === '2' ? 'sns-sig-v2' : 'sns-sig-v1', summary, evidence_sealed: evidence }));
-    return response(200, await recordEvents(deps.store, rows) ? 'processed' : 'duplicate');
+    const inserted = await recordEvents(deps.store, rows);
+    if (inserted) {
+      const task = alertMessage(deps.store, deps.notifier, message.id, type, now, deps.logging, deps.panelUrl, matched[0]?.pos, summary);
+      if (deps.waitUntil) deps.waitUntil(task);
+      else await task;
+    }
+    return response(200, inserted ? 'processed' : 'duplicate');
   } catch { return response(503); }
 }

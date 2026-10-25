@@ -1,3 +1,4 @@
+import { createNtfyNotifier } from './adapters/notify/ntfy';
 import { parseKeyring } from "./core/keyring";
 import { handleSesEvent } from "./events/ses";
 import { createVerifier } from "./events/sns";
@@ -62,7 +63,10 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       ctx: ExecutionContext,
     ): Promise<Response> {
       const store = overrides.store ?? (env.DB ? createD1Store(env.DB) : undefined);
-      const deps = { ...defaultDeps, ...overrides, store };
+      const deps = { ...defaultDeps, ...overrides, store,
+        notifier: overrides.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
+        waitUntil: ctx.waitUntil?.bind(ctx) ?? overrides.waitUntil,
+      };
       const url = new URL(req.url);
       const { pathname } = url;
 
@@ -113,11 +117,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       if (pathname === "/v1/send") {
         if (req.method === "OPTIONS") return handlePreflight(req, url);
         if (req.method === "POST") {
-          // Bind ctx.waitUntil so the best-effort auto-reply outlives the response.
-          return handleSend(req, env, {
-            ...deps,
-            waitUntil: ctx.waitUntil.bind(ctx),
-          });
+          return handleSend(req, env, deps);
         }
       }
 
@@ -127,9 +127,9 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
 
       if (pathname === "/v1/events/ses" && req.method === "POST") {
         try {
-          return await handleSesEvent(req, { options: config.events?.ses, verify: verifySns,
-            store, now: Date.now,
-            ...parseKeyring(env) });
+          return await handleSesEvent(req, { ...deps, options: config.events?.ses, verify: verifySns,
+            store, now: () => deps.now().getTime(),
+            ...parseKeyring(env), panelUrl: env.PANEL_URL });
         } catch { return Response.json({ ok: false }, { status: 503 }); }
       }
       return notFound();

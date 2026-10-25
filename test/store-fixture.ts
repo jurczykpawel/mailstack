@@ -3,6 +3,7 @@ import type { Store } from '../src/core/ports';
 export function memoryStore(): Store {
   const guards = new Map<string, { count: number; expires: number }>();
   return {
+    async alertContext() { return undefined; },
     async clearIdempotency() { throw new Error('Unsupported operation'); },
     async insertMessage() { throw new Error('Unsupported operation'); },
     async markSent() { throw new Error('Unsupported operation'); },
