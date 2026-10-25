@@ -1,11 +1,14 @@
 # mailstack
 
-A universal, secure **form-to-email + transactional email sender** running on a single
-Cloudflare Worker. Self-owned alternative to Web3Forms: your forms POST here, the Worker
-validates and renders a branded email, and sends it via **Amazon SES**. Multi-tenant by
+A universal, secure **form-to-email + transactional email sender** running on a
+Cloudflare Worker (D1 + SES) or Node (SQLite + SES/SMTP). Self-owned alternative to Web3Forms: your forms POST here, the Worker
+validates and renders a branded email, and sends it via **Amazon SES** or **SMTP**. Multi-tenant by
 design — each "brand" has its own sender, fixed recipient, origin allowlist, and theme.
 
-Stack: Cloudflare Workers + TypeScript (strict), `aws4fetch` for SES SigV4, D1 for atomic guards. Entry point `src/index.ts` (`export default { fetch }`).
+Stack: TypeScript (strict), `aws4fetch` for SES SigV4, Nodemailer for SMTP, Kysely with
+D1/SQLite for logging and atomic guards. Worker entry: `src/index.ts`; Node entry:
+`src/runtime/node-api.ts`. Installation, keys, policies, event setup, retention and
+ntfy operations are documented in [README.md](README.md).
 
 ## Public API
 
@@ -49,6 +52,8 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `ref` | trusted correlation string (1-128 characters) |
 | `resendOf` | trusted: reserved, return `400 not_supported`; public: ignored |
 | `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
+| `markup` | trusted JSON-LD directives; ignored in public mode |
+| `nonce`, `product` | controls only for public brands with `requireNonce: true`; otherwise content |
 | `_meta` | reserved, ignored as content |
 
 Everything else (`name`, `email`, `phone`, `message`, `type`, `topic`, `person`, `gdpr`,
@@ -94,12 +99,12 @@ curl -X POST https://mail.example.com/v1/send \
 ```
 
 ### Trusted mode (server-to-server / transactional)
-Send `Authorization: Bearer <API_KEY>` matching the `API_KEY` secret (compared in
-constant time). This **skips** Turnstile and origin checks, and allows:
+Send `Authorization: Bearer <token>` for a configured client with `send` scope and
+allowed brand/template, or the enabled legacy `API_KEY`. This skips public guards and allows:
 - a `template` selection (any registered type — see [Templates](#templates); public is
   always pinned to `contact`),
 - a `subject` override,
-- a validated `to` override (valid email(s), capped to 5),
+- a validated `to` override when `recipientOverride: true` (valid email(s), capped to 5),
 - a validated `replyTo` override.
 
 Transactional example (payment receipt):
@@ -143,10 +148,14 @@ Brands live under `brands` in the external `mailstack.json` selected by `MAILSTA
 interface Brand {
   id: string; name: string;
   from: string;            // verified SES sender, e.g. "Foo <info@foo.example>"
-  to: string[];            // fixed recipient(s) — body can never change this
+  to: string[];            // fixed public recipient(s)
   allowedOrigins: string[];
   subjectPrefix: string;
   theme: { accent: string; accent2?: string; logoUrl?: string; siteUrl: string; address?: string; phone?: string; };
+  captcha?: "turnstile" | "altcha";
+  turnstileAction?: string;
+  requireNonce?: boolean;
+  products?: string[];
   autoReply?: boolean;         // default for the contact auto-reply (default false). See Auto-reply.
   autoReplyTemplate?: string;  // template used for the auto-reply (default "received")
 }
@@ -154,7 +163,13 @@ interface Brand {
 
 Example brands in `config/mailstack.example.json`: `acme` (auto-reply on) and `demo`. Copy the JSON outside the repository and export `MAILSTACK_CONFIG`. Node 24+ runs the TypeScript CLI directly: `node scripts/mailstack.ts config check <file>` or `config import-brands <legacy-brands.ts>` (JSON stdout; trusted local input).
 
-The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. Clients and legacyApiKey are optional validated sections; events and alerts remain deferred. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; the current Worker rejects it until an audit store is integrated. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
+The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. Clients, legacyApiKey, sender and events.ses are optional validated sections; alerts is reserved and uninterpreted. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; both runtime loaders currently reject it; keep includeSecrets false. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
+
+For a complete validated JSON example and legacy migration commands, see
+[configuration](README.md#complete-configuration-example) and
+[registry migration](README.md#migrating-a-legacy-brand-registry). Logging levels,
+precedence, `secretFields`, `subjectRoles` and policy constraints are described under
+[logging policies](README.md#logging-policies). Keep `resend: "off"` in this release.
 
 ### Client configuration
 
@@ -179,6 +194,16 @@ retains its wildcard defaults for both fields.
 
 No code changes are needed elsewhere — `getBrand` / `findBrandByOrigin` read the loaded configuration in `src/core/config/index.ts`.
 
+### Form nonce
+
+Brands can opt into `requireNonce: true` with a nonempty `products` selection.
+`GET /altcha/challenge?brand=<id>&product=<name>` from an allowed origin returns
+`{altcha, nonce}` instead of the flat ALTCHA challenge. Submit the solution and nonce;
+the nonce is valid for ten minutes and is consumed before captcha verification.
+The nonce product becomes `type`; fetch a fresh pair for every attempt. Trusted sends
+skip this check. See [form instructions](README.md#public-forms-using-altcha) for
+product matching, errors and the scope of the `nonce`/`product` control fields.
+
 ## Templates
 
 mailstack can send different **kinds** of email, all sharing one per-brand look. The
@@ -197,6 +222,7 @@ original form behavior.
 | `welcome` | Onboarding / welcome | `name`, `intro`, `body`, `ctaUrl`, `ctaLabel` |
 | `received` | "We got your message" ack | `name`, `refId`, `summary` |
 | `payment` | Payment confirmation | `amount` (shown), `currency` (default `PLN`), `item`/`description`, `orderId`, `date`, `invoiceUrl` (→ "Pobierz fakturę" button), `name` |
+| `license` | License delivery | `name`, `productName`, `tier`, `domain`, `licenseKey`, `activationUrl`, `instructions`; `licenseKey` and `activationUrl` are secret |
 | `notice` | Generic catch-all | `heading`, `paragraphs` (string or array of strings), `ctaUrl`, `ctaLabel`, `subject` (subject override) |
 
 Notes:
@@ -210,7 +236,7 @@ Notes:
 ### How to add a template type
 1. Create `src/templates/types/<id>.ts` exporting a `TemplateDef` (`id`, optional
    `publicAllowed`, `subject(brand, data)`, `render(brand, data) => { heading, bodyHtml,
-   bodyText, previewText? }`). Build HTML with the shared helpers from `../layout`
+   bodyText, previewText?, jsonLd? }`, optional `secretFields` and `subjectRoles`). Build HTML with the shared helpers from `../layout`
    (`escapeHtml`, `paragraph`, `summaryTable`, `ctaButton`/`ctaText`) so it stays on-brand —
    do **not** re-create the header/footer chrome.
 2. Register it in the `TEMPLATES` map in `src/templates/index.ts`.
@@ -387,26 +413,43 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
 - **Size/shape guards:** body capped at 64 KiB (10 MiB for attachment-enabled send clients), ~40 fields, 5000 chars/value; non-object JSON rejected.
 - **No secrets in code:** SES/Turnstile/API credentials are read from `env` at runtime only.
 
+## Delivery events and operations
+
+`POST /v1/events/ses` accepts signed SNS subscription confirmations and SES events.
+Configure exact `events.ses.topicArns` and `accountIds`, the runtime keyring and
+`SES_CONFIGURATION_SET`; see [SES/SNS setup](README.md#ses-events). Node SMTP records
+local relay acceptance; downstream delivery events and DSN polling are not included.
+
+Use [Docker installation](README.md#run-with-docker-node--sqlite) for Node/SQLite.
+Keys are managed with [npm run keys](README.md#content-and-index-keys); the API receives
+public content keys and index keys, while private content keys stay outside its volume.
+Retention runs hourly (Worker minute 17 UTC; Node first after 30 seconds). Node makes
+startup/daily SQLite snapshots and keeps seven. See [retention and snapshots](README.md#retention-and-snapshots)
+and [ntfy alerts](README.md#ntfy-alerts) for storage lifecycle and notification setup.
+
 ## Secrets
 
-Set with `wrangler secret put <NAME>` (values live only in Cloudflare, never in git):
+Set with `npx wrangler secret put <NAME>` (values live only in Cloudflare, never in git):
 
 ```bash
-wrangler secret put SES_ACCESS_KEY_ID      # AWS IAM access key id (scope to ses:SendEmail)
-wrangler secret put SES_SECRET_ACCESS_KEY  # AWS IAM secret access key
-wrangler secret put TURNSTILE_SECRET       # Cloudflare Turnstile secret key
-wrangler secret put API_KEY                # long random bearer for trusted mode
+npx wrangler secret put SES_ACCESS_KEY_ID      # AWS IAM access key id (scope to ses:SendEmail)
+npx wrangler secret put SES_SECRET_ACCESS_KEY  # AWS IAM secret access key
+npx wrangler secret put TURNSTILE_SECRET       # Cloudflare Turnstile secret key
+npx wrangler secret put API_KEY                # long random bearer for trusted mode
+npx wrangler secret put ALTCHA_HMAC_KEY        # ALTCHA brands
+npx wrangler secret put CONTENT_PUBLIC_KEYS    # public JWK set from npm run keys
+npx wrangler secret put INDEX_KEYS             # index-key array from npm run keys
 ```
 
-For local `wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill placeholders
+For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill placeholders
 (`.dev.vars` is gitignored). The non-secret `SES_REGION` lives in `wrangler.toml [vars]`.
 
 ## Deploy notes
 
-1. **Create the D1 databases** with `wrangler d1 create mailstack` and
-   `wrangler d1 create mailstack-preview`, then put their ids in `.env`
+1. **Create the D1 databases** with `npx wrangler d1 create mailstack` and
+   `npx wrangler d1 create mailstack-preview`, then put their ids in `.env`
    (`MAILSTACK_D1_ID` / `MAILSTACK_D1_PREVIEW_ID`). Run `npm run setup`, then
-   `wrangler d1 migrations apply DB --local` for development or `--remote` before deploy.
+   `npx wrangler d1 migrations apply DB --local` for development or `--remote` before deploy.
 2. **Verify the SES sender(s)** (domain or email identity) in the SES console for the
    region in `SES_REGION` (default `eu-west-1`), and move the account out of the SES
    sandbox so it can mail arbitrary recipients.
@@ -416,8 +459,8 @@ For local `wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill plac
    from it. It passes HEAD as `BUILD_COMMIT` to Wrangler. Export `MAILSTACK_HEALTH_URL`
    (the full `/health` URL) to verify the deployed commit; without it the check is
    explicitly skipped. `/health.version` comes from package.json; commit defaults to `dev`.
-   Release tags `v*` run typecheck and tests on Node 24; container publishing and the
-   private-config Worker deploy workflow are deferred.
+   Release tags `v*` run checks and publish the container image; the private-config
+   Worker deploy workflow is deferred. See README for release tags and local Compose.
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
 6. **Frontends:** point each site's form at `POST /v1/send` with the right `brand`, and add
@@ -446,7 +489,13 @@ src/
     builders.ts        typed builders (viewAction, discountOffer, ...) + generic schema()/raw()
     serialize.ts       safe JSON-in-<script> serialization (neutralizes </script>) + head assembly
     index.ts           buildBlocks() — validate/fail-soft/cap; re-exports builders + serialize
-  ratelimit.ts         D1 fixed-window limiter
+  runtime/             Node listener, SMTP/SES selection, maintenance and SQLite setup
+  events/              SNS verification and SES event normalization
+  core/store/          Kysely D1/SQLite drivers, migrations, audit and backup
+  core/logging/        policy resolution, projection and delivery logging
+  core/retention.ts    expiry cleanup and stale-send reconciliation
+  adapters/            SMTP sender and ntfy notifier
+  ratelimit.ts         store-backed fixed-window limiter
   cors.ts              origin allowlist + CORS headers
   types.ts             shared types (Env, Brand, TemplateDef, SendDeps, ...)
 test/                  vitest suites (pure functions + handler with mocked deps)
@@ -461,7 +510,7 @@ the handler is unit-testable without network or the Workers runtime.
 npm install
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run
-npm run dev         # wrangler dev (needs .dev.vars + D1 preview id)
+npm run dev         # npx wrangler dev (needs .dev.vars + D1 preview id)
 npm run deploy      # guarded Wrangler deploy
 ```
 
@@ -470,16 +519,16 @@ npm run deploy      # guarded Wrangler deploy
 - Copy `.env.example` → `.env` and set `MAILSTACK_D1_ID` / `MAILSTACK_D1_PREVIEW_ID` (+ optional `MAILSTACK_ROUTE`).
 - Run `npm run setup` — generates `wrangler.toml` from `.env` and bundles the external `MAILSTACK_CONFIG` and creates `src/assets/logo.ts` from its example.
 - Edit the external JSON with your real brand(s). (Don't edit the generated `wrangler.toml` — change `.env` instead.)
-- Set the four secrets (`SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `TURNSTILE_SECRET`, `API_KEY`).
+- Set the provider, captcha and logging keys described in README, plus trusted credentials.
 - Verify SES senders (domain/email identity for each `from` address) and leave the SES sandbox.
 - Add a custom domain/route for the Worker.
 - Replace `src/assets/logo.ts` with your own PNG (base64-encoded) and update `brand.theme.logoUrl`.
 
 ## Send logging and idempotency
 
-All outgoing mail, including public submissions and auto-replies, records an encrypted
-intent before contacting SES. The effective `logging` policy comes from global, brand,
-and template settings. `requireLog: true` returns `503` with `code: "log_unavailable"`
+All outgoing mail, including public submissions and auto-replies, uses the logging
+pipeline before contacting the configured provider. The effective `logging` policy
+comes from global, brand, and template settings. `requireLog: true` returns `503` with `code: "log_unavailable"`
 without sending if the intent cannot be recorded. With `requireLog: false`, delivery
 continues without a log when storage or keys are unavailable. `level: "none"` writes no
 message row and needs no encryption keys. With an idempotency key, it stores only a
@@ -518,8 +567,9 @@ request body. At those levels, a matching request follows this table:
 | `unknown` (exception, timeout, or uncertain result) | `409`, `code: "outcome_unknown"`; no automatic retry |
 | Different request with the same key | `409`, `code: "idempotency_conflict"` |
 
-An operator must resolve `unknown` through the panel or provider events before another
-send is considered. The SES adapter makes one request per attempt. No idempotency key
+An `unknown` result needs provider reconciliation before considering another send.
+The operator panel and resend endpoints are not included in this release. The SES
+adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request
 identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
@@ -534,7 +584,7 @@ and the order/payment identifier as `ref` when present. Duplicate delivery sends
 conflicts, pending attempts and unknown outcomes follow the table above.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
-Worker vars. For local `wrangler dev`, it may also be set in `.dev.vars`. Only sends
+Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends
 with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
 `ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
 response headers are excluded. No open/click tracking configuration is sent.

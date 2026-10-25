@@ -6,9 +6,8 @@
 **Your own email-sending service — a free, self-hosted alternative to Web3Forms / Formspree.**
 
 Put mailstack between your website's contact form (or your app) and your inbox. It catches the
-submission, blocks spam, and sends you a clean, branded email. You run it on your own free
-Cloudflare account and it sends through Amazon's email service — so there are **no monthly fees**
-and your data only ever passes through accounts **you** control.
+submission, blocks spam, and sends you a clean, branded email. Run it on Cloudflare Workers with D1 and Amazon SES, or in Docker with Node, SQLite
+and SES or SMTP. Each brand has its own sender, inbox, allowed origins and theme.
 
 ## Run with Docker (Node + SQLite)
 
@@ -18,6 +17,7 @@ Requires Docker Compose and Node 24+ for key generation. Prepare the local files
 npm ci
 cp config/mailstack.example.json mailstack.json
 mkdir -p secrets
+chmod 700 secrets
 npm run --silent keys -- init secrets/panel-private.json > .env
 chmod 600 .env
 ```
@@ -26,7 +26,12 @@ Keep `secrets/panel-private.json` separately from the data volume and its backup
 only needs the public key and index key printed into `.env`. Keys are never baked into the image.
 Edit `mailstack.json` with your brand settings. Select the global sender with
 `"sender": {"type": "smtp"}` or `"sender": {"type": "ses"}` (the default).
-Append an `API_KEY` generated with `openssl rand -hex 32` to `.env` for trusted requests.
+For trusted requests append a token assignment without printing it:
+
+```bash
+node -e 'console.log("API_KEY=" + require("node:crypto").randomBytes(32).toString("hex"))' >> .env
+```
+
 For SMTP append `SMTP_URL=smtps://user:password@smtp.example.com:465`, or use
 `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE=true|false`
 (default false). With credentials and `secure=false`, STARTTLS is required;
@@ -37,7 +42,7 @@ Public forms also need `TURNSTILE_SECRET` or `ALTCHA_HMAC_KEY` for their configu
 Start the API with one command:
 
 ```bash
-docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
 The API is published on `127.0.0.1:8080` by default. For public traffic, put a reverse
@@ -67,10 +72,28 @@ work, stops maintenance, and closes SQLite. Configure a longer `stop_grace_perio
 To try SMTP locally, select `smtp` in the config and run:
 
 ```bash
-docker compose -p mailstack-smtp -f docker-compose.yml -f docker-compose.test.yml up --build -d
+docker compose -p mailstack-smtp -f docker-compose.yml -f docker-compose.test.yml up --build -d --wait
 ```
 
-Mailpit is available at `http://localhost:8025`. A send records the final SMTP response and
+Mailpit is available at `http://localhost:8025`. Load the local token, then send twice
+with the same idempotency key; the second response has `idempotent: true` and Mailpit
+contains one message:
+
+```bash
+set -a
+. ./.env
+set +a
+curl -sS http://127.0.0.1:8080/health
+for attempt in 1 2; do
+  curl -sS http://127.0.0.1:8080/v1/send \
+    -H 'content-type: application/json' \
+    -H "authorization: Bearer $API_KEY" \
+    -H 'Idempotency-Key: demo-smtp-1' \
+    -d '{"brand":"acme","template":"notice","to":"buyer@example.com","heading":"Demo","paragraphs":"Hello"}'
+done
+```
+
+Use a fresh idempotency key for each new logical message. A send records the final SMTP response and
 queue identifier, with sealed evidence labelled `smtp-response`. This proves relay acceptance;
 it does not prove delivery to the recipient. SMTP refusals become `send_failed`; network
 exceptions become `unknown` and are never retried automatically. With multiple recipients,
@@ -78,7 +101,7 @@ partial acceptance remains a successful send and per-recipient events record ref
 Remove the disposable test environment with
 `docker compose -p mailstack-smtp -f docker-compose.yml -f docker-compose.test.yml down -v --rmi local`.
 
-For Node without Docker: `npm run build:node`, then `MAILSTACK_CONFIG=/path/to/mailstack.json npm start`.
+For Node without Docker (load `.env` into the environment first): `npm run build:node`, then `MAILSTACK_CONFIG=/path/to/mailstack.json npm start`.
 The process needs a writable `/data` directory. Configuration is read and validated at startup;
 invalid configuration stops the process before listening. The Node bundle includes no brand configuration.
 
@@ -115,15 +138,15 @@ own sender address and look.
                           └─ sends a branded email via Amazon SES
 ```
 
-You don't run or maintain a server — Cloudflare runs the little program (a "Worker") for you.
+The Worker deployment runs on Cloudflare. The Docker deployment runs on your own server.
 
 ## What you'll need
 
-Everything below has a free tier. For a normal contact form you'll likely never pay a cent.
+The Worker path needs the following accounts; provider usage limits and charges apply.
 
 | You need | What it's for | Cost |
 |---|---|---|
-| A **terminal** + **Node.js** (v20+) | to set up & deploy (copy-paste commands) | free |
+| A **terminal** + **Node.js** (v24+) | to set up & deploy (copy-paste commands) | free |
 | A free **Cloudflare** account | runs mailstack + the spam check | free |
 | An **Amazon (AWS)** account | actually sends the emails (Amazon SES) | ~free at low volume |
 | ~30–45 minutes, once | first-time setup | — |
@@ -134,7 +157,7 @@ Everything below has a free tier. For a normal contact form you'll likely never 
 
 ---
 
-## Setup — step by step
+## Worker setup — step by step
 
 ### 1) Install Node.js and get the code
 - Install **Node.js** (the "LTS" version) from [nodejs.org](https://nodejs.org).
@@ -170,7 +193,7 @@ instead of the spam folder, for a tiny cost.
    you're good to go. To email *anyone* (e.g. customers), open **Account dashboard → Request
    production access** (a short form, usually approved within a day).
 5. **Create a sending key**: AWS console → **IAM** → **Users** → **Create user** → attach the
-   policy **AmazonSESFullAccess** → open the user → **Security credentials → Create access key**.
+   a policy allowing **ses:SendEmail** for your verified sender identities → open the user → **Security credentials → Create access key**.
    Copy the **Access key ID** and **Secret access key** somewhere safe (you'll paste them in
    step 7).
 
@@ -183,8 +206,8 @@ instead of the spam folder, for a tiny cost.
 ### 5) Create the rate-limit storage, then fill in `.env`
 This caps how often someone can submit, to stop abuse.
 ```bash
-wrangler d1 create mailstack
-wrangler d1 create mailstack-preview
+npx wrangler d1 create mailstack
+npx wrangler d1 create mailstack-preview
 ```
 Each command prints an **id** — copy both. Then create your settings file:
 ```bash
@@ -197,36 +220,51 @@ MAILSTACK_D1_PREVIEW_ID=<the second id>
 MAILSTACK_ROUTE=
 ```
 
-Create the D1 databases above, run `npm run setup` to generate the SQL migration, then apply it with `wrangler d1 migrations apply DB --local` for development or `wrangler d1 migrations apply DB --remote` before deployment.
+After configuring brands in step 6, step 7 generates the SQL migration. Apply it
+locally for development, or remotely before deployment.
 
 ### 6) Describe your "brand" (who the email is from and to)
 Copy `config/mailstack.example.json` to a private location outside this repository, then
 export `MAILSTACK_CONFIG` pointing to that file. Use Node 24 or newer (tested on Node 26).
-Edit `brands.acme` in that JSON file:
+Replace the `acme` entry under `brands` with the entry below (keep the surrounding
+configuration and other brands):
 ```json
-"acme": {
-  "id": "acme",
-  "name": "My Website",
-  "from": "My Website <hello@acme.example>",
-  "to": ["inbox@acme.example"],
-  "allowedOrigins": ["https://acme.example"],
-  "subjectPrefix": "New message from",
-  "autoReply": true,
-  "theme": { "accent": "#0064BC", "siteUrl": "https://acme.example" }
+{
+  "acme": {
+    "id": "acme",
+    "name": "My Website",
+    "from": "My Website <hello@acme.example>",
+    "to": ["inbox@acme.example"],
+    "allowedOrigins": ["https://acme.example"],
+    "subjectPrefix": "New message from",
+    "autoReply": true,
+    "theme": { "accent": "#0064BC", "siteUrl": "https://acme.example" }
+  }
 }
 ```
 You can rename `acme` to anything (e.g. `mysite`). Remember that id — you'll use it when you
 connect your form in step 9.
 
-### 7) Add your secret keys (kept safely in Cloudflare, never in any file)
+### 7) Prepare storage and runtime secrets
 ```bash
-npm run setup                               # prepares your config from .env
+npm run setup                               # bundles MAILSTACK_CONFIG and prepares Wrangler config
+npx wrangler d1 migrations apply DB --local   # development database
+# Before deployment instead: npx wrangler d1 migrations apply DB --remote
 
-wrangler secret put SES_ACCESS_KEY_ID       # paste the AWS Access key ID (step 3)
-wrangler secret put SES_SECRET_ACCESS_KEY   # paste the AWS Secret access key
-wrangler secret put TURNSTILE_SECRET        # paste the Turnstile Secret key (step 4)
-wrangler secret put API_KEY                 # a long random password (for app-to-app sends)
+npx wrangler secret put SES_ACCESS_KEY_ID       # paste the AWS Access key ID (step 3)
+npx wrangler secret put SES_SECRET_ACCESS_KEY   # paste the AWS Secret access key
+npx wrangler secret put TURNSTILE_SECRET        # paste the Turnstile Secret key (step 4)
+npx wrangler secret put API_KEY                 # a long random password (for app-to-app sends)
+npx wrangler secret put ALTCHA_HMAC_KEY         # needed for ALTCHA brands
+npx wrangler secret put CONTENT_PUBLIC_KEYS     # JSON JWK set printed by npm run keys
+npx wrangler secret put INDEX_KEYS              # JSON index-key array printed by npm run keys
 ```
+Generate logging keys with `npm run keys -- init secrets/panel-private.json` after
+creating a private `secrets` directory (see [keys](#content-and-index-keys)). Paste only
+the JSON values of the public/index assignments into the corresponding Worker secrets;
+keep the private file separate. Local Worker development needs both JSON values in
+`.dev.vars` as well.
+
 Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
 
 ### 8) Deploy 🚀
@@ -346,16 +384,18 @@ curl -X POST https://mailstack.<your-name>.workers.dev/v1/send \
     "amount": "49.99", "currency": "USD", "item": "Pro Plan", "orderId": "ORD-1001"
   }'
 ```
-Built-in templates: `payment`, `welcome`, `received`, `notice` (and `contact` for forms).
+Built-in templates: `payment`, `welcome`, `received`, `notice`, `license` (and `contact` for forms).
+`license` accepts `name`, `productName`, `tier`, `domain`, `licenseKey`, `activationUrl`
+and `instructions`; `licenseKey` and `activationUrl` are declared secret fields.
 
 ## What it costs
-- **Cloudflare** (Workers, D1, Turnstile): generous free tiers — 100,000 Worker requests/day.
-- **Amazon SES**: about **$0.10 per 1,000 emails** (often with a free monthly allowance). A
-  contact form will almost certainly stay free.
+Cloudflare, SES, SMTP hosting and your server have separate usage limits and pricing.
+Check your providers before deployment; mailstack itself is MIT-licensed.
 
 ## Updating it later
-Change a setting (edit `.env` or `mailstack.json`) and run `npm run deploy` again. That's the
-*entire* maintenance — there's no server to patch or keep running.
+After editing the configuration, validate it with `npm run mailstack -- config check "$MAILSTACK_CONFIG"`.
+Restart the Docker service with `docker compose up --build -d --force-recreate`, or use
+the guarded Worker deploy from a clean release checkout. Keep runtime images and backups current.
 
 ## Troubleshooting
 - **Email not arriving?** You're probably still in SES "sandbox" — verify the recipient address
@@ -370,10 +410,10 @@ Change a setting (edit `.env` or `mailstack.json`) and run `npm run deploy` agai
 # Reference (for developers)
 
 ### Highlights
-- **Multi-brand** — many tenants in one Worker; brand from `?brand=` or the request `Origin`.
-- **Anti-relay** — the recipient is always the server-side `brand.to`; the request body can never redirect mail.
+- **Multi-brand** — many tenants in one Worker; send requests select the body `brand`; preflight resolves `?brand=` or `Origin`.
+- **Public recipient** — public mail goes to `brand.to`; trusted clients need `recipientOverride: true` to set `to`.
 - **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
-- **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`; one branded layout.
+- **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`, `license`; one branded layout.
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
 - **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
 - **Sellf webhook adapter** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
@@ -390,15 +430,14 @@ generates these files. Test/typecheck hooks use the committed JSON example:
 | `.wrangler/migrations/0001_initial.sql` | `src/core/store/migration.ts` | Shared schema for Wrangler D1 migrations |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` | Brand logo PNG (base64) |
 
-Configure via **`.env`** and the external **`MAILSTACK_CONFIG`** file; secrets via `wrangler secret put`. Full
+Configure via **`.env`** and the external **`MAILSTACK_CONFIG`** file; secrets via `npx wrangler secret put`. Full
 deployment notes and architecture: see [AGENTS.md](AGENTS.md).
 
 ### Configuration commands
 
 ```bash
-export MAILSTACK_CONFIG=/config/mailstack.json
+export MAILSTACK_CONFIG="$PWD/mailstack.json"
 npm run mailstack -- config check "$MAILSTACK_CONFIG"
-node scripts/mailstack.ts config import-brands ./legacy/brands.ts > mailstack.json
 node scripts/mailstack.ts client create --id acme-app --scopes send --brands acme --templates notice,payment
 node scripts/mailstack.ts client create --id panel --scopes panel
 ```
@@ -417,21 +456,90 @@ are errors, reported as JSON paths. Logging policies inherit global → brand �
 retention ceilings and the resend/includeSecrets combinations are validated before startup.
 `source` needs a matching client callback for each effective brand/template. The loaders
 read classification from the template registry (`secretFields` is optional).
-Enabling `includeSecrets` also requires a boot audit sink; the current Worker has none and
-refuses that configuration until the audit store is integrated.
+Enabling `includeSecrets` also requires a boot audit sink. Both current runtime loaders
+refuse it; keep it false. The optional `alerts` section is reserved and is not interpreted;
+ntfy uses runtime variables and policy `alertOn`. `sender.type` selects `ses` or `smtp`
+on Node; Worker sends through SES.
 
-Node reads the file through `loadNodeConfig()`. Worker setup validates and bundles the external
+Node reads the file through `loadNodeConfig()`. Worker setup requires the config outside the repository, validates and bundles that
 file and sets `BUILD_CONFIG_SHA` in Wrangler vars. Its build step verifies that the source
 still matches the bundle; rerun setup after editing the source. `npm test` and
 `npm run typecheck` generate the committed example configuration locally, without reading
 private brands. Run `npm run setup` again with your external config before a real build.
 The JSON example and render snapshots contain only acme/demo data.
 
+### Complete configuration example
+
+This is a complete `mailstack.json` for the local SMTP example. Copy it to the private
+config file; replace the example sender/origins for deployment. For SES choose
+`"sender": {"type": "ses"}` and supply SES credentials. The optional SES event
+allowlist below is illustrative; replace both values before subscribing a real topic.
+
+```json
+{
+  "version": 1,
+  "sender": { "type": "smtp" },
+  "brands": {
+    "acme": {
+      "id": "acme", "name": "Acme", "from": "Acme <hello@acme.example>",
+      "to": ["inbox@acme.example"], "allowedOrigins": ["https://acme.example"],
+      "subjectPrefix": "New message", "autoReply": false,
+      "theme": { "accent": "#0064BC", "siteUrl": "https://acme.example" }
+    }
+  },
+  "legacyApiKey": { "enabled": true, "attachments": true },
+  "logging": {
+    "defaults": {
+      "level": "meta", "contentDays": 30, "metaDays": 90, "requireLog": true,
+      "resend": "off", "alertOn": ["send_failed", "unknown"],
+      "show": [], "includeSecrets": false
+    },
+    "ceilings": { "contentDays": 90, "metaDays": 400, "auditDays": 400 },
+    "patterns": [{ "name": "url-parameters", "urlParams": ["token", "key", "code"] }],
+    "brands": {
+      "acme": { "templates": {
+        "payment": { "level": "masked", "show": ["amount", "currency", "orderId"] },
+        "license": { "level": "masked", "requireLog": true, "show": ["productName", "tier"] }
+      } }
+    }
+  },
+  "events": { "ses": {
+    "topicArns": ["arn:aws:sns:eu-west-1:123456789012:mailstack-events"],
+    "accountIds": ["123456789012"], "allowSignatureV1": false
+  } }
+}
+```
+
+The legacy key has attachment permission here solely for the local attachment example.
+For an application, generate a dedicated client and add the printed `client` object to
+`clients`. Use `--recipient-override` if it must set `to`; enable `attachments: true`
+in its config entry when needed (the CLI has no attachment flag). Client brand/template
+selections and scope are checked before sending. Keep a `panel` client separate from
+`send` and `hook:sellf` clients. Panel scope is reserved for the later panel service.
+
+### Migrating a legacy brand registry
+
+The input must export `BRANDS`; the importer executes trusted local TypeScript. From
+the repository root, with your old registry saved as `legacy/brands.ts`:
+
+```bash
+node scripts/mailstack.ts config import-brands ./legacy/brands.ts > mailstack.json
+node scripts/mailstack.ts config check ./mailstack.json
+export MAILSTACK_CONFIG="$PWD/mailstack.json"
+```
+
+The importer preserves the registry and adds the example logging defaults. Review
+clients, captcha settings and per-template policies, then move the file to your private
+configuration location and update `MAILSTACK_CONFIG`. Node loads it on restart; Worker
+needs `npm run setup` and a build/deploy. Do not restore `src/brands.ts` or edit generated
+bundles. Keep credentials in runtime secrets, outside this JSON.
+
 ### API (summary)
 - `GET /health` → `{ ok: true, service: "mailstack", version, commit }` (`commit: "dev"` locally).
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
   keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
-  `template`/`autoreply` (trusted only). Everything else is email content.
+  `template` (trusted only), `autoreply` (public contact), plus the reserved fields documented below.
+  Public requests may use ALTCHA instead of Turnstile; opted-in brands also require a nonce.
 - `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
 - `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
   `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
@@ -450,9 +558,25 @@ projection run atomically with SQLite transactions or D1 batches. Evidence conta
 complete SNS envelope sealed with purpose `evidence`; complaint events set the message's
 `complained` flag. Unknown/deleted messages are acknowledged without creating rows.
 
-Certificate parsing uses a small DER extractor for SPKI followed by WebCrypto RSA verification,
-with no X.509 package dependency. Tests generate local RSA certificates and exercise both
-Node and workerd. A real SNS notification remains a deployment validation step.
+To connect SES and SNS:
+
+1. In the same AWS region as SES, create an SNS topic with signature version 2 and
+   allow SES to publish events to it. Put its exact ARN and account id in `events.ses`.
+2. Create an SES configuration set and an enabled SNS event destination for `SEND`,
+   `REJECT`, `BOUNCE`, `COMPLAINT`, `DELIVERY`, `DELIVERY_DELAY`, `RENDERING_FAILURE`.
+   Leave open/click tracking disabled.
+3. Set `SES_CONFIGURATION_SET` to that set's name. On Worker, run setup and redeploy
+   with the updated config and keys; on Node, restart with the updated environment.
+4. Subscribe the public HTTPS URL `https://mail.example.com/v1/events/ses` to the
+   topic. Use the standard SNS envelope, without raw message delivery. The handler
+   confirms an accepted subscription automatically; check the subscription is confirmed.
+5. Send a logged test message and inspect delivery events in the store. Only messages
+   with a message row receive the configuration set and `ms_id`/`ms_brand` tags.
+
+No AWS resources are created by mailstack. Certificate/signature handling is tested
+locally on Node and workerd; a real SNS notification is a separate deployment check.
+SMTP records relay acceptance locally and does not consume SES delivery events.
+SMTP DSN polling and generic provider webhooks are not implemented.
 
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
@@ -467,19 +591,23 @@ and in CI (`.github/workflows/secret-scan.yml`, always enforced). Install locall
 
 ### Local development
 ```bash
-cp .dev.vars.example .dev.vars   # fill in the secret values for local runs
-npm run dev                       # wrangler dev
+cp .dev.vars.example .dev.vars   # fill runtime secrets, including logging key JSON values
+npm run dev                       # npx wrangler dev
 ```
 
 ### Content and index keys
-The standalone crypto helpers live in `src/core/crypto`; sending emails does not use them yet.
-The CLI requires Node.js 22.18+ with native TypeScript support (verified on Node.js 26.12.1).
+The send pipeline uses `src/core/crypto` to seal recipients, subjects, refs, archive projections,
+provider responses and event evidence. The CLI requires Node.js 24+.
 
 ```bash
-mkdir -m 700 secrets
+mkdir -p secrets
+chmod 700 secrets
 npm run --silent keys -- init secrets/panel-content-keys.json
 # Copy the two printed assignments into .env; the private JWK stays in the 0600 file.
-# Load the existing INDEX_KEYS value into the environment before rotating:
+# Load the existing assignments from the private .env before rotating:
+set -a
+. ./.env
+set +a
 npm run --silent keys -- rotate-index
 # Replace INDEX_KEYS in .env with the printed assignment, including older keys.
 ```
@@ -487,6 +615,10 @@ npm run --silent keys -- rotate-index
 `CONTENT_PUBLIC_KEYS` and the private file use JWK sets (`{"keys":[...]}`). `INDEX_KEYS`
 is a JSON array of `{kid,key}`, where `key` is a base64url-encoded 32-byte key. In both
 arrays the first entry is active; prepend new keys and retain older entries for reads.
+`init` refuses to overwrite its private-key file. For content-key rotation, generate a
+new pair at a new filename, prepend its public JWK, and retain both private files.
+Keep old keys through the metadata retention ceiling and any retained backups.
+`rotate-index` prints a replacement assignment; it does not update `.env` itself.
 Back up the private file separately from message data. Do not commit it or the environment values.
 
 `seal(data, context, publicKeys)` and `open(value, context, privateKeys)` use a context
@@ -508,23 +640,41 @@ Values computed without these context prefixes must be recomputed.
 ### Contributing & license
 See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under **MIT** — see [LICENSE](LICENSE).
 
-## Support
-
-mailstack is free and MIT-licensed. If it's quietly delivering your emails right now,
-you can buy me a croissant:
-
-[![🥐 Buy me a croissant](https://img.shields.io/badge/🥐_Buy_me_a_croissant-FFDD00)](https://sellf.techskills.academy/checkout/tip-mailstack?utm_source=github&utm_medium=readme&utm_campaign=tip-jar)
-
 ## Send logging and idempotency
 
-All outgoing mail, including public submissions and auto-replies, records an encrypted
-intent before contacting SES. The effective `logging` policy comes from global, brand,
-and template settings. `requireLog: true` returns `503` with `code: "log_unavailable"`
+All outgoing mail, including public submissions and auto-replies, uses the logging
+pipeline before contacting the configured provider. The effective `logging` policy
+comes from global, brand, and template settings. `requireLog: true` returns `503` with `code: "log_unavailable"`
 without sending if the intent cannot be recorded. With `requireLog: false`, delivery
 continues without a log when storage or keys are unavailable. `level: "none"` writes no
 message row and needs no encryption keys. With an idempotency key, it stores only a
 client-scoped hash in `guards`, expiring after 24 hours. Missing or unavailable storage
 allows delivery without deduplication, even with `requireLog: true` at level `none`.
+
+### Logging policies
+
+Policies resolve from `logging.defaults` through `logging.brands.<id>.defaults` to
+`logging.brands.<id>.templates.<template>`. Requests cannot override them.
+
+| Level | Stored |
+|---|---|
+| `none` | No message row, recipients, content or delivery events; short-lived guards only |
+| `meta` | Message metadata, sealed recipients/Reply-To, subject, ref and provider response; events and sealed evidence |
+| `masked` | `meta` plus a sealed archive projection keeping only content fields listed in `show`; other fields become `[ukryte]` |
+| `full` | `meta` plus the archive rendering; declared secret fields and configured patterns remain masked |
+
+`secretFields` is declared by templates in code; the `license` template declares
+`licenseKey` and `activationUrl`. Secret values in archive projections show only their
+last four characters. `patterns` supports named `regex` or `urlParams` rules. Archive
+projections omit JSON-LD; outgoing email keeps the original rendering. `subjectRoles`
+identifies submitter address fields for data-subject indexing (`contact.email`).
+
+Retention values are positive integer days; `contentDays <= metaDays`, and both must
+fit the global ceilings. `requireLog` controls whether a missing intent prevents delivery.
+`resend: "replay"` validates only with `masked`/`full` and templates without secret fields;
+`source` needs a matching `resendCallback` client. These settings describe stored policy:
+resend execution and panel operations are not implemented. Keep `resend: "off"` for this
+release. `includeSecrets` requires `full` and a boot audit sink; current runtimes require false.
 
 Trusted `POST /v1/send` requests accept:
 
@@ -558,8 +708,9 @@ request body. At those levels, a matching request follows this table:
 | `unknown` (exception, timeout, or uncertain result) | `409`, `code: "outcome_unknown"`; no automatic retry |
 | Different request with the same key | `409`, `code: "idempotency_conflict"` |
 
-An operator must resolve `unknown` through the panel or provider events before another
-send is considered. The SES adapter makes one request per attempt. No idempotency key
+An `unknown` result needs provider reconciliation before considering another send.
+The operator panel and resend endpoints are not included in this release. The SES
+adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request
 identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
@@ -574,7 +725,7 @@ and the order/payment identifier as `ref` when present. Duplicate delivery sends
 conflicts, pending attempts and unknown outcomes follow the table above.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
-Worker vars. For local `wrangler dev`, it may also be set in `.dev.vars`. Only sends
+Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends
 with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
 `ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
 response headers are excluded. No open/click tracking configuration is sent.
@@ -602,12 +753,17 @@ A pruned prefix can be checked from its marker or a matching boundary anchor.
 
 Node exposes `backupSqlite(db, dir, now, keep=7)` for consistent daily snapshots
 named `mailstack-YYYYMMDD.db` using UTC dates. It retains the seven newest matching
-files and leaves other files untouched. Runtime scheduling is deferred to the
-Node runtime integration; with daily scheduling, backups expire within seven
-days. Keep keys outside the database and backup directory. Worker databases use
+files and leaves other files untouched. The Node runtime schedules these snapshots
+daily and at startup when the last snapshot is absent or at least 24 hours old. It retains seven snapshots; with the runtime
+running daily, removed data ages out of backups within seven days. Keep keys outside
+the database and backup directory. Worker databases use
 [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
 
 ### ntfy alerts
+
+On Node, append these variables to the private `.env` and recreate the service. On
+Worker, use `npx wrangler secret put NTFY_URL` and `npx wrangler secret put NTFY_TOKEN`;
+supply optional `PANEL_URL` the same way only when a panel exists.
 
 Set optional runtime variables `NTFY_URL` (topic endpoint), `NTFY_TOKEN`
 (Bearer secret), and `PANEL_URL` (panel base URL). Without `NTFY_URL`,
