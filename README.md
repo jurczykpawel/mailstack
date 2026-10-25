@@ -486,8 +486,9 @@ intent before contacting SES. The effective `logging` policy comes from global, 
 and template settings. `requireLog: true` returns `503` with `code: "log_unavailable"`
 without sending if the intent cannot be recorded. With `requireLog: false`, delivery
 continues without a log when storage or keys are unavailable. `level: "none"` writes no
-message row and needs no encryption keys. Its separate 24-hour idempotency guard is
-not implemented in this phase; deduplication currently requires a message row.
+message row and needs no encryption keys. With an idempotency key, it stores only a
+client-scoped hash in `guards`, expiring after 24 hours. Missing or unavailable storage
+allows delivery without deduplication, even with `requireLog: true` at level `none`.
 
 Trusted `POST /v1/send` requests accept:
 
@@ -505,7 +506,13 @@ are also unchanged. Provider failures retain `message: "send failed"`, with addi
 `code: "send_failed"` and HTTP `502`.
 
 Idempotency keys are scoped to the authenticated client (`legacy` for the legacy API
-key; public sends use client id `public` without deduplication). For a matching request:
+key; public sends use client id `public` without deduplication). At level `none`, a
+repeated key returns `200 {success:true,idempotent:true}` without an `id` or another
+send, including while the original attempt is pending or its outcome is uncertain.
+Explicit provider refusal releases the key for retry; preparation errors leave it
+available. Success and uncertain outcomes retain the key until expiry and guard cleanup.
+Only levels `meta`, `masked` and `full` detect conflicts when the same key has a different
+request body. At those levels, a matching request follows this table:
 
 | Original state | Repeated request |
 |---|---|
@@ -609,4 +616,5 @@ decoded total returns `422 attachment_invalid`. Oversized bodies return `413` wi
 SES uses `Content.Simple.Attachments`; SMTP receives decoded buffers. Files and their
 names are excluded from archives and replays. Only `{count,totalBytes,types}` is stored
 in `attachments_meta`. Request MACs include each file's SHA-256, name and type; changing
-a file with the same idempotency key returns `409 idempotency_conflict`.
+a file with the same idempotency key returns `409 idempotency_conflict` at levels
+`meta`, `masked` and `full`. Level `none` deduplicates by key alone.
