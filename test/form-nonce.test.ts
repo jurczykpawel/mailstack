@@ -58,6 +58,64 @@ async function declined(body: object) {
   expect(deps.sendEmail).not.toHaveBeenCalled();
 }
 
+describe('send brand selection and early responses', () => {
+  function post(body: string, query = '', origin = 'https://demo.example', headers = {}) {
+    return handleSend(new Request(`https://mail.example/v1/send${query}`, {
+      method: 'POST', headers: { origin, ...headers }, body,
+    }), env, deps);
+  }
+
+  it.each([{}, { brand: '' }])('uses query brand before nonce verification: %j', async body => {
+    const response = await post(JSON.stringify(body), '?brand=demo');
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ success: false, message: 'verification failed' });
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://demo.example');
+    expect(deps.verifyAltcha).not.toHaveBeenCalled();
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '?brand=', '?brand=acme'])('retains the body brand with query %s', async query => {
+    const response = await post(JSON.stringify({ brand: 'acme', botcheck: 'filled' }), query, 'https://acme.example');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://acme.example');
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('accepts a query brand for trusted sends without nonce', async () => {
+    const response = await post('{}', '?brand=demo', '', { authorization: 'Bearer test-api-key' });
+    expect(response.status).toBe(200);
+    expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  const errors = [
+    { body: '{', query: '?brand=demo', status: 400, message: 'invalid JSON' },
+    { body: '{', query: '', status: 400, message: 'invalid JSON' },
+    { body: '[]', query: '?brand=demo', status: 400, message: 'invalid JSON' },
+    { body: '{"brand":"unknown"}', query: '', status: 400, message: 'unknown brand' },
+    { body: '{}', query: '', status: 400, message: 'unknown brand' },
+    { body: 'x'.repeat(65537), query: '?brand=demo', status: 413, message: 'payload too large' },
+    { body: 'x'.repeat(65537), query: '', status: 413, message: 'payload too large' },
+    { body: '{"brand":"acme"}', query: '?brand=demo', status: 400, message: 'brand mismatch' },
+    { body: '{"brand":"demo"}', query: '?brand=acme', status: 400, message: 'brand mismatch' },
+    { body: '{"brand":"unknown"}', query: '?brand=demo', status: 400, message: 'brand mismatch' },
+  ];
+  it.each(errors)('adds CORS to $status $message ($query)', async ({ body, query, status, message }) => {
+    const response = await post(body, query);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ success: false, message });
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://demo.example');
+    expect(response.headers.get('Vary')).toBe('Origin');
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+  });
+  it.each(errors)('omits CORS for an unlisted origin: $message ($query)', async ({ body, query, status, message }) => {
+    const response = await post(body, query, 'https://other.example');
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ success: false, message });
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
 describe('public form nonce', () => {
   it.each([false, undefined])('retains public content fields with requireNonce=%j', async requireNonce => {
     Object.assign(config.brands.demo, { requireNonce });

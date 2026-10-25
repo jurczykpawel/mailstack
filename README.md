@@ -410,7 +410,7 @@ the guarded Worker deploy from a clean release checkout. Keep runtime images and
 # Reference (for developers)
 
 ### Highlights
-- **Multi-brand** — many tenants in one Worker; send requests select the body `brand`; preflight resolves `?brand=` or `Origin`.
+- **Multi-brand** — many tenants in one Worker; send requests select `brand` from the body or query; preflight resolves `?brand=` or `Origin`.
 - **Public recipient** — public mail goes to `brand.to`; trusted clients need `recipientOverride: true` to set `to`.
 - **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
 - **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`, `license`; one branded layout.
@@ -537,8 +537,9 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
 ### API (summary)
 - `GET /health` → `{ ok: true, service: "mailstack", version, commit }` (`commit: "dev"` locally).
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
-  keys: `brand` (required), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
+  keys: `brand` (body or query), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template` (trusted only), `autoreply` (public contact), plus the reserved fields documented below.
+  Empty or omitted body `brand` falls back to `?brand=<id>`; different nonempty values return `400 brand mismatch`.
   Public requests may use ALTCHA instead of Turnstile; opted-in brands also require a nonce.
 - `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
 - `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns

@@ -12,7 +12,7 @@ import type {
 } from "./types";
 import { deliver, deliveryResponse } from "./core/logging/delivery";
 import type { DeliveryContext } from "./core/logging/delivery";
-import { config, getBrand } from "./core/config";
+import { config, findBrandByOrigin, getBrand } from "./core/config";
 import { authenticate, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { consumeAltcha, verifyNonce } from "./altcha";
@@ -142,6 +142,10 @@ export async function handleSend(
 ): Promise<Response> {
   const origin = req.headers.get("origin") || "";
   const ip = req.headers.get("cf-connecting-ip");
+  const queryBrandId = new URL(req.url).searchParams.get("brand") || "";
+  const earlyCors = (bodyBrandId = "") =>
+    [getBrand(queryBrandId), getBrand(bodyBrandId), findBrandByOrigin(origin)]
+      .some(candidate => candidate && isOriginAllowed(candidate, origin)) ? origin : null;
 
   const client = await authenticate(req, env, config);
   const trusted = !!client;
@@ -150,7 +154,7 @@ export async function handleSend(
     rawText = await boundedText(req, client?.attachments && client.scopes.includes("send") ? 10 * 1024 * 1024 : MAX_BODY_BYTES);
   } catch (error) {
     if (!(error instanceof RangeError)) throw error;
-    return json({ success: false, message: "payload too large" }, { status: 413 });
+    return json({ success: false, message: "payload too large" }, { status: 413, cors: earlyCors() });
   }
 
   let body: Record<string, unknown>;
@@ -161,13 +165,17 @@ export async function handleSend(
     }
     body = parsed as Record<string, unknown>;
   } catch {
-    return json({ success: false, message: "invalid JSON" }, { status: 400 });
+    return json({ success: false, message: "invalid JSON" }, { status: 400, cors: earlyCors() });
   }
 
-  const brandId = typeof body.brand === "string" ? body.brand : "";
+  const bodyBrandId = typeof body.brand === "string" ? body.brand : "";
+  if (bodyBrandId && queryBrandId && bodyBrandId !== queryBrandId) {
+    return json({ success: false, message: "brand mismatch" }, { status: 400, cors: earlyCors(bodyBrandId) });
+  }
+  const brandId = bodyBrandId || queryBrandId;
   const brand = getBrand(brandId);
   if (!brand) {
-    return json({ success: false, message: "unknown brand" }, { status: 400 });
+    return json({ success: false, message: "unknown brand" }, { status: 400, cors: earlyCors(bodyBrandId) });
   }
 
   const originAllowed = isOriginAllowed(brand, origin);

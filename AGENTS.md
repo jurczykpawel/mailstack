@@ -39,7 +39,7 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 
 | Control key | Meaning |
 |---|---|
-| `brand` | **required** — brand id (`acme`, `demo`, ...) |
+| `brand` | Brand id (`acme`, `demo`, ...); falls back to `?brand=<id>` when empty or omitted. Different nonempty body and query brands return `400 brand mismatch`. |
 | `cf-turnstile-response` | Cloudflare Turnstile token (public mode) |
 | `altcha` | Base64 ALTCHA solution for brands with `captcha: "altcha"` |
 | `botcheck` | honeypot — must be empty/absent |
