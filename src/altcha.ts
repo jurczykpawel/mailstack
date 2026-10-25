@@ -1,4 +1,5 @@
 import type { Store } from './core/ports';
+import type { Brand } from './types';
 
 export interface AltchaChallenge {
   algorithm: 'SHA-256';
@@ -21,6 +22,34 @@ async function sha256Hex(s: string): Promise<string> {
 async function hmacHex(key: string, msg: string): Promise<string> {
   const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return toHex(await crypto.subtle.sign('HMAC', k, enc.encode(msg)));
+}
+
+const NONCE_DOMAIN = 'mailstack/v1/nonce\n';
+interface FormNonce { brand: string; product: string; random: string; exp: number }
+
+export async function createNonce(key: string, brand: string, product: string, now: Date): Promise<string> {
+  const payload: FormNonce = { brand, product, random: crypto.randomUUID(),
+    exp: Math.floor(now.getTime() / 1000) + CHALLENGE_LIFETIME_SECONDS };
+  const encoded = btoa(String.fromCharCode(...enc.encode(JSON.stringify(payload))));
+  return `${encoded}.${await hmacHex(key, NONCE_DOMAIN + encoded)}`;
+}
+
+export async function verifyNonce(key: string, token: unknown, brand: Brand, product: unknown, now: Date): Promise<FormNonce | null> {
+  try {
+    if (!key || typeof token !== 'string' || token.length > 5000) return null;
+    const parts = token.split('.');
+    if (parts.length !== 2 || !/^[a-f0-9]{64}$/.test(parts[1])) return null;
+    const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+    const signature = Uint8Array.from(parts[1].match(/../g)!, byte => parseInt(byte, 16));
+    if (!await crypto.subtle.verify('HMAC', k, signature, enc.encode(NONCE_DOMAIN + parts[0]))) return null;
+    const p = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(parts[0]), c => c.charCodeAt(0))));
+    const remaining = p?.exp - Math.floor(now.getTime() / 1000);
+    if (!p || p.brand !== brand.id || typeof p.product !== 'string' || !brand.products?.includes(p.product) ||
+        (product !== undefined && product !== p.product) ||
+        typeof p.random !== 'string' || !/^[a-f0-9-]{36}$/.test(p.random) ||
+        !Number.isSafeInteger(p.exp) || remaining <= 0 || remaining > CHALLENGE_LIFETIME_SECONDS) return null;
+    return p;
+  } catch { return null; }
 }
 
 /** Build an Altcha challenge: number is the secret PoW answer; signature binds it to our key. */

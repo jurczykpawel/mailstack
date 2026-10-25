@@ -13,7 +13,7 @@ import { handleSend } from "./send";
 import { handleSellfHook } from "./sellf";
 import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
-import { createChallenge, verifyAltcha } from "./altcha";
+import { createChallenge, createNonce, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
 
 const verifySns = createVerifier();
@@ -103,8 +103,17 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
               headers: { "content-type": "application/json" },
             });
           }
+          const product = url.searchParams.get("product") ?? "";
+          if (brand.requireNonce && !brand.products?.includes(product)) {
+            return Response.json({ success: false, message: "invalid product" }, { status: 400, headers: corsHeaders(origin) });
+          }
+          if (brand.requireNonce && !env.ALTCHA_HMAC_KEY) {
+            return Response.json({ success: false, message: "verification failed" }, { status: 503, headers: corsHeaders(origin) });
+          }
           const challenge = await createChallenge(env.ALTCHA_HMAC_KEY);
-          return new Response(JSON.stringify(challenge), {
+          const result = brand.requireNonce
+            ? { altcha: challenge, nonce: await createNonce(env.ALTCHA_HMAC_KEY, brand.id, product, deps.now()) } : challenge;
+          return new Response(JSON.stringify(result), {
             headers: {
               ...corsHeaders(origin),
               "content-type": "application/json; charset=utf-8",

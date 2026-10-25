@@ -57,6 +57,8 @@ export interface Brand {
   /** Captcha provider for public mode. Default 'turnstile' when unset. */
   captcha?: 'altcha' | 'turnstile';
   turnstileAction?: string;
+  requireNonce?: boolean;
+  products?: string[];
 }
 
 /** A submitted content field after coercion (control keys are stripped out). */

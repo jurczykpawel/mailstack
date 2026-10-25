@@ -15,7 +15,7 @@ import type { DeliveryContext } from "./core/logging/delivery";
 import { config, getBrand } from "./core/config";
 import { authenticate, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
-import { consumeAltcha } from "./altcha";
+import { consumeAltcha, verifyNonce } from "./altcha";
 import { checkRateLimit } from "./ratelimit";
 import { getTemplate, renderLayout } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
@@ -34,6 +34,8 @@ const RESERVED_KEYS = new Set([
   "access_key",
   "cf-turnstile-response",
   "altcha",
+  "nonce",
+  "product",
   "botcheck",
   "subject",
   "to",
@@ -172,16 +174,28 @@ export async function handleSend(
 
   const originAllowed = isOriginAllowed(brand, origin);
   const corsOrigin = originAllowed ? origin : null;
+  let nonceProduct: string | undefined;
 
   if (!trusted) {
     // 1) Origin allowlist.
     if (!originAllowed) {
-      return json({ success: false, message: "origin not allowed" }, { status: 403 });
+      return json({ success: false, message: brand.requireNonce ? "verification failed" : "origin not allowed" }, { status: 403 });
     }
     // 2) Honeypot: a filled `botcheck` -> pretend success, send nothing.
     const honeypot = coerceValue(body.botcheck);
     if (honeypot.trim() !== "") {
       return json({ success: true }, { cors: corsOrigin });
+    }
+    if (brand.requireNonce) {
+      if (!deps.store) return json({ success: false, message: "verification failed" }, { status: 503, cors: corsOrigin });
+      const nonce = await verifyNonce(env.ALTCHA_HMAC_KEY, body.nonce, brand, body.product, deps.now());
+      if (!nonce) return json({ success: false, message: "verification failed" }, { status: 403, cors: corsOrigin });
+      try {
+        if (!await deps.store.consume(`nonce:${nonce.random}`, nonce.exp * 1000) || nonce.exp * 1000 <= deps.now().getTime()) {
+          return json({ success: false, message: "verification failed" }, { status: 403, cors: corsOrigin });
+        }
+      } catch { return json({ success: false, message: "verification failed" }, { status: 503, cors: corsOrigin }); }
+      nonceProduct = nonce.product;
     }
     // 3) Captcha (Altcha or Turnstile depending on brand config).
     const captcha = brand.captcha ?? 'turnstile';
@@ -242,6 +256,7 @@ export async function handleSend(
 
   // Content fields (reserved keys stripped).
   const data = extractData(body);
+  if (nonceProduct !== undefined) data.type = nonceProduct;
   // For the contact template, attach request-time meta (footer small print).
   if (template.id === "contact") {
     data[META_KEYS.receivedAt] = deps.now().toISOString();
