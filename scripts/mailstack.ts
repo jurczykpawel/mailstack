@@ -35,6 +35,9 @@ try {
   const [command, action, file, ...extra] = process.argv.slice(2);
   if (command === "client" && action === "create") {
     await createClient(process.argv.slice(4));
+  } else if (command === "log") {
+    const { readLog } = await import("./log.ts");
+    await readLog(process.argv.slice(3));
   } else {
     if (command !== "config" || !file || extra.length || !["check", "import-brands"].includes(action))
       throw new Error("Usage: mailstack config check <file> | config import-brands <brands.ts>");

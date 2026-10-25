@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
-import { appendAudit } from './audit';
-import { pruneAudit } from './store/audit';
+import { appendAudit } from './audit.ts';
+import { pruneAudit } from './store/audit.ts';
 import type { KyselyStore } from './store';
 import type { Config } from './config/schema';
 

@@ -11,14 +11,24 @@ const contentKey = z.strictObject({
 });
 const indexKey = z.strictObject({ kid, key: material });
 const unique = (keys: { kid: string }[]) => new Set(keys.map(k => k.kid)).size === keys.length;
+const privateSet = z.strictObject({ keys: z.array(contentKey.extend({ d: material, key_ops: z.array(z.literal('deriveBits')).optional() })).nonempty().refine(unique) });
 const contentSet = z.strictObject({ keys: z.array(contentKey).nonempty().refine(unique) });
 const indexSet = z.array(indexKey).nonempty().refine(unique);
+
+export function parsePrivateKeys(value: string): ContentKey[] {
+  try { return privateSet.parse(JSON.parse(value)).keys; }
+  catch { throw new Error('Invalid key configuration'); }
+}
+export function parseIndexKeys(value: string): IndexKey[] {
+  try { return indexSet.parse(JSON.parse(value)); }
+  catch { throw new Error('Invalid key configuration'); }
+}
 
 export function parseKeyring(env: KeyEnvironment): Keyring {
   try {
     return {
       contentKeys: contentSet.parse(JSON.parse(env.CONTENT_PUBLIC_KEYS!)).keys,
-      indexKeys: indexSet.parse(JSON.parse(env.INDEX_KEYS!)),
+      indexKeys: parseIndexKeys(env.INDEX_KEYS!),
     };
   } catch { throw new Error('Invalid key configuration'); }
 }

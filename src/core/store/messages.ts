@@ -1,5 +1,5 @@
 import { sql } from 'kysely';
-import { eventId } from './events';
+import { eventId } from './events.ts';
 import type { CompiledQuery, Generated, Insertable, Kysely, Selectable } from 'kysely';
 
 export type MessageStatus = 'sending' | 'sent' | 'send_failed' | 'unknown' | 'accepted' | 'delay' | 'delivered' | 'bounce_permanent' | 'bounce_transient' | 'bounce_undetermined' | 'reject' | 'render_failure';
@@ -45,7 +45,12 @@ export interface MessageStore {
 export type AtomicBatch = (queries: CompiledQuery[]) => Promise<number[]>;
 
 export class MessageOperations implements MessageStore {
-  constructor(readonly db: Kysely<Database>, private readonly atomic?: AtomicBatch) {}
+  readonly db: Kysely<Database>;
+  private readonly atomic?: AtomicBatch;
+  constructor(db: Kysely<Database>, atomic?: AtomicBatch) {
+    this.db = db;
+    this.atomic = atomic;
+  }
 
   async alertContext(id: string, pos?: number) {
     return this.db.selectFrom('messages').leftJoin('recipients', join => join.onRef('recipients.message_id', '=', 'messages.id')

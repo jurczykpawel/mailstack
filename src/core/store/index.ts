@@ -1,9 +1,9 @@
 import { Kysely, sql } from 'kysely';
 import type { Dialect } from 'kysely';
 import type { Store } from '../ports';
-import { INITIAL_SCHEMA } from './migration';
-import { MessageOperations } from './messages';
-import type { AtomicBatch, Database } from './messages';
+import { INITIAL_SCHEMA } from './migration.ts';
+import { MessageOperations } from './messages.ts';
+import type { AtomicBatch, Database } from './messages.ts';
 
 export class KyselyStore extends MessageOperations implements Store {
 
