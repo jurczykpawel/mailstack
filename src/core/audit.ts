@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from './crypto';
-import { auditHead, insertAudit, serializeAudit } from './store/audit';
+import { canonicalJson } from './crypto/index.ts';
+import { auditHead, insertAudit, serializeAudit } from './store/audit.ts';
 import type { KyselyStore } from './store';
 
 export interface AuditEntry {

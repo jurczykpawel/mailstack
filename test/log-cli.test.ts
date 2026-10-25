@@ -33,9 +33,9 @@ const mutate = (query: string) => {
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'mailstack-log-'));
   db = join(dir, 'log.sqlite'); keyFile = join(dir, 'content-private.json'); indexFile = join(dir, 'index.json');
-  const pair = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
-  const publicKey = { ...await crypto.subtle.exportKey('jwk', pair.publicKey), kid: 'content' };
-  const privateKey = { ...await crypto.subtle.exportKey('jwk', pair.privateKey), kid: 'content' };
+  const pair = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']) as CryptoKeyPair;
+  const publicKey = { ...await crypto.subtle.exportKey('jwk', pair.publicKey) as JsonWebKey, kid: 'content' };
+  const privateKey = { ...await crypto.subtle.exportKey('jwk', pair.privateKey) as JsonWebKey, kid: 'content' };
   writeFileSync(keyFile, JSON.stringify({ keys: [privateKey] }));
   writeFileSync(indexFile, JSON.stringify(indexKeys));
   const store = createSqliteStore(db);
@@ -132,23 +132,23 @@ it('returns metadata and a clear policy notice for meta without decrypting', () 
   expect(result.stdout).not.toContain('Provider response sentinel');
   expect(audit()).toHaveLength(1);
 });
-it('refuses unavailable or expired content and invalid policy metadata', () => {
-  for (const query of [
-    `update contents set expires_at=0 where message_id='${ids.full}'`,
-    `update messages set content_expires_at=0 where id='${ids.full}'`,
-    `update messages set policy_hash='' where id='${ids.full}'`,
-    `delete from contents where message_id='${ids.full}'`,
-  ]) {
-    mutate(query);
-    const result = show();
-    expect(result.status).toBe(1); expect(result.stdout).toBe(''); expect(result.stderr).toMatch(/policy|expired|unavailable/i);
-  }
+it.each(['content expiry', 'message expiry', 'policy', 'invalid policy hash', 'missing content'])('refuses %s before opening content', state => {
+  const queries: Record<string, string> = {
+    'content expiry': `update contents set expires_at=0 where message_id='${ids.full}'`,
+    'message expiry': `update messages set content_expires_at=0 where id='${ids.full}'`,
+    policy: `update messages set policy_hash='' where id='${ids.full}'`,
+    'invalid policy hash': `update messages set policy_hash='unavailable' where id='${ids.full}'`,
+    'missing content': `delete from contents where message_id='${ids.full}'`,
+  };
+  mutate(queries[state]);
+  const result = show();
+  expect(result.status).toBe(1); expect(result.stdout).toBe(''); expect(result.stderr).toMatch(/policy|expired|unavailable/i);
   expect(audit()).toHaveLength(1);
 });
 it('reports wrong keys and kids without partial output and preserves the audit chain', async () => {
   const valid = JSON.parse(readFileSync(keyFile, 'utf8'));
-  const pair = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
-  const wrong = { ...await crypto.subtle.exportKey('jwk', pair.privateKey), kid: 'content' };
+  const pair = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']) as CryptoKeyPair;
+  const wrong = { ...await crypto.subtle.exportKey('jwk', pair.privateKey) as JsonWebKey, kid: 'content' };
   for (const keys of [[wrong], [{ ...valid.keys[0], kid: 'other' }]]) {
     writeFileSync(keyFile, JSON.stringify({ keys }));
     const result = show();
@@ -158,6 +158,7 @@ it('reports wrong keys and kids without partial output and preserves the audit c
   expect(audit()).toHaveLength(3); expect(verifyChain(audit())).toBe(true);
 });
 it('requires a successful audit append before attempting decryption', () => {
+  mutate("UPDATE contents SET sealed='unavailable'");
   mutate("CREATE TRIGGER refuse_read BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT, 'Audit fixture sentinel'); END");
   const result = show();
   expect(result.status).toBe(1); expect(result.stdout).toBe(''); expect(result.stderr).toContain('Audit append unavailable');

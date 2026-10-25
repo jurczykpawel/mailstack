@@ -730,6 +730,52 @@ with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
 `ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
 response headers are excluded. No open/click tracking configuration is sent.
 
+### Reading the log without the panel
+
+Use Node 24+ and a local SQLite database to read the log offline. These commands
+use local files and do not contact the API or email provider:
+
+```bash
+node scripts/mailstack.ts log list --db ./data/mailstack.sqlite
+node scripts/mailstack.ts log list --db ./data/mailstack.sqlite --brand acme --status sent --since 2026-10-01T00:00:00Z --limit 20
+node scripts/mailstack.ts log find --db ./data/mailstack.sqlite --email buyer@example.com --index-keys ./secrets/index-keys.json
+node scripts/mailstack.ts log find --db ./data/mailstack.sqlite --email buyer@example.com --index-keys env
+node scripts/mailstack.ts log show msg_EXAMPLE --db ./data/mailstack.sqlite --key ./secrets/content-private.json
+```
+
+`list` and `find` print a table of message id, creation time (UTC), brand, template,
+status and latest delivery event. Add `--json` for JSON output. Results are newest
+first, with message id breaking timestamp ties; the default limit is 100 and
+`list --limit` accepts 1-100. `--since` accepts an ISO timestamp with a timezone.
+Lists contain no recipient addresses or address hints. The `none` logging level
+creates no message row, so those sends cannot appear in results.
+
+The index-key file contains the same JSON array as `INDEX_KEYS`, for example
+`[{"kid":"index-1","key":"<base64url-encoded 32-byte key>"}]`.
+`--index-keys env` reads `INDEX_KEYS` from the current environment. Search checks
+every supplied key generation and matches recipient, Reply-To and submitter
+roles. It trims the address and lowercases its domain; the local part remains
+case-sensitive. Keep old index keys available while their messages are retained.
+
+`show` prints JSON containing metadata and the event timeline, including bounce,
+complaint and delivery events. For `masked` and `full`, it also opens the archived
+projection and stored provider response with the private JWK set created by
+`npm run keys -- init ./secrets/content-private.json` (`{"keys":[...]}`). The
+archive is labelled `Archived projection (level masked/full)`. For `meta`, it
+prints a notice that content was not recorded and returns only metadata and the
+timeline. Missing policy metadata, unavailable or expired content, and incorrect
+keys produce a readable error and a nonzero exit code. An unsuccessful decrypt
+prints no partial result.
+
+Database reads use a read-only connection. Before opening any archived content,
+`show` briefly opens a separate connection to append `cli.read` to the existing
+audit chain; this is its only database write. The database must therefore permit
+that audit append for content reads. If the append fails, content is not opened.
+Keys are never printed; decrypted values go only to stdout. The CLI does not
+write decrypted output to files or logs. It does not create a missing database
+or run migrations. For a separate machine, use a consistent SQLite snapshot (see
+[Retention and snapshots](#retention-and-snapshots)) and copy keys separately.
+
 ### Retention and snapshots
 
 The Worker runs retention hourly at minute 17 (UTC). Expired content, resend data
