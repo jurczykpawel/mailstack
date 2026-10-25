@@ -61,21 +61,17 @@ describe("archive projection", () => {
     const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
       patterns: [], brand: { ...brand, name: input.item }, template: getTemplate("payment")!, data: input,
       subject: encoded ? escapeHtml(input.item) : input.item }));
-    for (const value of [archive.subject, archive.html, archive.text]) {
-      expect(value).toContain("Plan for [ukryte] [ukryte]");
-      expect(value).not.toContain(name);
-      expect(value).not.toContain(email);
-      expect(value).not.toContain("&lt;NAME&gt;");
-    }
+    expect(archive.subject).toBe("Plan for [ukryte] [ukryte]");
+    expect(archive.html).toContain(escapeHtml(input.item));
+    expect(archive.text).toContain(input.item);
   });
   it("projects longer values before their component values", () => {
     const input = { name: "private-name", email: "private-name@example.com", item: "private-name@example.com private-name" };
     const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
       patterns: [], brand, template: getTemplate("payment")!, data: input, subject: input.item }));
-    for (const value of [archive.subject, archive.html, archive.text]) {
-      expect(value).toContain("[ukryte] [ukryte]");
-      expect(value).not.toContain("@example.com");
-    }
+    expect(archive.subject).toBe("[ukryte] [ukryte]");
+    expect(archive.html).toContain(input.item);
+    expect(archive.text).toContain(input.item);
   });
   it("projects email addresses in supplied subjects independently of data fields", () => {
     const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
@@ -87,7 +83,42 @@ describe("archive projection", () => {
     const item = "Plan a PL";
     const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
       patterns: [], brand, template: getTemplate("payment")!, data: { name: "a", country: "PL", empty: "", item }, subject: item }));
-    for (const value of [archive.subject, archive.html, archive.text]) expect(value).toContain(item);
+    expect(archive.subject).toBe("Plan [ukryte] [ukryte]");
+    for (const value of [archive.html, archive.text]) expect(value).toContain(item);
+  });
+  it.each(["masked", "full"] as const)("preserves payment fields and layout at level %s", (level) => {
+    const input = { name: "Pro", item: "Produkt Żółw", domain: "example.com", amount: "100", currency: "PLN" };
+    const logoUrl = "https://mail.example.com/brand/logo.png";
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level, show: ["item", "amount", "currency"] },
+      patterns: [], brand: { ...brand, theme: { ...brand.theme, logoUrl } }, template: getTemplate("payment")!, data: input }));
+    expect(archive.html).toContain(`src="${logoUrl}"`);
+    for (const value of [archive.html, archive.text]) {
+      expect(value).toContain(input.item);
+      expect(value).toContain(level === "masked" ? "Witaj [ukryte]," : "Witaj Pro,");
+    }
+    expect(archive.text).toContain("Pozycja: Produkt Żółw");
+  });
+  it.each([
+    ["Al", "Dla Al", "Dla [ukryte]"],
+    ["Al", "Al, Alicja żAl Alż 1Al Al2 (Al) Al", "[ukryte], Alicja żAl Alż 1Al Al2 ([ukryte]) [ukryte]"],
+    ["Ł", "Ł, Łódź aŁ Ła 1Ł Ł2", "[ukryte], Łódź aŁ Ła 1Ł Ł2"],
+    ["A.", "A. A? BA. A.B", "[ukryte] A? BA. A.B"],
+  ])("projects short subject value %s in %s", (name, subject, expected) => {
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
+      patterns: [], brand, template: getTemplate("payment")!, data: { name, item: "Produkt Żółw" }, subject }));
+    expect(archive.subject).toBe(expected);
+    expect(archive.text).toContain("Witaj [ukryte],");
+  });
+  it.each(["masked", "full"] as const)("projects license values inside allowed fields at level %s", (level) => {
+    const input = { ...data, productName: "Demo", instructions: `Use ${data.licenseKey} at ${data.activationUrl}` };
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level, show: Object.keys(input) },
+      patterns: [], brand, template: getTemplate("license")!, data: input, subject: input.instructions }));
+    for (const value of [archive.subject, archive.html, archive.text]) {
+      expect(value).not.toContain(input.licenseKey);
+      expect(value).not.toContain(input.activationUrl);
+      expect(value).toContain("••••5678");
+      expect(value).toContain("••••path");
+    }
   });
   it("projects masked and full content", () => {
     const policy = { ...config().logging.defaults, level: "masked" as const, show: Object.keys(data) };
