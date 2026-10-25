@@ -59,6 +59,21 @@ async function declined(body: object) {
 }
 
 describe('public form nonce', () => {
+  it.each([false, undefined])('retains public content fields with requireNonce=%j', async requireNonce => {
+    Object.assign(config.brands.demo, { requireNonce });
+    const altcha = btoa(JSON.stringify({ ...await createChallenge(KEY, { maxnumber: 0 }), number: 0 }));
+    expect((await send({ brand: 'demo', altcha, product: 'Content product', nonce: 'Content nonce', autoreply: false })).status).toBe(200);
+    const mail = vi.mocked(deps.sendEmail).mock.calls[0][1];
+    expect(mail.text).toContain('Product: Content product');
+    expect(mail.text).toContain('Nonce: Content nonce');
+  });
+  it.each([true, false, undefined])('retains trusted content fields with requireNonce=%j', async requireNonce => {
+    Object.assign(config.brands.demo, { requireNonce });
+    expect((await send({ brand: 'demo', product: 'Content product', nonce: 'Content nonce' }, { authorization: 'Bearer test-api-key' })).status).toBe(200);
+    const mail = vi.mocked(deps.sendEmail).mock.calls[0][1];
+    expect(mail.text).toContain('Product: Content product');
+    expect(mail.text).toContain('Nonce: Content nonce');
+  });
   it.each([false, undefined])('preserves the flat challenge and submissions with requireNonce=%j', async requireNonce => {
     Object.assign(config.brands.demo, { requireNonce });
     const response = await challenge();

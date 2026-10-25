@@ -320,7 +320,9 @@ The nonce uses `ALTCHA_HMAC_KEY`, is valid for 10 minutes, and carries the brand
 product. `product` in POST is optional; when present, it must match the nonce exactly.
 The product must still be in the brand's configured list when submitting. Mailstack
 sets `type` from that product, including for the confirmation email when auto-reply
-is enabled. `nonce` and `product` are control fields and are omitted from email content.
+is enabled. Only public requests for brands with `requireNonce: true` treat `nonce`
+and `product` as control fields and omit them from email content. For other brands
+and all trusted requests, both fields remain ordinary template content.
 
 Mailstack atomically consumes the nonce before checking ALTCHA, including when ALTCHA
 is invalid. Fetch a new challenge and nonce for every attempt, including after a failed

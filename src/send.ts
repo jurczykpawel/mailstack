@@ -34,8 +34,6 @@ const RESERVED_KEYS = new Set([
   "access_key",
   "cf-turnstile-response",
   "altcha",
-  "nonce",
-  "product",
   "botcheck",
   "subject",
   "to",
@@ -101,11 +99,11 @@ function coerceValue(v: unknown): string {
 }
 
 /** Build the flat content map (non-reserved keys, coerced + capped). */
-function extractData(body: Record<string, unknown>): TemplateData {
+function extractData(body: Record<string, unknown>, publicNonce: boolean): TemplateData {
   const data: TemplateData = {};
   let count = 0;
   for (const [key, raw] of Object.entries(body)) {
-    if (RESERVED_KEYS.has(key)) continue;
+    if (RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;
     if (count >= MAX_FIELDS) break;
     data[key] = coerceValue(raw);
     count++;
@@ -255,7 +253,7 @@ export async function handleSend(
   }
 
   // Content fields (reserved keys stripped).
-  const data = extractData(body);
+  const data = extractData(body, !trusted && !!brand.requireNonce);
   if (nonceProduct !== undefined) data.type = nonceProduct;
   // For the contact template, attach request-time meta (footer small print).
   if (template.id === "contact") {
