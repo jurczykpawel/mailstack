@@ -1,3 +1,4 @@
+import type { attachmentSummary } from '../../attachments';
 import type { Config } from '../config/schema';
 import { blindIndex, canonicalJson, createMac, refIndex, seal } from '../crypto';
 import type { SealContext } from '../crypto';
@@ -17,6 +18,7 @@ export interface RecordDeps {
   store?: MessageStore; logging: Config['logging']; env: KeyEnvironment; now: () => Date;
 }
 export interface RecordInput {
+  attachments?: Awaited<ReturnType<typeof attachmentSummary>>;
   clientId: string; brand: Brand; template: TemplateDef; data: TemplateData;
   recipients: { role: RecipientRow['role']; address: string }[];
   replyTo?: string; subject?: string; ref?: string; idempotencyKey?: string; markup?: unknown[];
@@ -25,6 +27,7 @@ export interface RecordInput {
 
 export function intentRequest(input: RecordInput): unknown {
   return {
+    ...(input.attachments ? { attachments: input.attachments.identity } : {}),
     brand: input.brand.id, template: input.template.id, recipients: input.recipients,
     data: Object.fromEntries(Object.entries(input.data).filter(([key]) =>
       input.template.id !== 'contact' || !Object.values<string>(META_KEYS).includes(key))),
@@ -102,7 +105,7 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
         idem_key_hash: idemHash,
         request_mac: canonicalJson(await createMac(intentRequest(input), indexKeys)),
         replay_mac: policy.resend === 'replay' ? canonicalJson(await createMac(replay, indexKeys)) : null,
-        resend_of: null, resend_root: null, attachments_meta: null,
+        resend_of: null, resend_root: null, attachments_meta: input.attachments ? JSON.stringify(input.attachments.meta) : null,
         meta_expires_at: at + policy.metaDays * 86400000, content_expires_at: hasContent ? expires : null,
       }, recipients, subjects,
     };

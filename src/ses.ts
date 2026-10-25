@@ -28,6 +28,10 @@ export async function sendEmail(
     ...(params.replyTo ? { ReplyToAddresses: [params.replyTo] } : {}),
     Content: {
       Simple: {
+        ...(params.attachments?.length ? { Attachments: params.attachments.map(file => ({
+          RawContent: file.contentBase64, FileName: file.filename, ContentType: file.contentType,
+          ContentDisposition: "ATTACHMENT", ContentTransferEncoding: "BASE64",
+        })) } : {}),
         Subject: { Data: params.subject, Charset: "UTF-8" },
         Body: {
           Html: { Data: params.html, Charset: "UTF-8" },

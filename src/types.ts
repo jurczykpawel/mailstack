@@ -135,8 +135,11 @@ export interface SendResult {
   message?: string;
 }
 
+export interface Attachment { filename: string; contentType: string; contentBase64: string }
+
 /** Parameters passed to the sender. */
 export interface SendParams {
+  attachments?: Attachment[];
   messageId?: string;
   brand?: string;
   from: string;

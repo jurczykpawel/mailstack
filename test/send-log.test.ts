@@ -113,7 +113,7 @@ it('sends without storage or keys at level none even with requireLog', async () 
   expect(await (await handleSend(request(), { ...env, CONTENT_PUBLIC_KEYS: undefined, INDEX_KEYS: undefined }, { ...deps, store: undefined })).json()).toEqual({ success: true });
 });
 
-it.each([{ ref: '' }, { ref: 12 }, { ref: 'x'.repeat(129) }, { resendOf: null }, { attachments: [] }])('validates new controls %j', async controls => {
+it.each([{ ref: '' }, { ref: 12 }, { ref: 'x'.repeat(129) }, { resendOf: null }])('validates new controls %j', async controls => {
   const res = await send({ ...body, ...controls });
   expect(res.status).toBe(400);
   expect(await res.json()).toMatchObject({ code: 'ref' in controls ? 'invalid_ref' : 'not_supported' });
@@ -361,4 +361,33 @@ it.each([true, false])('handles a slow alert with waitUntil=%s', async backgroun
     expect((await response).status).toBe(502);
     vi.useRealTimers();
   }
+});
+
+it('records attachment summaries and identity without archiving files', async () => {
+  const previous = config.legacyApiKey;
+  config.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
+  deps.logging!.defaults.level = 'full'; deps.logging!.defaults.resend = 'replay';
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const file = { filename: 'attachment-sentinel.txt', contentType: 'text/plain', contentBase64: Buffer.from('attachment content sentinel').toString('base64') };
+  const data = { ...body, attachments: [file] };
+  try {
+    expect((await send(data)).status).toBe(200);
+    expect(await (await send(data)).json()).toMatchObject({ idempotent: true });
+    for (const change of [{ contentBase64: Buffer.from('changed bytes').toString('base64') }, { filename: 'other.txt' }]) {
+      const res = await send({ ...data, attachments: [{ ...file, ...change }] });
+      expect(res.status).toBe(409); expect(await res.json()).toMatchObject({ code: 'idempotency_conflict' });
+    }
+    expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+    const [row] = await rows();
+    expect(JSON.parse(row.attachments_meta!)).toEqual({ count: 1, totalBytes: 27, types: ['text/plain'] });
+    const dump = JSON.stringify(await Promise.all(['messages', 'recipients', 'subjects', 'contents', 'replays'].map(t => store.db.selectFrom(t as 'messages').selectAll().execute())));
+    const decoded = [];
+    for (const [table, purpose] of [['contents', 'content'], ['replays', 'replay']] as const) {
+      const item = await store.db.selectFrom(table).selectAll().executeTakeFirstOrThrow();
+      decoded.push(await open(item.sealed, { brand: 'acme', messageId: row.id, purpose }, [privateKey]));
+    }
+    for (const value of [file.filename, file.contentBase64, 'attachment content sentinel']) {
+      expect(dump).not.toContain(value); expect(JSON.stringify(decoded)).not.toContain(value); expect(JSON.stringify(log.mock.calls)).not.toContain(value);
+    }
+  } finally { config.legacyApiKey = previous; }
 });

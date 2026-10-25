@@ -4,11 +4,13 @@ import type { Sender } from '../../core/ports';
 import type { SendParams } from '../../types';
 
 interface Reply { response: string; accepted: string[]; rejected: string[]; serverMessageId?: string }
-interface Transport { sendMail(params: Omit<SendParams, 'messageId' | 'brand'> & { disableFileAccess: boolean; disableUrlAccess: boolean }): Promise<Reply> }
+interface Transport { sendMail(params: Omit<SendParams, 'messageId' | 'brand' | 'attachments'> & { attachments?: { filename: string; contentType: string; content: Buffer }[]; disableFileAccess: boolean; disableUrlAccess: boolean }): Promise<Reply> }
 export function createSmtpSender(transport: Transport): Sender {
-  return async (_env, { messageId: _id, brand: _brand, ...params }) => {
+  return async (_env, { messageId: _id, brand: _brand, attachments, ...params }) => {
     try {
-      const info = await transport.sendMail({ ...params, disableFileAccess: true, disableUrlAccess: true });
+      const info = await transport.sendMail({ ...params, ...(attachments ? { attachments: attachments.map(file => ({
+        filename: file.filename, contentType: file.contentType, content: Buffer.from(file.contentBase64, 'base64'),
+      })) } : {}), disableFileAccess: true, disableUrlAccess: true });
       const messageId = info.serverMessageId ?? info.response.match(/queued as\s+<?([^\s>]+)/i)?.[1] ?? info.response.match(/OK[: ]+\s*<?([^\s>]+)/i)?.[1] ?? '';
       return { ok: true, status: Number(info.response.slice(0, 3)), messageId,
         response: { response: info.response }, smtp: { accepted: info.accepted, rejected: info.rejected } };

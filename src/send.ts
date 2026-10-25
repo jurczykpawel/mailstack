@@ -1,5 +1,7 @@
+import { validateAttachments } from "./attachments";
 import { boundedText } from "./core/http";
 import type {
+  Attachment,
   Brand,
   Env,
   JsonLdBlock,
@@ -141,9 +143,11 @@ export async function handleSend(
   const origin = req.headers.get("origin") || "";
   const ip = req.headers.get("cf-connecting-ip");
 
+  const client = await authenticate(req, env, config);
+  const trusted = !!client;
   let rawText: string;
   try {
-    rawText = await boundedText(req, MAX_BODY_BYTES);
+    rawText = await boundedText(req, client?.attachments && client.scopes.includes("send") ? 10 * 1024 * 1024 : MAX_BODY_BYTES);
   } catch (error) {
     if (!(error instanceof RangeError)) throw error;
     return json({ success: false, message: "payload too large" }, { status: 413 });
@@ -168,9 +172,6 @@ export async function handleSend(
 
   const originAllowed = isOriginAllowed(brand, origin);
   const corsOrigin = originAllowed ? origin : null;
-
-  const client = await authenticate(req, env, config);
-  const trusted = !!client;
 
   if (!trusted) {
     // 1) Origin allowlist.
@@ -213,7 +214,7 @@ export async function handleSend(
       ? body.template.trim()
       : DEFAULT_TEMPLATE
     : DEFAULT_TEMPLATE;
-  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride))) {
+  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments))) {
     return json({ success: false, message: "forbidden", code: "scope" }, { status: 403, cors: corsOrigin });
   }
   const template = getTemplate(templateId);
@@ -226,10 +227,17 @@ export async function handleSend(
 
   const idempotencyKey = trusted ? req.headers.get("Idempotency-Key") ?? undefined : undefined;
   if (trusted) {
-    const code = Object.hasOwn(body, "resendOf") || Object.hasOwn(body, "attachments") ? "not_supported"
+    const code = Object.hasOwn(body, "resendOf") ? "not_supported"
       : Object.hasOwn(body, "ref") && (typeof body.ref !== "string" || body.ref.length < 1 || body.ref.length > 128) ? "invalid_ref"
       : idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey) ? "invalid_idempotency_key" : undefined;
     if (code) return json({ success: false, message: code.replaceAll("_", " "), code }, { status: 400, cors: corsOrigin });
+  }
+
+  let attachments: Attachment[] | undefined;
+  if (trusted && Object.hasOwn(body, "attachments")) {
+    const result = validateAttachments(body.attachments);
+    if (!("files" in result)) return json({ success: false, message: result.message, code: result.code }, { status: result.status, cors: corsOrigin });
+    attachments = result.files;
   }
 
   // Content fields (reserved keys stripped).
@@ -280,6 +288,7 @@ export async function handleSend(
     clientId: client?.id ?? "public",
     ref: trusted ? body.ref as string | undefined : undefined,
     idempotencyKey,
+    attachments,
   });
 
   if (!result.ok) {
@@ -373,6 +382,7 @@ function resolveReplyTo(
 }
 
 export interface RenderAndSendParams extends DeliveryContext {
+  attachments?: Attachment[];
   to: string[];
   replyTo?: string;
   /** Overrides the template's own subject when set. */
@@ -417,6 +427,7 @@ export async function renderAndSend(
   });
   return deliver(deps, env, brand, template, data, {
     from: brand.from,
+    ...(params.attachments ? { attachments: params.attachments } : {}),
     to: params.to,
     replyTo: params.replyTo,
     subject,

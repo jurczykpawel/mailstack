@@ -1,3 +1,4 @@
+import { attachmentSummary } from '../../attachments';
 import { alertMessage } from '../alerts';
 import type { Brand, Env, SendDeps, SendParams, SendResult, TemplateData, TemplateDef } from '../../types';
 import { config } from '../config';
@@ -32,6 +33,7 @@ export async function deliver(
   const { policy } = await resolvePolicy(logging, brand.id, template.id);
   const clientId = context.clientId ?? 'public';
   const input = {
+    ...(params.attachments?.length ? { attachments: await attachmentSummary(params.attachments) } : {}),
     clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
     subject: params.subject, replyTo: params.replyTo, ref: context.ref,
     idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: deps.provider ?? 'ses',
