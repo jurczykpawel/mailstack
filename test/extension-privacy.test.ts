@@ -87,6 +87,12 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     for (const table of ['messages', 'subjects', 'contents']) expect(await rows(table)).toHaveLength(51);
     expect(onBeforeDelete).toHaveBeenCalledTimes(2);
   });
+  it.each([200, 400, 403])('returns unavailable for a numeric cleanup result: %s', async result => {
+    await seed();
+    const runtime = await load({ name: 'demo', onBeforeDelete: () => { throw result; } });
+    expect((await erase(runtime)).status).toBe(503);
+    expect(await rows('messages')).toHaveLength(1);
+  });
   it('limits cleanup selection to the authenticated brand and template', async () => {
     await seed(3);
     await sql`update messages set brand='demo' where id='msg_0001'`.execute(store.db);

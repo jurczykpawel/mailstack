@@ -36,8 +36,8 @@ async function bounded(task: () => unknown, required = false): Promise<void> {
     await Promise.race([Promise.resolve().then(task), new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('Extension timeout')), 5000);
     })]);
-  } catch (error) {
-    if (required) throw error;
+  } catch {
+    if (required) throw new Error('Extension cleanup failed');
     console.error('mailstack: extension event failed');
   }
   finally { clearTimeout(timer); }
