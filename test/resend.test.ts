@@ -272,3 +272,12 @@ it('returns source descriptors independently of configuration objects', async ()
   if ('owner' in result && result.owner) result.owner.callback.url = 'https://other.example/callback';
   expect(cfg.clients![0].resendCallback!.url).toBe('https://source.example/resend');
 });
+
+it('continues an approved stored-payload job that has not started delivery', async () => {
+  const { claimResend } = await import('../src/core/store/resend');
+  const { idempotencyHash } = await import('../src/core/logging/writer');
+  const resendId = 'rs_' + await idempotencyHash('panel', 'request-1');
+  await claimResend(store, { id: resendId, messageId: id, root: id, actor: principal().actor, now, metaCutoff: 0, strategy: 'replay' });
+  expect(await request()).toMatchObject({ ok: true, status: 200, resendId });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});

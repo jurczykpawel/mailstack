@@ -129,14 +129,21 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
             const id = await jobId(input.idempotencyKey), existing = await getResend(store, id);
             if (existing && existing.expires_at <= at()) fail(409, 'resend_mismatch');
             if (existing && (existing.message_id !== m.id || existing.actor !== panel.actor || existing.strategy !== source.strategy)) fail(409, 'idempotency_conflict');
-            if (existing && existing.state !== 'failed') return { ...await outcome(existing), ...(source.strategy === 'source' ? { source } : {}) };
+            if (existing && existing.state !== 'failed') {
+              if (existing.state === 'pending' && payload) {
+                await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
+                return execute(existing, payload);
+              }
+              return { ...await outcome(existing), ...(source.strategy === 'source' ? { source } : {}) };
+            }
             await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
             const claimed = await claimResend(store, { id, messageId: m.id, root: m.resend_root ?? m.id, actor: panel.actor, now: at(),
               metaCutoff: at() - cfg.logging.ceilings.metaDays * 86400000, strategy: source.strategy });
             const job = await getResend(store, id);
             if (!claimed) {
               await inspect(m.id, panel);
-              if (job && job.state !== 'failed') return { ...await outcome(job), ...(source.strategy === 'source' ? { source } : {}) };
+              if (job && job.state !== 'failed') return job.state === 'pending' && payload ? execute(job, payload) :
+                { ...await outcome(job), ...(source.strategy === 'source' ? { source } : {}) };
               return fail(429, 'rate_limited');
             }
             return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source };
