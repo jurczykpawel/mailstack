@@ -70,6 +70,15 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     return payload;
   }
   async function outcome(job: ResendJob): Promise<ResendOutcome> {
+    if (job.state === 'sending') {
+      const original = await store.db.selectFrom('messages').select('client_id').where('id', '=', job.message_id).executeTakeFirst();
+      const child = original ? await store.findByIdempotency(original.client_id, await idempotencyHash(original.client_id, job.id)) : undefined;
+      if ((child && child.status !== 'sending') || at() - job.created_at > 900000) {
+        const state = !child || child.status === 'sending' || child.status === 'unknown' ? 'unknown' : child.status === 'send_failed' ? 'failed' : 'sent';
+        await finishResend(store, job.id, state, child?.id, job.token);
+        return state === 'failed' ? { ok: false, status: 502, code: 'send_failed', resendId: job.id } : outcome({ ...job, state, result_id: child?.id ?? null });
+      }
+    }
     const base = { resendId: job.id, ...(job.result_id ? { id: job.result_id } : {}), idempotent: true as const };
     if (job.state === 'sent') return { ...base, ok: true, status: 200 };
     if (job.state === 'pending') return { ...base, ok: true, status: 202 };
@@ -83,7 +92,12 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     if (job.payload_mac && !await verifyMac(identity, JSON.parse(job.payload_mac), keys)) fail(409, 'idempotency_conflict');
     if (job.state !== 'pending') return outcome(job);
     const tag = canonicalJson(await createMac(identity, keys));
-    if (!await startResend(store, job.id, at(), tag)) return outcome((await getResend(store, job.id))!);
+    if (!await startResend(store, job.id, at(), tag, job.token)) {
+      const current = (await getResend(store, job.id))!;
+      if (current.payload_mac && !await verifyMac(identity, JSON.parse(current.payload_mac), keys)) fail(409, 'idempotency_conflict');
+      if (current.state === 'pending') { await inspect(job.message_id); return fail(409, 'resend_mismatch'); }
+      return outcome(current);
+    }
     let result: SendResult;
     try {
       result = await renderAndSend({ ...deps, store, logging: cfg.logging }, env, brand, template, payload.data, {
@@ -91,45 +105,63 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
         clientId: m.client_id, idempotencyKey: job.id, ref, attachments, resendOf: m.id, resendRoot: job.root,
       });
     } catch {
-      await finishResend(store, job.id, 'failed'); return fail(503, 'log_unavailable');
+      const child = await store.findByIdempotency(m.client_id, await idempotencyHash(m.client_id, job.id));
+      await finishResend(store, job.id, child ? 'unknown' : 'failed', child?.id, job.token);
+      return fail(503, 'log_unavailable');
     }
     const row = result.id ? await store.db.selectFrom('messages').select('status').where('id', '=', result.id).executeTakeFirst() : undefined;
     const state = result.ok ? 'sent' : row?.status === 'unknown' || row?.status === 'sending' ? 'unknown' : 'failed';
-    await finishResend(store, job.id, state, result.id);
+    await finishResend(store, job.id, state, result.id, job.token);
     return { ...result, resendId: job.id };
   }
   return {
     forPanel(panel: PanelPrincipal): ResendCapability {
       return {
         source: id => attempt(async () => { const { source } = await inspect(id, panel); await audit(panel.actor, 'resend.source', id); return source; }),
-        request: input => attempt(async () => {
-          if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500 ||
-            typeof input.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.idempotencyKey)) fail(400, 'invalid_request');
-          const { m, source } = await inspect(input.messageId, panel);
-          const payload = source.strategy === 'replay' ? await validate(m.id, input.replay, m.replay_mac) : undefined;
-          if (payload && payload.template !== m.template) fail(409, 'resend_mismatch');
-          const id = await jobId(input.idempotencyKey), existing = await getResend(store, id);
-          if (existing && (existing.message_id !== m.id || existing.actor !== panel.actor || existing.strategy !== source.strategy)) fail(409, 'idempotency_conflict');
-          if (existing && existing.state !== 'failed') return { ...await outcome(existing), ...(source.strategy === 'source' ? { source } : {}) };
-          await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
-          const claimed = await claimResend(store, { id, messageId: m.id, root: m.resend_root ?? m.id, actor: panel.actor, now: at(),
-            metaCutoff: at() - cfg.logging.ceilings.metaDays * 86400000, strategy: source.strategy });
-          const job = await getResend(store, id);
-          if (!claimed) {
-            await inspect(m.id, panel);
-            if (job && job.state !== 'failed') return outcome(job);
-            await audit(panel.actor, 'resend.denied', m.id, { code: 'rate_limited' }); return fail(429, 'rate_limited');
-          }
-          return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source };
-        }),
+        request: async input => {
+          const result = await attempt(async () => {
+            if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500 ||
+              typeof input.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.idempotencyKey)) fail(400, 'invalid_request');
+            const { m, source } = await inspect(input.messageId, panel);
+            const payload = source.strategy === 'replay' ? await validate(m.id, input.replay, m.replay_mac) : undefined;
+            if (payload && payload.template !== m.template) fail(409, 'resend_mismatch');
+            const id = await jobId(input.idempotencyKey), existing = await getResend(store, id);
+            if (existing && existing.expires_at <= at()) fail(409, 'resend_mismatch');
+            if (existing && (existing.message_id !== m.id || existing.actor !== panel.actor || existing.strategy !== source.strategy)) fail(409, 'idempotency_conflict');
+            if (existing && existing.state !== 'failed') return { ...await outcome(existing), ...(source.strategy === 'source' ? { source } : {}) };
+            await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
+            const claimed = await claimResend(store, { id, messageId: m.id, root: m.resend_root ?? m.id, actor: panel.actor, now: at(),
+              metaCutoff: at() - cfg.logging.ceilings.metaDays * 86400000, strategy: source.strategy });
+            const job = await getResend(store, id);
+            if (!claimed) {
+              await inspect(m.id, panel);
+              if (job && job.state !== 'failed') return { ...await outcome(job), ...(source.strategy === 'source' ? { source } : {}) };
+              return fail(429, 'rate_limited');
+            }
+            return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source };
+          });
+          if (!result.ok && result.code !== 'log_unavailable') return attempt(async () => {
+            await audit(panel.actor, 'resend.denied', typeof input.messageId === 'string' ? input.messageId.slice(0, 128) : 'message', { code: result.code });
+            return result;
+          });
+          return result;
+        },
       };
     },
-    sendSource: (clientId: string, messageId: string, key: string, value: unknown, ref?: string, attachments?: Attachment[]) => attempt(async () => {
-      const { m, source } = await inspect(messageId);
+    sendSource: (clientId: string, messageId: string, key: string, value: unknown, ref?: string, attachments?: Attachment[], brandId?: string) => attempt(async () => {
       const job = await getResend(store, await jobId(key));
+      if (!job || job.message_id !== messageId || job.strategy !== 'source' || job.expires_at <= at()) return fail(409, 'resend_mismatch');
+      const owner = await store.db.selectFrom('messages').select(['client_id', 'brand']).where('id', '=', messageId).executeTakeFirst();
+      if (!owner || owner.client_id !== clientId || (brandId !== undefined && owner.brand !== brandId)) return fail(409, 'resend_mismatch');
+      const { m, source } = await inspect(messageId);
       if (source.strategy !== 'source' || source.owner?.clientId !== clientId || !job || job.strategy !== 'source' || job.message_id !== m.id || job.expires_at <= at()) fail(409, 'resend_mismatch');
       const payload = await validate(m.id, value);
-      return execute(job!, payload, ref, attachments);
+      if (job!.state === 'failed') {
+        const claimed = await claimResend(store, { id: job!.id, messageId: m.id, root: job!.root, actor: job!.actor, now: at(),
+          metaCutoff: at() - cfg.logging.ceilings.metaDays * 86400000, strategy: 'source' });
+        if (!claimed) { const current = (await getResend(store, job!.id))!; return current.state === 'failed' ? fail(429, 'rate_limited') : outcome(current); }
+      }
+      return execute((await getResend(store, job!.id))!, payload, ref, attachments);
     }),
   };
 }

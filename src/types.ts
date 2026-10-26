@@ -156,7 +156,7 @@ export interface SendParams {
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
   resendSource?: (env: Env, clientId: string, messageId: string, key: string, payload: import('./core/resend-contract').ResendPayload,
-    ref?: string, attachments?: Attachment[]) => Promise<SendResult>;
+    ref?: string, attachments?: Attachment[], brandId?: string) => Promise<SendResult>;
   emitEvent?: import("./core/extensions").EmitEvent;
   provider?: 'ses' | 'smtp';
   notifier?: Notifier;

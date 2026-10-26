@@ -155,3 +155,106 @@ it('accepts approved source calls through the send handler', async () => {
     expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   } finally { config.clients = previous; }
 });
+
+it('retains the job when recording its final outcome is interrupted', async () => {
+  const batch = store.batch.bind(store);
+  let stop = true;
+  vi.spyOn(store, 'batch').mockImplementation(async queries => {
+    if (stop && queries.some(q => q.sql.includes('update resend_jobs set state=') && q.parameters.includes('sent'))) {
+      stop = false; throw new Error('interrupted');
+    }
+    return batch(queries);
+  });
+  expect(await request()).toMatchObject({ status: 503 });
+  now += 900001;
+  expect(await request()).toMatchObject({ ok: true, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it('allows the owning source to retry an explicit refusal without a new approval', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  await request('source-key', undefined);
+  const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'fresh-key' } };
+  vi.mocked(deps.sendEmail).mockResolvedValueOnce({ ok: false, status: 400 });
+  expect(await service.sendSource('sender', id, 'source-key', value)).toMatchObject({ code: 'send_failed' });
+  expect(await service.sendSource('sender', id, 'source-key', value)).toMatchObject({ ok: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(2);
+});
+it('returns a denial audit record for a disabled source', async () => {
+  cfg.logging.brands.acme.templates!.notice.resend = 'off';
+  expect(await request()).toMatchObject({ code: 'resend_disabled' });
+  expect((await sql<{ action: string }>`select action from audit`.execute(store.db)).rows).toContainEqual({ action: 'resend.denied' });
+});
+it('requires a current source client with send scope at configuration time', async () => {
+  const { parseConfig } = await import('../src/core/config/schema');
+  cfg.clients![0].scopes = ['hook:sellf'];
+  expect(() => parseConfig(cfg)).toThrow('source requires');
+});
+it('rejects a changed source payload after a successful request', async () => {
+  id = await original('license'); await request('source-key', undefined);
+  const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'fresh-key' } };
+  expect(await service.sendSource('sender', id, 'source-key', value)).toMatchObject({ ok: true });
+  expect(await service.sendSource('sender', id, 'source-key', { ...value, data: { licenseKey: 'different-key' } })).toMatchObject({ code: 'idempotency_conflict' });
+});
+
+it('returns one response for unapproved source identifiers', async () => {
+  await store.setStatus(id, 'unknown');
+  for (const messageId of [id, 'msg_missing']) {
+    expect(await service.sendSource('other', messageId, 'unapproved', payload)).toMatchObject({ status: 409, code: 'resend_mismatch' });
+  }
+});
+it('refuses a changed brand on a source request', async () => {
+  id = await original('license'); await request('source-key', undefined);
+  const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'fresh-key' } };
+  expect(await service.sendSource('sender', id, 'source-key', value, undefined, undefined, 'demo')).toMatchObject({ code: 'resend_mismatch' });
+});
+it('refuses a source outcome changed during its claim', async () => {
+  const batch = store.batch.bind(store);
+  vi.spyOn(store, 'batch').mockImplementationOnce(async queries => {
+    await store.setStatus(id, 'unknown'); return batch(queries);
+  });
+  expect(await request()).toMatchObject({ code: 'original_unresolved' });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('requires an unchanged recipient set independently of the content tag', async () => {
+  const { blindIndex } = await import('../src/core/crypto');
+  const index = await blindIndex('different@example.com', JSON.parse(env.INDEX_KEYS!)[0]);
+  await store.db.updateTable('recipients').set({ addr_idx: index.index }).where('message_id', '=', id).execute();
+  expect(await request()).toMatchObject({ code: 'resend_mismatch' });
+});
+
+it('returns the quota result for twenty distinct concurrent requests', async () => {
+  const results = await Promise.all(Array.from({ length: 20 }, (_, i) => request('key-' + i)));
+  expect(results.filter(r => r.ok)).toHaveLength(1);
+  expect(results.filter(r => r.status === 429 && r.code === 'rate_limited')).toHaveLength(19);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it('retains an uncertain provider result without another call', async () => {
+  vi.mocked(deps.sendEmail).mockRejectedValueOnce(new Error('provider timeout'));
+  expect(await request()).toMatchObject({ code: 'send_failed' });
+  expect(await request()).toMatchObject({ code: 'outcome_unknown' });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it('uses all retained index keys after rotation', async () => {
+  const previous = env.INDEX_KEYS;
+  env.INDEX_KEYS = JSON.stringify([{ kid: 'i2', key: Buffer.alloc(32, 12).toString('base64url') }, ...JSON.parse(previous!)]);
+  try { expect(await request()).toMatchObject({ ok: true }); } finally { env.INDEX_KEYS = previous; }
+});
+it('applies shortened current retention and metadata-only policies', async () => {
+  cfg.logging.defaults.contentDays = 1; now += 86400001;
+  expect(await request()).toMatchObject({ code: 'resend_disabled' });
+  cfg.logging.defaults.level = 'none'; expect(await request()).toMatchObject({ code: 'resend_disabled' });
+});
+it('refuses an unavailable sealed source without returning data', async () => {
+  await sql`drop table audit`.execute(store.db);
+  expect(await service.forPanel(principal()).source(id)).toMatchObject({ status: 503 });
+});
+
+it('keeps concurrent source payload identities distinct', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  await request('source-key', undefined);
+  const values = Array.from({ length: 20 }, (_, i) => ({ to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'key-' + i } }));
+  const results = await Promise.all(values.map(value => service.sendSource('sender', id, 'source-key', value)));
+  expect(results.filter(r => r.ok)).toHaveLength(1);
+  expect(results.filter(r => r.code === 'idempotency_conflict')).toHaveLength(19);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});

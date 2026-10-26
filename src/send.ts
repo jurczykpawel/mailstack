@@ -307,7 +307,7 @@ export async function handleSend(
     const result = await deps.resendSource!(env, client!.id, body.resendOf, idempotencyKey, {
       to: recipients, template: template.id, data, ...(replyTo ? { replyTo } : {}),
       ...(subjectOverride ? { subjectOverride } : {}), ...(explicitJsonLd ? { markup: explicitJsonLd } : {}),
-    }, body.ref as string | undefined, attachments);
+    }, body.ref as string | undefined, attachments, brand.id);
     return json(deliveryResponse(result, true), { status: result.status, cors: corsOrigin });
   }
 

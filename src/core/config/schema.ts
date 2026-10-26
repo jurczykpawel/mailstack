@@ -103,7 +103,7 @@ function schemaWithTemplates(templates: TemplatePolicies) {
     for (const id of Object.keys(config.logging.brands)) {
       if (!Object.hasOwn(config.brands, id)) fail(["logging", "brands", id], "unknown brand");
     }
-    const clients = (config.clients ?? []).filter((client) => client.resendCallback);
+    const clients = (config.clients ?? []).filter((client) => client.resendCallback && client.scopes.includes("send"));
     const ids = new Set<string>();
     for (const [index, client] of (config.clients ?? []).entries()) {
       if (ids.has(client.id)) ctx.addIssue({ code: "custom", path: ["clients", index, "id"], message: "duplicate client id" });

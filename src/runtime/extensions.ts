@@ -1,3 +1,4 @@
+import { createNtfyNotifier } from '../adapters/notify/ntfy';
 import { createResendService } from '../core/resend';
 import { verifyTurnstile } from '../turnstile';
 import { verifyAltcha } from '../altcha';
@@ -79,9 +80,9 @@ export async function loadExtensions(config: Config, store: KyselyStore,
     const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
     if (waitUntil) { try { waitUntil(task); } catch {} }
   };
-  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, store, now: () => new Date(), logging: config.logging, emitEvent, verifyTurnstile, verifyAltcha });
+  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
-  const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments) => service(env).sendSource(client, id, key, payload, ref, attachments) : undefined;
+  const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
   return { emitEvent, resendSource, async fetch(req: Request, env: object): Promise<Response> {
     const client = await authenticate(req, env, config);
     if (!client) return Response.json({ success: false }, { status: 401 });
