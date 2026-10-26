@@ -94,6 +94,13 @@ CREATE TABLE IF NOT EXISTS guards (
 );
 CREATE INDEX IF NOT EXISTS guards_exp ON guards(expires_at);
 
+CREATE TABLE IF NOT EXISTS resend_jobs (
+  id TEXT PRIMARY KEY, message_id TEXT NOT NULL, root TEXT NOT NULL, actor TEXT NOT NULL,
+  token TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','sending','sent','failed','unknown')),
+  created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, result_id TEXT
+);
+CREATE INDEX IF NOT EXISTS resend_jobs_exp ON resend_jobs(expires_at);
+
 CREATE TABLE IF NOT EXISTS audit (
   seq       INTEGER PRIMARY KEY,
   at        INTEGER NOT NULL,

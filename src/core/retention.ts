@@ -8,7 +8,7 @@ export function isContentReadable(row: { expires_at: number } | null | undefined
   return !!row && row.expires_at > now;
 }
 export async function runRetention(store: KyselyStore, now: number, cfg: Config): Promise<void> {
-  for (const table of ['contents', 'replays', 'guards'])
+  for (const table of ['contents', 'replays', 'guards', 'resend_jobs'])
     await sql`delete from ${sql.table(table)} where expires_at <= ${now}`.execute(store.db);
   while (true) {
     const ids = sql`select id from messages where meta_expires_at < ${now}
