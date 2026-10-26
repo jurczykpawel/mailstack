@@ -10,6 +10,8 @@ import { idempotencyHash, intentRequest, recordIntent } from './writer';
 
 export interface DeliveryContext {
   clientId?: string;
+  resendOf?: string;
+  resendRoot?: string;
   ref?: string;
   idempotencyKey?: string;
   explicitJsonLd?: unknown[];
@@ -34,7 +36,7 @@ export async function deliver(
   const clientId = context.clientId ?? 'public';
   const input = {
     ...(params.attachments?.length ? { attachments: await attachmentSummary(params.attachments) } : {}),
-    clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
+    resendOf: context.resendOf, resendRoot: context.resendRoot, clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
     subject: params.subject, replyTo: params.replyTo, ref: context.ref,
     idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: deps.provider ?? 'ses',
   };
@@ -70,7 +72,7 @@ export async function deliver(
         if (existing === 'retry') continue;
         if (existing) return existing;
       } catch { /* Storage may be unavailable for both reads and writes. */ }
-      if (policy.requireLog) return failure(503, 'log_unavailable');
+      if (policy.requireLog || context.resendOf) return failure(503, 'log_unavailable');
       break;
     }
   }

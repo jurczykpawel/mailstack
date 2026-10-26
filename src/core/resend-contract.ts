@@ -6,7 +6,7 @@ export const resendPayload = z.strictObject({
   template: z.string().min(1).max(128),
   data: z.record(z.string().max(128), z.string().max(5000)).refine(v => Object.keys(v).length <= 43),
   replyTo: z.email().max(320).optional(), subjectOverride: z.string().max(5000).optional(),
-  markup: z.array(z.unknown()).max(5).optional(),
+  markup: z.array(z.record(z.string(), z.unknown())).max(5).optional(),
 });
 export type ResendPayload = z.infer<typeof resendPayload>;
 export interface ResendSource {

@@ -22,7 +22,7 @@ export interface RecordInput {
   clientId: string; brand: Brand; template: TemplateDef; data: TemplateData;
   recipients: { role: RecipientRow['role']; address: string }[];
   replyTo?: string; subject?: string; ref?: string; idempotencyKey?: string; markup?: unknown[];
-  provider?: string; providerAccount?: string;
+  provider?: string; providerAccount?: string; resendOf?: string; resendRoot?: string;
 }
 
 export function intentRequest(input: RecordInput): unknown {
@@ -105,7 +105,7 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
         idem_key_hash: idemHash,
         request_mac: canonicalJson(await createMac(intentRequest(input), indexKeys)),
         replay_mac: policy.resend === 'replay' ? canonicalJson(await createMac(replay, indexKeys)) : null,
-        resend_of: null, resend_root: null, attachments_meta: input.attachments ? JSON.stringify(input.attachments.meta) : null,
+        resend_of: input.resendOf ?? null, resend_root: input.resendRoot ?? null, attachments_meta: input.attachments ? JSON.stringify(input.attachments.meta) : null,
         meta_expires_at: at + policy.metaDays * 86400000, content_expires_at: hasContent ? expires : null,
       }, recipients, subjects,
     };
