@@ -962,3 +962,127 @@ The existing Node listener on port 8081 exposes the sealed log and privacy API.
 Panel calls require the configured panel client plus a signed, short-lived actor
 assertion; role and step-up checks run in the API. See the [internal API contract](docs/internal-api.md)
 for routes, role matrix, `PANEL_ASSERTION_KEY`, audit behavior and extension integration.
+
+## Test environment
+
+The manual-test sandbox uses synthetic brands and addresses only. It requires Docker
+Compose, Node 24+, OpenSSL, and a sibling `mailstack-pro` checkout with dependencies
+installed. It never reads the normal `.env`, private brand configuration, or production
+credentials. Run from this checkout:
+
+```bash
+scripts/test-env.sh up
+scripts/test-env.sh seed
+scripts/test-env.sh status
+scripts/test-env.sh down
+```
+
+`up` builds one project, `mailstack-test`. `seed` is idempotent and creates template
+samples at levels none/meta/masked/full, a second tenant, a nonce-enabled brand with
+products, synthetic clients, signed SES fixtures, and separate expiring records
+(metadata after one hour; content/replay after fifteen minutes). Restarting `up`
+preserves data; `reset` destroys and recreates the sandbox. After source changes use
+`reset`: the build context is a snapshot, not a live source mount.
+
+| Service | Address |
+| --- | --- |
+| Public API | `http://localhost:18880` |
+| Pro panel (self-signed TLS) | `https://localhost:18890` |
+| Mailpit inbox | `http://localhost:18825` |
+| Request playground | `http://localhost:18882` |
+| HTTPS receiver / request history | `https://localhost:18843/records` |
+
+All mail goes to Mailpit, including `.example` recipients. API, panel and Mailpit
+have no external network; a fixture gateway publishes their fixed ports on loopback.
+The internal API port 8081 is not published. The panel has separate state and private
+content keys; API mounts contain public content keys and index keys only. The fixture
+gateway holds its own signing keys, never panel content keys. The containers use the
+host's non-root UID so private bind-mounted files can remain mode 0600.
+
+`status` prints service addresses and writes account instructions, test tokens, source
+SHAs and invitations to `/private/tmp/mailstack-test-local/status.json` (0600).
+`invite all` renews viewer/operator/admin invitation links, which expire after fifteen
+minutes. Enroll with a Chrome CDP virtual resident authenticator, then authenticate
+again for step-up. There are no passwords or owner accounts. Keep each role's virtual
+credentials separately. Test profiles must be temporary, headless, and independent
+of the owner's browser. Do not log tokens or cookies in evidence.
+
+```bash
+scripts/test-env.sh invite all
+scripts/test-env.sh license expired  # valid, missing, bad-signature, wrong-domain, revoked
+scripts/test-env.sh license valid
+scripts/test-env.sh mode '{"hook":"500","ntfy":"timeout"}'
+scripts/test-env.sh mode '{"hook":"200","ntfy":"200","license":"200","callback":"200"}'
+scripts/test-env.sh exec api cat /data/manual-seed.json
+scripts/test-env.sh exec api node /workspace/mailstack-pro/dist/manual-seed.mjs event MESSAGE_ID Bounce EVENT_ID
+scripts/test-env.sh exec api node /workspace/mailstack-pro/dist/manual-seed.mjs expire
+scripts/test-env.sh exec api node /workspace/mailstack-pro/dist/manual-seed.mjs retention
+scripts/test-env.sh logs
+```
+
+The HTTPS receiver records exact bodies, signature headers, idempotency keys and
+signature validity. It supports 200/500/timeout/redirect modes per hook, ntfy, license
+or source callback. For an endpoint created in the panel, verify its signature using
+the one-time secret returned at creation; the receiver's built-in `signatureValid`
+uses the seeded endpoint secret. Use its CA at
+`/private/tmp/mailstack-test-local/fixture/tls.crt` for host curl requests.
+
+The Pro test composition maps only `license.test.example`, `hooks.test.example` and
+`source.test.example` through injected transports to this receiver. Production SSRF
+validation is unchanged. Other destinations use the normal resolver and cannot be
+sent through the fixture adapter. A local transport test is not evidence of public
+DNS rebinding protection or production certificate trust. The panel uses its real
+CLI, auth, storage and views; the test build injects only licensing and alert transport.
+
+`event` uses the real SNS verifier and a fixture-signed envelope with a locally supplied
+certificate, then the real event handler and extension emitter. It does not bypass
+signature verification or alter the public `/v1/events/ses` endpoint. These fixtures
+prove local processing and evidence handling, **not AWS certificate trust**. Expiry
+helpers change synthetic fixture timestamps; the host clock is never changed.
+
+`down` removes containers, volumes, locally built images and the entire temporary
+installation including credentials. The downloaded Mailpit image and evidence saved
+outside the installation directory remain. One Compose project and one Chrome at a
+time; `up` checks other projects and memory pressure before building.
+
+### Isolated Worker sandbox
+
+```bash
+scripts/test-worker.sh deploy
+scripts/test-worker.sh status
+# When the coordinator has finished using it:
+scripts/test-worker.sh destroy
+```
+
+This script reads only the agent Vaultwarden item `CF Deploy - General API token`;
+it never uses a token from repository `.env` files. It deploys only `mailstack-test`
+on `workers.dev`, with the existing `mailstack-preview` D1 and migration 0001.
+No custom domain or production route is configured. SES keys are randomly generated
+invalid credentials: accepted requests end in `502 send_failed`, with logging, and
+cannot send mail. ALTCHA and the nonce challenge work independently of SES.
+
+Before and after each operation it compares the production Worker's deployment JSON;
+an unavailable initial fingerprint prevents any mutation. Evidence and the test URL /
+token are in `/private/tmp/mailstack-test-worker` (0600 files). The Worker is left
+available for coordinator tests. `destroy` removes only that Worker and local test
+credentials; the existing preview database and its synthetic rows are retained.
+The script does not delete or recreate D1 databases. A missing permission is reported
+without preventing local tests. Never run the normal production deploy command for
+this sandbox. [Wrangler command reference](https://developers.cloudflare.com/workers/wrangler/commands/).
+
+### Manual-test runner (private coordination files)
+
+```bash
+priv/run-manual-tests.sh --dry-run
+priv/run-manual-tests.sh             # coordinator only; starts four Codex runs
+priv/run-manual-tests.sh --fresh     # explicit new cycle after source/brief changes
+```
+
+The private plan, scenarios and charters are in `priv/plans`; six tester briefs are
+in `priv/briefs/manual`. The runner executes REG-A, REG-B, EXP-1 and EXP-2 sequentially,
+with a fresh local sandbox between runs, a shared browser-slot reservation, resource
+checks, capacity retries and report-based resumption. State is `priv/manual.state`,
+logs are `priv/run-logs/manual`, and the final table is
+`priv/reports/manual-summary.md`. A completed report may still contain product bugs;
+completion is not release approval. SMOKE and RETEST are separate coordinator briefs.
+Never commit generated tokens, reports containing credentials, or temporary state.

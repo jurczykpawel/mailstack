@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Mailstack TEST-LOCAL</title>
+<style>body{font:16px system-ui;margin:24px auto;max-width:760px;padding:0 16px}label{display:block;margin:12px 0}input,select,textarea,button{font:inherit;max-width:100%;box-sizing:border-box}textarea{width:100%}pre{white-space:pre-wrap;overflow-wrap:anywhere}nav{display:flex;gap:20px;flex-wrap:wrap}button{padding:10px}</style>
+<h1>Mailstack TEST-LOCAL</h1><p>Synthetic data only. Mail is captured by Mailpit.</p>
+<nav><a href="https://localhost:18890">Panel</a><a href="http://localhost:18825">Mailpit</a><a href="https://localhost:18843/records">Receiver records</a></nav>
+<h2>Public contact form</h2>
+<form id="publicForm">
+<label>Test API <input id="api" type="url" value="http://localhost:18880" required></label>
+<label>Brand <select id="brand"><option>selfware-like</option><option>demo</option><option>acme</option></select></label>
+<label>Product <select id="product"><option>Produkt Żółw</option><option>Test Pro</option></select></label>
+<label>Name <input id="name" value="Żaneta Test"></label>
+<label>Email <input id="email" type="email" value="buyer@acme.example"></label>
+<label>Message <textarea id="message" rows="4">Proszę o kontakt. Zażółć gęślą jaźń.</textarea></label>
+<label>Botcheck (leave empty) <input id="botcheck"></label>
+<label><input id="marketing" type="checkbox"> I agree to test marketing contact (test-v1).</label>
+<label>Auto-reply <select id="autoreply"><option value="1">On</option><option value="0">Off</option></select></label>
+<button>Fetch challenge, solve and submit</button>
+</form><pre id="publicResult" aria-live="polite"></pre>
+<h2>Trusted request utility</h2>
+<form id="trustedForm"><label>Client <select id="client"><option>send</option><option>limited</option><option>source</option></select></label>
+<label>Flat JSON <textarea id="body" rows="12">{"brand":"acme","template":"payment","to":"buyer@acme.example","amount":"149.00","currency":"PLN","orderId":"TEST-UI","invoiceUrl":"https://acme.example/invoice"}</textarea></label>
+<button>Send</button></form><pre id="trustedResult" aria-live="polite"></pre>
+<script>
+const el=id=>document.getElementById(id);
+el('trustedForm').onsubmit=async event=>{event.preventDefault();try{el('trustedResult').textContent=JSON.stringify(await(await fetch('/request',{method:'POST',body:JSON.stringify({client:el('client').value,body:el('body').value})})).json(),null,2);}catch(e){el('trustedResult').textContent=e.message;}};
+el('publicForm').onsubmit=async event=>{
+ event.preventDefault();const button=event.submitter;button.disabled=true;
+ try{
+  const base=el('api').value.replace(/\/$/,'');
+  if(base!=='http://localhost:18880'&&!/^https:\/\/mailstack-test\.[a-z0-9-]+\.workers\.dev$/.test(base))throw Error('Use only TEST-LOCAL or mailstack-test workers.dev');
+  const brand=el('brand').value,query=new URLSearchParams({brand});if(brand==='selfware-like')query.set('product',el('product').value);
+  el('publicResult').textContent='Fetching and solving a fresh ALTCHA challenge…';
+  const challengeResponse=await fetch(base+'/altcha/challenge?'+query),envelope=await challengeResponse.json();if(!challengeResponse.ok)throw Error(JSON.stringify(envelope));
+  const challenge=envelope.altcha||envelope,encoder=new TextEncoder();let solution;
+  for(let number=0;number<=challenge.maxnumber;number++){
+   const digest=await crypto.subtle.digest('SHA-256',encoder.encode(challenge.salt+number));
+   if(Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')===challenge.challenge){solution={algorithm:challenge.algorithm,challenge:challenge.challenge,salt:challenge.salt,signature:challenge.signature,number};break;}
+  }
+  if(!solution)throw Error('No solution');
+  const body={brand,name:el('name').value,email:el('email').value,message:el('message').value,botcheck:el('botcheck').value,autoreply:el('autoreply').value,marketingConsent:el('marketing').checked?'yes':'no',consentVersion:'test-v1',consentText:'I agree to test marketing contact.',altcha:btoa(JSON.stringify(solution)),...(envelope.nonce?{nonce:envelope.nonce,product:el('product').value}:{})};
+  const response=await fetch(base+'/v1/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  el('publicResult').textContent=JSON.stringify({status:response.status,body:await response.json()},null,2);
+ }catch(e){el('publicResult').textContent=e.message;}finally{button.disabled=false;}
+};
+</script></html>
