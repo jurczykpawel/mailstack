@@ -50,7 +50,7 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `template` | email type to render (trusted mode only); public is always `contact` |
 | `autoreply` | per-request toggle for the submitter confirmation (`1`/`true`/`yes`/`on` vs `0`/`false`); overrides `brand.autoReply`. See [Auto-reply](#auto-reply). |
 | `ref` | trusted correlation string (1-128 characters) |
-| `resendOf` | trusted: reserved, return `400 not_supported`; public: ignored |
+| `resendOf` | trusted: approved source jobs only with an enabled extension; otherwise `400 not_supported`; public: ignored |
 | `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
 | `markup` | trusted JSON-LD directives; ignored in public mode |
 | `nonce`, `product` | controls only for public brands with `requireNonce: true`; otherwise content |
@@ -169,7 +169,7 @@ For a complete validated JSON example and legacy migration commands, see
 [configuration](README.md#complete-configuration-example) and
 [registry migration](README.md#migrating-a-legacy-brand-registry). Logging levels,
 precedence, `secretFields`, `subjectRoles` and policy constraints are described under
-[logging policies](README.md#logging-policies). Keep `resend: "off"` in this release.
+[logging policies](README.md#logging-policies). Defaults stay `resend: "off"`; execution requires the extension capability documented in README.
 
 ### Client configuration
 
@@ -541,7 +541,7 @@ Trusted `POST /v1/send` requests accept:
 |---|---|
 | `ref` | Optional string of 1-128 characters; otherwise `400 invalid_ref`. Stored encrypted with a correlation index. |
 | `Idempotency-Key` header | Optional `[A-Za-z0-9._:-]{1,128}`; otherwise `400 invalid_idempotency_key`. |
-| `resendOf` | Reserved for a later phase; its presence returns `400 not_supported`. |
+| `resendOf` | Approved source jobs only: owner, brand, template, recipients and key must match. Without an enabled extension: `400 not_supported`. |
 | `attachments` | Array of `{ filename, contentType, contentBase64 }`; requires `attachments: true` on a trusted client. |
 
 These keys are excluded from template content. Public requests ignore them and the

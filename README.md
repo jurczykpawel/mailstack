@@ -673,9 +673,8 @@ identifies submitter address fields for data-subject indexing (`contact.email`).
 Retention values are positive integer days; `contentDays <= metaDays`, and both must
 fit the global ceilings. `requireLog` controls whether a missing intent prevents delivery.
 `resend: "replay"` validates only with `masked`/`full` and templates without secret fields;
-`source` needs a matching `resendCallback` client. These settings describe stored policy:
-resend execution and panel operations are not implemented. Keep `resend: "off"` for this
-release. `includeSecrets` requires `full` and a boot audit sink; current runtimes require false.
+`source` needs a matching `send` client with `resendCallback`. Defaults remain
+`resend: "off"`; execution requires an extension declaring the resend capability. `includeSecrets` requires `full` and a boot audit sink; current runtimes require false.
 
 Trusted `POST /v1/send` requests accept:
 
@@ -683,7 +682,7 @@ Trusted `POST /v1/send` requests accept:
 |---|---|
 | `ref` | Optional string of 1-128 characters; otherwise `400 invalid_ref`. Stored encrypted with a correlation index. |
 | `Idempotency-Key` header | Optional `[A-Za-z0-9._:-]{1,128}`; otherwise `400 invalid_idempotency_key`. |
-| `resendOf` | Reserved for a later phase; its presence returns `400 not_supported`. |
+| `resendOf` | Requires an enabled extension and an approved source job, its owning client and matching `Idempotency-Key`; otherwise `400 not_supported` without the extension or `409 resend_mismatch`. |
 | `attachments` | Array of `{ filename, contentType, contentBase64 }`; requires `attachments: true` on a trusted client. |
 
 These keys are excluded from template content. Public requests ignore them and the
@@ -710,8 +709,7 @@ request body. At those levels, a matching request follows this table:
 | Different request with the same key | `409`, `code: "idempotency_conflict"` |
 
 An `unknown` result needs provider reconciliation before considering another send.
-The operator panel and resend endpoints are not included in this release. The SES
-adapter makes one request per attempt. No idempotency key
+The operator panel is supplied by an extension. The SES adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request
 identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
@@ -828,6 +826,48 @@ and does not change event or send results. Requests time out after five seconds
 and do not follow redirects.
 
 Alerts are best-effort: an ntfy failure at event time does not retry the alert; the message remains visible in the log.
+
+### Extension resend contract
+
+Node extensions opt in with `capabilities: ["resend"]`. The runtime passes
+`ctx.resend` only to authenticated internal routes of that extension, with the verified
+panel principal bound to it. `viewer` cannot use this port; `operator` and `admin`
+need a step-up within five minutes, an unexpired assertion, and matching brand/template
+selections. Event hooks do not receive this capability. Extension database queries
+are limited to their `ext_<name>_` tables.
+
+Types live in `src/core/resend-contract.ts`:
+
+- `source(messageId)` returns the permitted strategy, brand/template, sealed reference
+  and sealed payload (with expiry), or a structured error. Audit must succeed before
+  returning sealed data. A source strategy also returns the owning client id and
+  callback descriptor (`url`, `secretEnv`), never the secret value.
+- `request({messageId, reason, idempotencyKey, replay?})` accepts a 10–500 character
+  reason and the normal idempotency key format. For `replay`, pass the exact decrypted
+  payload from `source().replay`; core validates it and awaits the shared delivery
+  pipeline. For `source`, it returns `202` with `resendId` and the sealed source
+  descriptor. Callback signing, execution, UI and license decisions belong to the
+  extension. The extension must declare the capability only when enabled.
+
+The payload contains `to`, `template`, `data`, and optional `replyTo`,
+`subjectOverride`, `markup`. The core checks its canonical MAC and recipient index set,
+current policy, expiry, template classification and recipient outcomes. Files are not
+stored in this payload; messages with attachments cannot use the stored-payload
+strategy. Use a source strategy to regenerate their attachments.
+
+An approved source callback sends through `POST /v1/send` with the original brand,
+template, recipient set, `resendOf` and the approved `Idempotency-Key`. Only the
+original owning client may fulfill it. The endpoint returns no source history.
+Every child has `resend_of` and `resend_root` and must have a recorded intent,
+including when the current policy has `requireLog: false`.
+
+Jobs and quota reservations last 24 hours. Root quota is a rolling 3/24h with a
+10-minute cooldown; actor (20/day) and instance (50/day) quotas use UTC calendar days.
+Quotas are reserved atomically at approval. Explicit provider refusal releases the
+reservation and permits the same key again; uncertain outcomes retain it. Repeated
+keys return the same `resendId`; `sending` returns `in_progress`, `unknown` returns
+`outcome_unknown`. A completion interrupted after provider acceptance is reconciled
+from the recorded child without another provider call. Retention removes expired jobs.
 
 ### Attachments
 

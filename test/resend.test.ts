@@ -258,3 +258,17 @@ it('keeps concurrent source payload identities distinct', async () => {
   expect(results.filter(r => r.code === 'idempotency_conflict')).toHaveLength(19);
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
 });
+
+it('binds the capability to the verified principal snapshot', async () => {
+  const panel = { ...principal(), role: 'viewer' as const };
+  const port = service.forPanel(panel);
+  Object.assign(panel, { role: 'admin' });
+  expect(await port.request({ messageId: id, reason: 'Customer requested it', idempotencyKey: 'key', replay: payload })).toMatchObject({ status: 403 });
+});
+it('returns source descriptors independently of configuration objects', async () => {
+  id = await original('license');
+  const result = await service.forPanel(principal()).source(id);
+  expect(result).toHaveProperty('owner');
+  if ('owner' in result && result.owner) result.owner.callback.url = 'https://other.example/callback';
+  expect(cfg.clients![0].resendCallback!.url).toBe('https://source.example/resend');
+});

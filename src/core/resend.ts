@@ -45,7 +45,7 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     if (policy.resend === 'source' && !owner) fail(409, 'resend_disabled');
     const source: ResendSource = { id, brand: m.brand, template: m.template, strategy: policy.resend,
       replay: policy.resend === 'replay' ? replay! : null, ref_sealed: m.ref_sealed,
-      ...(owner ? { owner: { clientId: owner.id, callback: owner.resendCallback! } } : {}) };
+      ...(owner ? { owner: { clientId: owner.id, callback: { ...owner.resendCallback! } } } : {}) };
     return { m, source, brand, template };
   }
   async function validate(id: string, value: unknown, mac?: string | null): Promise<ResendPayload> {
@@ -115,7 +115,8 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     return { ...result, resendId: job.id };
   }
   return {
-    forPanel(panel: PanelPrincipal): ResendCapability {
+    forPanel(principal: PanelPrincipal): ResendCapability {
+      const panel = structuredClone(principal);
       return {
         source: id => attempt(async () => { const { source } = await inspect(id, panel); await audit(panel.actor, 'resend.source', id); return source; }),
         request: async input => {
