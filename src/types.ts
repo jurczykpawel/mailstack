@@ -23,6 +23,7 @@ export interface Env extends KeyEnvironment {
   DB?: D1Database;
   CONTENT_PUBLIC_KEYS?: string;
   INDEX_KEYS?: string;
+  PANEL_ASSERTION_KEY?: string;
 }
 
 /** Visual + contact identity used to render a brand's email. */

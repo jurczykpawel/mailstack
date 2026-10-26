@@ -67,3 +67,10 @@ it("builds external config and verifies subsequent input changes", async () => {
   writeFileSync(file, "{}");
   expect(run().stderr).toContain("$.version");
 });
+
+it('creates an explicit webhook configuration client without other scopes', () => {
+  const result = cli(['client', 'create', '--id', 'hooks', '--scopes', 'webhooks:write']);
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout).client).toMatchObject({ scopes: ['webhooks:write'], brands: [], templates: [] });
+  expect(cli(['client', 'create', '--id', 'panel', '--scopes', 'panel,webhooks:write', '--brands', '*', '--templates', '*']).status).toBe(0);
+});

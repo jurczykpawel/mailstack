@@ -27,8 +27,8 @@ const pattern = z.union([
   }, "invalid regular expression") }),
   z.strictObject({ name: z.string().min(1), urlParams: strings.nonempty() }),
 ]);
-const scopes = z.array(z.enum(["send", "hook:sellf", "panel"])).refine(
-  (values) => !values.includes("panel") || values.length === 1, "panel requires a separate client");
+const scopes = z.array(z.enum(["send", "hook:sellf", "panel", "webhooks:write"])).refine(
+  (values) => !values.includes("panel") || values.every(value => value === "panel" || value === "webhooks:write"), "panel requires a separate client");
 const selection = z.union([z.literal("*"), z.array(z.string().min(1))]);
 const permissions = {
   scopes, brands: selection, templates: selection,
