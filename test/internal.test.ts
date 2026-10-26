@@ -87,6 +87,28 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect((await (await call(`/messages?brand=acme&template=notice&status=sent&from=${now}&to=${now}`)).json()).messages).toHaveLength(5);
     for (const query of ['limit=101', 'limit=0', 'limit=1.5', 'cursor=bad', 'from=bad', 'from=2&to=1']) expect((await call('/messages?' + query)).status).toBe(400);
   });
+  it.each(['/audit', '/subjects/export', '/subjects/erase'])('rejects oversized streamed bodies promptly without writes: %s', async path => {
+    await seed();
+    const url = 'http://localhost/internal/v1' + path;
+    const headers = { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' };
+    const assertion = await signPanelAssertion(new Request(url, { method: 'POST', headers, body: '{}' }), claims, key);
+    const req = new Request(url, { method: 'POST', headers: { ...headers, 'x-panel-assertion': assertion }, body: 'x'.repeat(65537) });
+    expect(req.headers.has('content-length')).toBe(false);
+    const batch = vi.spyOn(store, 'batch');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([runtime.fetch(req, env), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Internal response deadline exceeded')), 1000);
+      })]);
+      expect(response.status).toBe(403);
+      expect(batch).not.toHaveBeenCalled();
+      expect(await rows('audit')).toEqual([]);
+      for (const table of ['messages', 'recipients', 'subjects', 'contents', 'replays', 'events']) expect(await rows(table)).toHaveLength(1);
+    } finally {
+      clearTimeout(timer);
+      await req.body?.cancel();
+    }
+  });
   it('searches every active index key and keeps search inputs out of audit', async () => {
     await seed('msg_new'); await seed('msg_old', 'acme', 'notice', 'recipient', indices[1]);
     for (const query of ['rcpt=one%40example.com', 'ref=order-1']) {

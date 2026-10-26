@@ -9,7 +9,7 @@ export async function boundedText(input: Request | Response, limit: number): Pro
       const { done, value } = await reader.read();
       if (done) return text + decoder.decode();
       size += value.byteLength;
-      if (size > limit) { await reader.cancel(); throw new RangeError(); }
+      if (size > limit) { void reader.cancel().catch(() => {}); throw new RangeError(); }
       text += decoder.decode(value, { stream: true });
     }
   } finally { reader.releaseLock(); }
