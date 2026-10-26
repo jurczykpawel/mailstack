@@ -14,8 +14,17 @@ extension database restricted to `ext_<name>_*`, along with `now`, `config` and
 `appendAudit`. The database checks and compiles each operation at execution,
 including operations from derived handles. It supports table/index creation,
 table alteration/removal, selects, inserts, updates and deletes; raw SQL,
-transactions and streaming are unsupported. Cleanup receives no panel principal
-or resend capability.
+transactions and streaming are unsupported. Only the documented operation families
+are accepted. Expression functions are
+limited to common numeric, text, aggregate and JSON functions; syntax tokens must
+belong to the supported Kysely token sets. Other node kinds and SQL fragments are
+rejected before store execution. Cleanup receives no panel principal or resend
+capability.
+
+All extension names are checked before any migration or route initialization.
+Names must have distinct table prefixes: `demo` and `demo_other` cannot be loaded
+together. Either name is valid alone; `demo` and `demoother` can coexist. Invalid
+configuration reports the extension's configuration path and stops initialization.
 
 ```ts
 const extension: Extension = {
