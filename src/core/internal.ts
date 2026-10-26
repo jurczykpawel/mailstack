@@ -45,9 +45,9 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
     events: await run(sql`select id,recipient_pos,type,occurred_at,received_at,source,auth,summary from events where message_id=${m.id} order by occurred_at,id`) });
   const evidence = async (id: string) => ({
     events: await run(sql`select e.id,e.evidence_sealed from events e join messages m on m.id=e.message_id
-      where m.id=${id} and ${scope} and ${live} and ${contentLive} and e.evidence_sealed is not null order by e.occurred_at,e.id`),
+      where m.id=${id} and ${scope} and ${live} and e.evidence_sealed is not null order by e.occurred_at,e.id`),
     provider_response_sealed: (await run<{ provider_response_sealed: string | null }>(sql`select m.provider_response_sealed from messages m
-      where m.id=${id} and ${scope} and ${live} and ${contentLive}`))[0]?.provider_response_sealed ?? null,
+      where m.id=${id} and ${scope} and ${live}`))[0]?.provider_response_sealed ?? null,
   });
   try {
     requireRole('viewer');
@@ -97,7 +97,6 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
         await audit('content.read', id); return response({ ...content, level: m.level });
       }
       if (kind === 'evidence') {
-        if (!(await run(sql`select id from messages m where m.id=${id} and ${contentLive}`)).length) return fail(404);
         await audit('evidence.export', id); return response(await evidence(id));
       }
       if (kind === 'resend-source') {

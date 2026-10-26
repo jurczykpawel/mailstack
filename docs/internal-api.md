@@ -109,5 +109,7 @@ verification or disclosing another selection's entries.
 
 Missing/expired records and content return 404 before maintenance runs. Metadata
 and content ceilings from the current config also apply. Export omits expired
-content, evidence and replay; a source read can still return a retained sealed ref.
+archives and replay payloads. Provider responses and event evidence follow metadata
+retention, independently of archive expiry, both in evidence reads and subject
+exports. A source read can still return a retained sealed ref.
 Requests have a 64 KiB body limit and an 8 KiB URL limit. No route decrypts history.

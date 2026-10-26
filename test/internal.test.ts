@@ -161,13 +161,48 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     await seed('expired', 'acme', 'notice', 'recipient', indices[0], now - 1);
     expect((await (await call()).json()).messages).toEqual([]);
     for (const suffix of ['', '/content', '/evidence', '/resend-source']) expect((await call('/messages/expired' + suffix)).status).toBe(404);
+    expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages).toEqual([]);
     await seed();
     for (const table of ['contents', 'replays']) await sql`update ${sql.table(table)} set expires_at=${now - 1}`.execute(store.db);
     await sql`update messages set content_expires_at=${now - 1}`.execute(store.db);
-    for (const suffix of ['/content', '/evidence']) expect((await call('/messages/msg_1' + suffix)).status).toBe(404);
+    expect((await call('/messages/msg_1/content')).status).toBe(404);
+    expect(await (await call('/messages/msg_1/evidence')).json()).toMatchObject({ provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] });
     expect((await (await call('/messages/msg_1/resend-source')).json()).replay).toBeNull();
     const exported = JSON.stringify(await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json());
-    for (const value of ['sealed-contents', 'sealed-replays', 'sealed-provider', 'sealed-evidence']) expect(exported).not.toContain(value);
+    for (const value of ['sealed-contents', 'sealed-replays']) expect(exported).not.toContain(value);
+    for (const value of ['sealed-provider', 'sealed-evidence']) expect(exported).toContain(value);
+  });
+  it('exports retained evidence after archive expiry', async () => {
+    await seed();
+    await sql`update messages set content_expires_at=${now - 1}`.execute(store.db);
+    const response = await call('/subjects/export', { body: { email: 'one@example.com' } });
+    expect(response.status).toBe(200);
+    expect((await response.json()).messages[0]).toMatchObject({ content: null, replay: null,
+      evidence: { provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] } });
+    expect((await rows('audit')).map(r => r.action)).toEqual(['privacy.export']);
+  });
+  it('applies content and metadata ceilings independently to evidence and export', async () => {
+    await seed();
+    const day = 86400000;
+    cfg.logging.ceilings.contentDays = 1;
+    cfg.logging.ceilings.metaDays = 3;
+    await sql`update messages set created_at=${now - 2 * day}`.execute(store.db);
+    expect((await call('/messages/msg_1/content')).status).toBe(404);
+    expect(await (await call('/messages/msg_1/evidence')).json()).toMatchObject({ provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] });
+    const exported = await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json();
+    expect(exported.messages[0]).toMatchObject({ content: null, replay: null, evidence: { provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] } });
+    cfg.logging.ceilings.metaDays = 1;
+    expect((await call('/messages/msg_1/evidence')).status).toBe(404);
+    expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages).toEqual([]);
+  });
+  it.each(['/messages/msg_1/evidence', '/subjects/export'])('requires audit for retained evidence after archive expiry: %s', async path => {
+    await seed();
+    await sql`update messages set content_expires_at=${now - 1}`.execute(store.db);
+    const original = store.batch.bind(store);
+    vi.spyOn(store, 'batch').mockImplementation(queries => { if (queries.some(q => q.sql.includes('insert into audit'))) throw new Error('unavailable'); return original(queries); });
+    const response = await call(path, { body: path === '/subjects/export' ? { email: 'one@example.com' } : undefined });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('sealed-');
   });
   it.each(['/messages', '/messages?rcpt=one%40example.com', '/messages?ref=order-1', '/messages/msg_1', '/messages/msg_1/content', '/messages/msg_1/evidence', '/messages/msg_1/resend-source', '/subjects/export', '/subjects/erase', '/audit'])('requires audit completion before returning data or changing rows: %s', async path => {
     await seed();
