@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { sql } from 'kysely';
+import { sql, type RootOperationNode } from 'kysely';
 import { appendAudit } from '../src/core/audit';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
 import type { KyselyStore } from '../src/core/store';
-import type { Extension } from '../src/core/extensions';
+import type { Extension, ExtensionDatabase } from '../src/core/extensions';
 import { loadExtensions } from '../src/runtime/extensions';
 import { parseConfig } from '../src/core/config/schema';
 import { blindIndex } from '../src/core/crypto';
@@ -135,6 +135,112 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     expect((await erase(runtime)).status).toBe(200);
     expect(checked).toHaveBeenCalledOnce();
     expect(await rows('ext_other_items')).toEqual([{ id: 'other' }]);
+  });
+  it.each(['function', 'aggregate', 'boxed'] as const)('requires supported %s expressions', async kind => {
+    await seed();
+    let db!: ExtensionDatabase;
+    await load({ name: 'demo', migrate: async handle => { db = handle; } });
+    const text = '(select count(*) from messages) + abs';
+    const expression = kind === 'boxed' ? new String(text) as unknown as string : text;
+    const query = db.selectNoFrom(eb => (kind !== 'aggregate'
+      ? eb.fn(expression, [eb.val(0)]) : eb.fn.agg(expression, [eb.val(0)])).as('count'));
+    const execute = vi.spyOn(store.db, 'executeQuery');
+    await expect(query.execute()).rejects.toThrow('Unsupported extension');
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it.each(['select', 'update', 'delete'] as const)('validates expression tokens before %s execution', async operation => {
+    await seed();
+    let db!: ExtensionDatabase;
+    await load({ name: 'demo', migrate: async handle => {
+      db = handle;
+      await db.schema.createTable('ext_demo_tokens').ifNotExists().addColumn('id', 'text').execute();
+    } });
+    const queries = {
+      select: db.selectFrom('ext_demo_tokens').select(eb => eb.fn('(select count(*) from messages) + abs', [eb.val(0)]).as('count')),
+      update: db.updateTable('ext_demo_tokens').set(eb => ({ id: eb.fn('(select count(*) from messages) + abs', [eb.val(0)]) })),
+      delete: db.deleteFrom('ext_demo_tokens').where(eb => eb(eb.fn('(select count(*) from messages) + abs', [eb.val(0)]), '=', 0)),
+    };
+    const execute = vi.spyOn(store.db, 'executeQuery');
+    await expect(queries[operation].execute()).rejects.toThrow('Unsupported extension');
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it('requires table identifiers in relation nodes', async () => {
+    await seed();
+    let db!: ExtensionDatabase;
+    await load({ name: 'demo', migrate: async handle => { db = handle; } });
+    const handle = db.withPlugin({ transformResult: async ({ result }) => result,
+      transformQuery: ({ node }) => ({ ...node, from: { kind: 'FromNode', froms: [{
+        kind: 'TableNode', table: { kind: 'ValueNode', value: 'messages', immediate: true,
+          identifier: { kind: 'IdentifierNode', name: 'ext_demo_items' } },
+      }] } } as unknown as RootOperationNode),
+    });
+    const execute = vi.spyOn(store.db, 'executeQuery');
+    await expect(handle.selectNoFrom(eb => eb.val(1).as('count')).execute()).rejects.toThrow('Unsupported extension');
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it.each(['select', 'update', 'delete'] as const)('requires distinct namespaces before %s operations', async operation => {
+    await sql`create table if not exists ext_demo_other_items(id text)`.execute(store.db);
+    await sql`delete from ext_demo_other_items`.execute(store.db);
+    await sql`insert into ext_demo_other_items values ('other')`.execute(store.db);
+    for (const names of [['demo', 'demo_other'], ['demo_other', 'demo']]) {
+      cfg.extensions = names.map(name => ({ module: name + '-extension' }));
+      const migrate = vi.fn(async (db: Parameters<NonNullable<Extension['migrate']>>[0]) => {
+        const queries = {
+          select: db.selectFrom('ext_demo_other_items').selectAll(),
+          update: db.updateTable('ext_demo_other_items').set({ id: 'changed' }),
+          delete: db.deleteFrom('ext_demo_other_items'),
+        };
+        await queries[operation].execute();
+      });
+      await expect(loadExtensions(cfg, store, async module => ({ default: {
+        name: module.replace('-extension', ''), migrate,
+      } }))).rejects.toThrow('extension initialization failed');
+      expect(migrate).not.toHaveBeenCalled();
+      expect(await rows('ext_demo_other_items')).toEqual([{ id: 'other' }]);
+    }
+  });
+  it('executes supported expressions and distinct extension namespaces', async () => {
+    cfg.extensions = [{ module: 'demo_other-extension' }, { module: 'demoother-extension' }];
+    let db!: ExtensionDatabase;
+    await loadExtensions(cfg, store, async module => ({ default: {
+      name: module.replace('-extension', ''), migrate: async handle => {
+        if (module === 'demo_other-extension') db = handle;
+      },
+    } satisfies Extension }));
+    await db.schema.createTable('ext_demo_other_values').ifNotExists()
+      .addColumn('id', 'integer', col => col.primaryKey()).addColumn('value', 'text', col => col.defaultTo('demo')).execute();
+    await db.deleteFrom('ext_demo_other_values').execute();
+    await db.insertInto('ext_demo_other_values').values([{ id: 1, value: 'demo' }, { id: 2, value: 'other' }]).execute();
+    await db.updateTable('ext_demo_other_values').set({ value: 'demo' }).where('id', 'in', [1, 2]).execute();
+    expect(await db.selectFrom('ext_demo_other_values').select(eb => [
+      eb.fn.count('id').as('count'), eb.fn('upper', ['value']).as('value'),
+    ]).groupBy('value').execute()).toEqual([{ count: 2, value: 'DEMO' }]);
+    expect(await db.selectNoFrom(eb => eb.fn('abs', [eb.val(-2)]).as('value')).execute()).toEqual([{ value: 2 }]);
+    await db.deleteFrom('ext_demo_other_values').where('id', '=', 1).execute();
+    expect(await db.selectFrom('ext_demo_other_values').selectAll().execute()).toEqual([{ id: 2, value: 'demo' }]);
+  });
+  it.each([
+    { kind: 'DataTypeNode', dataType: 'text other' },
+    { kind: 'OperatorNode', operator: 'custom' },
+    { kind: 'OrderByItemNode', nulls: 'custom' },
+    { kind: 'ReferencesNode', onDelete: 'custom' },
+    { kind: 'ForeignKeyConstraintNode', onUpdate: 'custom' },
+    { kind: 'CreateTableNode', onCommit: 'custom' },
+    { kind: 'SetOperationNode', operator: 'custom' },
+    { kind: 'OrActionNode', action: 'custom' },
+    { kind: 'SelectModifierNode', modifier: 'custom' },
+    { kind: 'TopNode', expression: 'custom' },
+    { kind: 'ExplainNode', format: 'custom' },
+    { kind: 'FetchNode', modifier: 'custom' },
+  ])('requires supported syntax fields: $kind', async selection => {
+    let db!: ExtensionDatabase;
+    await load({ name: 'demo', migrate: async handle => { db = handle; } });
+    const query = db.selectNoFrom(eb => eb.val(1).as('value')).compile();
+    const execute = vi.spyOn(store.db, 'executeQuery');
+    await expect(db.executeQuery({ ...query, query: {
+      kind: 'SelectQueryNode', selections: [{ kind: 'SelectionNode', selection }],
+    } as RootOperationNode })).rejects.toThrow('Unsupported extension');
+    expect(execute).not.toHaveBeenCalled();
   });
   it.each([false, true])('awaits stored extension cleanup with a database result: %s', async unavailable => {
     await seed();

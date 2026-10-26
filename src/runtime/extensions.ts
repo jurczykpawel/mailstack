@@ -5,8 +5,8 @@ import { verifyAltcha } from '../altcha';
 import type { Env, SendDeps } from '../types';
 import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
-import { DummyDriver, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler } from 'kysely';
-import type { CompiledQuery, DatabaseConnection, OperationNode } from 'kysely';
+import { DummyDriver, isColumnDataType, isOperator, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler } from 'kysely';
+import type { CompiledQuery, DatabaseConnection, OperationNode, TableNode } from 'kysely';
 import { runRetention } from '../core/retention';
 import { internalFetch } from '../core/internal';
 import { verifyPanelAssertion } from '../core/panel';
@@ -17,17 +17,62 @@ import type { KyselyStore } from '../core/store';
 import type { Config } from '../core/config/schema';
 import type { EmitEvent, Extension, ExtensionApp, ExtensionContext, ExtensionDatabase, BeforeMessageDelete } from '../core/extensions';
 
-function migrationNode(node: OperationNode, prefix: string): void {
+const extensionNodes = new Set(`Identifier SchemableIdentifier SelectQuery Selection Reference Column Table Alias From SelectAll
+  And Or Parens Value ValueList PrimitiveValueList Join Operator Where InsertQuery DeleteQuery Returning CreateTable
+  ColumnDefinition AddColumn DropTable DataType OrderBy OrderByItem GroupBy GroupByItem UpdateQuery ColumnUpdate Limit
+  Offset OnConflict CreateIndex List References PrimaryKeyConstraint UniqueConstraint CheckConstraint ForeignKeyConstraint
+  With CommonTableExpression Having AlterTable ModifyColumn DropColumn RenameColumn AlterColumn AddConstraint DropConstraint
+  Generated DefaultValue On Values CommonTableExpressionName SelectModifier DefaultInsertValue AggregateFunction Over
+  PartitionBy PartitionByItem SetOperation BinaryOperation UnaryOperation Using Function Case When Tuple Cast OrAction Collate`
+  .split(/\s+/).map(name => name + 'Node'));
+const extensionFunctions = new Set(`abs avg coalesce count group_concat hex ifnull length lower ltrim max min nullif
+  replace round rtrim substr substring sum total trim typeof upper json json_array json_object json_extract json_type
+  json_valid json_quote json_set json_insert json_replace json_remove json_group_array json_group_object`.split(/\s+/));
+function extensionToken(kind: string, key: string, value: string): boolean {
+  if (kind === 'IdentifierNode' && key === 'name') return /^[a-zA-Z0-9_]+$/.test(value);
+  if (['FunctionNode', 'AggregateFunctionNode'].includes(kind) && key === 'func') return extensionFunctions.has(value);
+  if (kind === 'DataTypeNode' && key === 'dataType') return !!isColumnDataType(value);
+  if (kind === 'OperatorNode' && key === 'operator') return isOperator(value);
+  if (['ReferencesNode', 'ForeignKeyConstraintNode'].includes(kind) && ['onDelete', 'onUpdate'].includes(key))
+    return ['no action', 'restrict', 'cascade', 'set null', 'set default'].includes(value);
+  if (kind === 'CreateTableNode' && key === 'onCommit') return ['preserve rows', 'delete rows', 'drop'].includes(value);
+  if (kind === 'OrderByItemNode' && key === 'nulls') return ['first', 'last'].includes(value);
+  if (kind === 'JoinNode' && key === 'joinType') return ['InnerJoin', 'LeftJoin', 'RightJoin', 'FullJoin', 'CrossJoin'].includes(value);
+  if (kind === 'SetOperationNode' && key === 'operator') return ['union', 'intersect', 'except'].includes(value);
+  if (kind === 'OrActionNode' && key === 'action') return ['abort', 'fail', 'ignore', 'replace', 'rollback'].includes(value);
+  if (kind === 'DropConstraintNode' && key === 'modifier') return ['cascade', 'restrict'].includes(value);
+  if (kind === 'SelectModifierNode' && key === 'modifier') return value === 'Distinct';
+  return false;
+}
+function extensionRelation(node: unknown): void {
+  const value = node as { kind?: string; node?: unknown } | undefined;
+  if (value?.kind === 'AliasNode') return extensionRelation(value.node);
+  if (value?.kind !== 'TableNode' && value?.kind !== 'SelectQueryNode') throw new Error('Unsupported extension relation');
+}
+function extensionNode(node: OperationNode, prefix: string): void {
   const value = node as unknown as Record<string, unknown>;
-  if (node.kind === 'RawNode') throw new Error('Unsupported migration statement');
-  if (node.kind === 'IdentifierNode' && typeof value.name === 'string' && !/^[a-zA-Z0-9_]+$/.test(value.name)) throw new Error('Invalid migration identifier');
+  if (!extensionNodes.has(node.kind)) throw new Error('Unsupported extension statement');
+  if (node.kind === 'ValueNode' || node.kind === 'PrimitiveValueListNode') return;
   if (node.kind === 'TableNode') {
-    const table = value.table as { identifier: { name: string }; schema?: unknown };
-    if (table.schema || !table.identifier.name.startsWith(prefix)) throw new Error('Invalid migration table');
+    const table = (node as TableNode).table;
+    if (table?.kind !== 'SchemableIdentifierNode' || table.identifier?.kind !== 'IdentifierNode') throw new Error('Unsupported extension table');
+    if (table.schema || typeof table.identifier.name !== 'string' || !table.identifier.name.startsWith(prefix)) throw new Error('Invalid migration table');
   }
-  for (const child of Object.values(value)) {
+  if (node.kind === 'FromNode' || node.kind === 'UsingNode') {
+    for (const table of (value.froms ?? value.tables) as unknown[]) extensionRelation(table);
+  }
+  for (const key of ['table', 'into', 'renameTo']) {
+    if (value[key] && ['InsertQueryNode', 'UpdateQueryNode', 'JoinNode', 'ReferencesNode', 'CreateTableNode',
+      'AlterTableNode', 'DropTableNode', 'CreateIndexNode'].includes(node.kind)) extensionRelation(value[key]);
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'kind') continue;
     for (const item of Array.isArray(child) ? child : [child]) {
-      if (item && typeof item === 'object' && 'kind' in item) migrationNode(item as OperationNode, prefix);
+      if (typeof item === 'string' && !extensionToken(node.kind, key, item)) throw new Error('Unsupported extension token');
+      if (item && typeof item === 'object') {
+        if (!('kind' in item)) throw new Error('Unsupported extension field');
+        extensionNode(item as OperationNode, prefix);
+      }
     }
   }
 }
@@ -55,9 +100,15 @@ export async function loadExtensions(config: Config, store: KyselyStore,
     try {
       const loaded = await importer(isAbsolute(entry.module) ? pathToFileURL(entry.module).href : entry.module);
       const extension: Extension = typeof loaded.default === 'function' ? await loaded.default(entry.options ?? {}) : loaded.default;
-      if (!extension || typeof extension.name !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(extension.name) || extensions.some(e => e.name === extension.name)) throw new Error('Invalid extension');
+      if (!extension || typeof extension.name !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(extension.name) ||
+        extensions.some(e => e.name === extension.name || e.name.startsWith(extension.name + '_') || extension.name.startsWith(e.name + '_'))) throw new Error('Invalid extension');
       if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
       for (const key of ['migrate', 'routes', 'onEvent', 'onBeforeDelete'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
+      extensions.push(extension);
+    } catch { throw new Error(`$.extensions.${index}.module: extension initialization failed`); }
+  }
+  for (const [index, extension] of extensions.entries()) {
+    try {
       const prefix = `ext_${extension.name}_`;
       class ExtensionDriver extends DummyDriver {
         override async acquireConnection(): Promise<DatabaseConnection> {
@@ -65,7 +116,7 @@ export async function loadExtensions(config: Config, store: KyselyStore,
             async executeQuery<R>(query: CompiledQuery) {
               const node = structuredClone(query.query);
               if (!['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'SelectQueryNode'].includes(node.kind)) throw new Error('Unsupported extension query');
-              migrationNode(node, prefix);
+              extensionNode(node, prefix);
               if ('name' in node && node.name && 'name' in node.name && !String(node.name.name).startsWith(prefix)) throw new Error('Invalid migration index');
               return store.db.executeQuery<R>(new SqliteQueryCompiler().compileQuery(node, query.queryId));
             },
@@ -87,7 +138,6 @@ export async function loadExtensions(config: Config, store: KyselyStore,
         routes.set(key, handler);
         routeContexts.set(key, { db, resend: extension.capabilities?.includes('resend') ?? false });
       } });
-      extensions.push(extension);
     } catch { throw new Error(`$.extensions.${index}.module: extension initialization failed`); }
   }
   const emitEvent: EmitEvent = (input, waitUntil) => {
