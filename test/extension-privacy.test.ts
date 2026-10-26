@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
+import { appendAudit } from '../src/core/audit';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
@@ -53,7 +54,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     await store.migrate();
   });
   beforeEach(async () => {
-    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages']) await sql`delete from ${sql.table(table)}`.execute(store.db);
+    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'guards', 'resend_jobs']) await sql`delete from ${sql.table(table)}`.execute(store.db);
     cfg = parseConfig({ ...example, extensions: [{ module: 'demo-extension' }], clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -114,11 +115,32 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     expect((await erase(runtime)).status).toBe(503);
     expect(await rows('messages')).toHaveLength(1);
   });
+  it.each(['messages', 'ext_other_items'])('keeps derived database operations within the assigned tables: %s', async table => {
+    await seed();
+    await sql`create table if not exists ext_other_items(id text)`.execute(store.db);
+    await sql`delete from ext_other_items`.execute(store.db);
+    await sql`insert into ext_other_items values ('other')`.execute(store.db);
+    const checked = vi.fn();
+    const runtime = await load({ name: 'demo', onBeforeDelete: async (_, { db }) => {
+      const handles = [db.withoutPlugins(), db.withoutPlugins().withPlugin({
+        transformQuery: ({ node }) => node, transformResult: async ({ result }) => result,
+      }), db.withoutPlugins().withSchema('main')];
+      for (const handle of handles) {
+        await expect(handle.selectFrom(table).selectAll().execute()).rejects.toThrow();
+        await expect(handle.deleteFrom(table).execute()).rejects.toThrow();
+        await expect(handle.updateTable(table).set({ id: 'changed' }).execute()).rejects.toThrow();
+      }
+      checked();
+    } });
+    expect((await erase(runtime)).status).toBe(200);
+    expect(checked).toHaveBeenCalledOnce();
+    expect(await rows('ext_other_items')).toEqual([{ id: 'other' }]);
+  });
   it.each([false, true])('awaits stored extension cleanup with a database result: %s', async unavailable => {
     await seed();
     const runtime = await load({ name: 'demo', migrate: async db => {
       await db.schema.createTable('ext_demo_records').ifNotExists().addColumn('message_id', 'text', c => c.primaryKey()).execute();
-      await db.deleteFrom('ext_demo_records').execute();
+      await db.withoutPlugins().deleteFrom('ext_demo_records').execute();
       await db.insertInto('ext_demo_records').values({ message_id: 'msg_0000' }).execute();
     }, onBeforeDelete: async (selection, ctx) => {
       for (const message of selection.messages) await ctx.db.deleteFrom('ext_demo_records').where('message_id', '=', message.id).execute();
@@ -168,6 +190,34 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     expect(onBeforeDelete).toHaveBeenCalledTimes(2);
     expect(onBeforeDelete.mock.calls[0][0]).toEqual({ reason: 'retention', messages: [{ id: 'msg_0000', brand: 'acme', template: 'notice' }] });
   });
+  it('finishes independent retention after a cleanup batch is unavailable', async () => {
+    await seed(501, true);
+    const now = Date.now();
+    await sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at)
+      values('live','demo','demo','notice','meta','hash','sending',${now - 900001},${now + 100000})`.execute(store.db);
+    for (const table of ['contents', 'replays']) await sql`insert into ${sql.table(table)} values('live','sealed',${now - 1})`.execute(store.db);
+    await store.consume('expired', now - 1);
+    await sql`insert into resend_jobs(id,message_id,root,actor,token,strategy,state,created_at,expires_at)
+      values('job','live','live','demo','token','source','pending',${now - 1000},${now - 1})`.execute(store.db);
+    await appendAudit(store, { at: 1, actor: 'system', action: 'old' });
+    const onBeforeDelete = vi.fn().mockRejectedValueOnce(new Error('unavailable')).mockResolvedValue(undefined);
+    const runtime = await load({ name: 'demo', onBeforeDelete });
+    await expect(runtime.runRetention(now)).rejects.toThrow();
+    expect(onBeforeDelete).toHaveBeenCalledTimes(2);
+    expect(onBeforeDelete.mock.calls[1][0].messages).toEqual([{ id: 'msg_0500', brand: 'acme', template: 'notice' }]);
+    expect(await rows('messages')).toHaveLength(501);
+    expect(await rows('subjects')).toHaveLength(500);
+    expect((await rows('messages')).find(row => row.id === 'live')?.status).toBe('unknown');
+    expect(await rows('contents')).toHaveLength(500);
+    expect(await rows('replays')).toEqual([]);
+    expect(await rows('guards')).toEqual([]);
+    expect(await rows('resend_jobs')).toEqual([]);
+    expect((await rows('events')).map(row => row.type)).toEqual(['unknown']);
+    expect((await rows('audit')).map(row => row.action)).toEqual(['audit.pruned']);
+    await runtime.runRetention(now);
+    expect((await rows('messages')).map(row => row.id)).toEqual(['live']);
+    expect(onBeforeDelete).toHaveBeenCalledTimes(3);
+  }, 30000);
   it('cleans each retained message once across a full batch boundary', async () => {
     await seed(501, true);
     const seen: string[] = [];

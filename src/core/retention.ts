@@ -9,11 +9,14 @@ export function isContentReadable(row: { expires_at: number } | null | undefined
   return !!row && row.expires_at > now;
 }
 export async function runRetention(store: KyselyStore, now: number, cfg: Config, beforeDelete?: BeforeMessageDelete): Promise<void> {
+  let cursor = '', cleanupFailed = false;
   while (true) {
-    const messages = (await sql<MessageDeletion['messages'][number]>`select id,brand,template from messages where meta_expires_at < ${now}
-      or created_at < ${now - cfg.logging.ceilings.metaDays * 86400000} order by id limit 500`.execute(store.db)).rows;
+    const messages = (await sql<MessageDeletion['messages'][number]>`select id,brand,template from messages where id > ${cursor} and (meta_expires_at < ${now}
+      or created_at < ${now - cfg.logging.ceilings.metaDays * 86400000}) order by id limit 500`.execute(store.db)).rows;
     if (!messages.length) break;
-    await beforeDelete?.({ reason: 'retention', messages });
+    cursor = messages.at(-1)!.id;
+    try { await beforeDelete?.({ reason: 'retention', messages }); }
+    catch { cleanupFailed = true; continue; }
     const ids = sql`select value from json_each(${JSON.stringify(messages.map(m => m.id))})`;
     await store.batch([
       ...['recipients', 'subjects', 'events', 'contents', 'replays'].map(table =>
@@ -42,6 +45,7 @@ export async function runRetention(store: KyselyStore, now: number, cfg: Config,
   await pruneAudit(store, now - cfg.logging.ceilings.auditDays * 86400000, row => appendAudit(store, {
     at: now, actor: 'system', action: 'audit.pruned', details: { upTo: row.seq, hashAtUpTo: row.hash },
   }));
+  if (cleanupFailed) throw new Error('Extension cleanup failed');
 }
 
 function eventId(now: number): string {

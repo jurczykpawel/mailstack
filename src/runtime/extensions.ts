@@ -5,7 +5,8 @@ import { verifyAltcha } from '../altcha';
 import type { Env, SendDeps } from '../types';
 import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
-import type { OperationNode } from 'kysely';
+import { DummyDriver, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler } from 'kysely';
+import type { CompiledQuery, DatabaseConnection, OperationNode } from 'kysely';
 import { runRetention } from '../core/retention';
 import { internalFetch } from '../core/internal';
 import { verifyPanelAssertion } from '../core/panel';
@@ -57,15 +58,26 @@ export async function loadExtensions(config: Config, store: KyselyStore,
       if (!extension || typeof extension.name !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(extension.name) || extensions.some(e => e.name === extension.name)) throw new Error('Invalid extension');
       if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
       for (const key of ['migrate', 'routes', 'onEvent', 'onBeforeDelete'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
-      const db = ctx.db.withPlugin({
-        transformQuery({ node }) {
-          if (!['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode', 'InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'SelectQueryNode'].includes(node.kind)) throw new Error('Unsupported migration');
-          migrationNode(node, `ext_${extension.name}_`);
-          if ('name' in node && node.name && 'name' in node.name && !String(node.name.name).startsWith(`ext_${extension.name}_`)) throw new Error('Invalid migration index');
-          if (node.kind === 'DropIndexNode') throw new Error('Unsupported migration');
-          return node;
-        }, async transformResult({ result }) { return result; },
-      });
+      const prefix = `ext_${extension.name}_`;
+      class ExtensionDriver extends DummyDriver {
+        override async acquireConnection(): Promise<DatabaseConnection> {
+          return {
+            async executeQuery<R>(query: CompiledQuery) {
+              const node = structuredClone(query.query);
+              if (!['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'SelectQueryNode'].includes(node.kind)) throw new Error('Unsupported extension query');
+              migrationNode(node, prefix);
+              if ('name' in node && node.name && 'name' in node.name && !String(node.name.name).startsWith(prefix)) throw new Error('Invalid migration index');
+              return store.db.executeQuery<R>(new SqliteQueryCompiler().compileQuery(node, query.queryId));
+            },
+            async *streamQuery() { throw new Error('Unsupported extension stream'); },
+          };
+        }
+        override async beginTransaction() { throw new Error('Unsupported extension transaction'); }
+      }
+      const db: ExtensionDatabase = new Kysely({ dialect: {
+        createDriver: () => new ExtensionDriver(), createAdapter: () => new SqliteAdapter(),
+        createQueryCompiler: () => new SqliteQueryCompiler(), createIntrospector: db => new SqliteIntrospector(db),
+      } });
       contexts.set(extension, { ...ctx, db });
       await extension.migrate?.(db);
       await extension.routes?.({ route(method, path, handler) {

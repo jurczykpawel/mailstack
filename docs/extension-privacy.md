@@ -11,7 +11,11 @@ Persist the message ID with related extension records when creating them. This i
 the durable link used by both cleanup paths; no address, content, subject index,
 provider response or key is passed to the hook. The context uses the existing
 extension database restricted to `ext_<name>_*`, along with `now`, `config` and
-`appendAudit`. Cleanup receives no panel principal or resend capability.
+`appendAudit`. The database checks and compiles each operation at execution,
+including operations from derived handles. It supports table/index creation,
+table alteration/removal, selects, inserts, updates and deletes; raw SQL,
+transactions and streaming are unsupported. Cleanup receives no panel principal
+or resend capability.
 
 ```ts
 const extension: Extension = {
@@ -28,8 +32,10 @@ Hooks run in configured extension order, with a five-second deadline per hook an
 batch. Erasure prepares batches of at most 50 messages and awaits every cleanup
 before deleting any core message or child row. A hook error or deadline returns
 503 with `{ success: false }`. The existing audit entry records the attempted
-operation. Retention prepares batches of at most 500; a hook failure rejects the
-maintenance pass before deleting that batch. A later pass selects it again.
+operation. Retention prepares batches of at most 500; a hook failure preserves that
+message batch for a later pass. Other batches and independent content, replay,
+guard and resend-job expiry, stale-send reconciliation and audit pruning continue.
+The pass reports the cleanup failure after this maintenance completes.
 
 Cleanup must be idempotent: retries may revisit already completed extension
 cleanup, and successful hooks are not rolled back when a later hook fails. A
