@@ -281,3 +281,50 @@ it('continues an approved stored-payload job that has not started delivery', asy
   expect(await request()).toMatchObject({ ok: true, status: 200, resendId });
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
 });
+
+it.each(['message', 'actor', 'brand', 'strategy'].flatMap(difference => ['pending', 'sent'].map(state => ({ difference, state }))))('keeps concurrent $difference requests bound to a $state job', async ({ difference, state }) => {
+  let otherId = id, otherPayload: unknown = payload;
+  const otherPanel = principal();
+  if (difference === 'actor') otherPanel.actor = 'user-2';
+  else {
+    const brand = difference === 'brand' ? cfg.brands.demo : cfg.brands.acme;
+    const template = difference === 'strategy' ? 'license' : 'notice';
+    if (difference === 'brand') cfg.logging.brands.demo = { templates: { notice: { resend: 'replay' } } };
+    const result = await renderAndSend(deps, env, brand, getTemplate(template)!, { paragraphs: 'Second message' }, { to: ['second@example.com'], clientId: 'sender', ref: 'ORDER-2' });
+    otherId = result.id!;
+    if (difference === 'strategy') otherPayload = undefined;
+    else {
+      const row = await store.db.selectFrom('replays').select('sealed').where('message_id', '=', otherId).executeTakeFirstOrThrow();
+      otherPayload = await open(row.sealed, { brand: brand.id, messageId: otherId, purpose: 'replay' }, [privateKey]);
+    }
+  }
+  vi.mocked(deps.sendEmail).mockClear();
+  let enterFirst!: () => void, enterSecond!: () => void, stored!: () => void, release!: () => void;
+  const firstEntered = new Promise<void>(resolve => { enterFirst = resolve; });
+  const secondEntered = new Promise<void>(resolve => { enterSecond = resolve; });
+  const firstStored = new Promise<void>(resolve => { stored = resolve; });
+  const released = new Promise<void>(resolve => { release = resolve; });
+  const batch = store.batch.bind(store);
+  let claims = 0;
+  vi.spyOn(store, 'batch').mockImplementation(async queries => {
+    if (!queries.some(q => q.sql.includes('insert into resend_jobs'))) return batch(queries);
+    if (++claims === 1) {
+      enterFirst(); await secondEntered;
+      const result = await batch(queries); stored();
+      if (state === 'pending') await released;
+      return result;
+    }
+    enterSecond(); await firstStored;
+    if (state === 'sent') await winner;
+    return batch(queries);
+  });
+  const winner = request();
+  await firstEntered;
+  try {
+    const loser = await request('request-1', otherPayload, otherPanel, otherId);
+    expect(loser).toMatchObject({ ok: false, status: 409, code: 'idempotency_conflict' });
+    expect(deps.sendEmail).toHaveBeenCalledTimes(state === 'pending' ? 0 : 1);
+  } finally { release(); await winner; }
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(deps.sendEmail).mock.calls[0][1].to).toEqual(['buyer@example.com']);
+});
