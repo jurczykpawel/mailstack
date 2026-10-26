@@ -119,6 +119,44 @@ it('reserves source sends for the owning client and approved key only', async ()
   expect(await service.sendSource('sender', id, 'source-key', sourcePayload)).toMatchObject({ ok: true, idempotent: true });
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
 });
+it('requires an available audit writer for an existing source request', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  expect(await request('source-key')).toMatchObject({ ok: true, status: 202, source: { ref_sealed: expect.any(String) } });
+  await sql`drop table audit`.execute(store.db);
+  const result = await request('source-key');
+  expect(result).toMatchObject({ ok: false, status: 503, code: 'log_unavailable' });
+  expect(result).not.toHaveProperty('source');
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('requires an available audit writer after a concurrent source claim', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  let enterFirst!: () => void, enterSecond!: () => void, stored!: () => void;
+  const firstEntered = new Promise<void>(resolve => { enterFirst = resolve; });
+  const secondEntered = new Promise<void>(resolve => { enterSecond = resolve; });
+  const firstStored = new Promise<void>(resolve => { stored = resolve; });
+  const batch = store.batch.bind(store);
+  let claims = 0;
+  vi.spyOn(store, 'batch').mockImplementation(async queries => {
+    if (!queries.some(q => q.sql.includes('insert into resend_jobs'))) return batch(queries);
+    if (++claims === 1) {
+      enterFirst(); await secondEntered;
+      const result = await batch(queries); stored();
+      return result;
+    }
+    enterSecond(); await firstStored;
+    const result = await batch(queries);
+    await sql`drop table audit`.execute(store.db);
+    return result;
+  });
+  const winner = request('source-key');
+  await firstEntered;
+  const loser = await request('source-key');
+  expect(await winner).toMatchObject({ ok: true, status: 202 });
+  expect(claims).toBe(2);
+  expect(loser).toMatchObject({ ok: false, status: 503, code: 'log_unavailable' });
+  expect(loser).not.toHaveProperty('source');
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
 it('requires a source reference and a current owning callback client', async () => {
   id = await original('license');
   const clients = cfg.clients; cfg.clients = []; expect(await request()).toMatchObject({ code: 'resend_disabled' });

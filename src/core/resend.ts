@@ -137,8 +137,8 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
             const identity = { message_id: m.id, root: m.resend_root ?? m.id, actor: panel.actor, strategy: source.strategy };
             const id = await jobId(input.idempotencyKey), existing = await loadJob(id, identity);
             if (existing && existing.state !== 'failed') {
+              await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
               if (existing.state === 'pending' && payload) {
-                await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
                 return execute(existing, payload);
               }
               return { ...await outcome(existing), ...(source.strategy === 'source' ? { source } : {}) };
@@ -149,8 +149,11 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
             const job = await loadJob(id, identity);
             if (!claimed) {
               await inspect(m.id, panel);
-              if (job && job.state !== 'failed') return job.state === 'pending' && payload ? execute(job, payload) :
-                { ...await outcome(job), ...(source.strategy === 'source' ? { source } : {}) };
+              if (job && job.state !== 'failed') {
+                await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
+                return job.state === 'pending' && payload ? execute(job, payload) :
+                  { ...await outcome(job), ...(source.strategy === 'source' ? { source } : {}) };
+              }
               return fail(429, 'rate_limited');
             }
             return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source };
