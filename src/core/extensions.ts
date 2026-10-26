@@ -1,3 +1,4 @@
+import type { PanelPrincipal } from './panel';
 import type { Kysely } from 'kysely';
 import type { AuditEntry, AuditRow } from './audit';
 import type { Config } from './config/schema';
@@ -9,6 +10,7 @@ export interface DomainEvent {
 }
 export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>>;
 export interface ExtensionContext {
+  panel?: PanelPrincipal;
   db: ExtensionDatabase;
   appendAudit: (entry: AuditEntry) => Promise<AuditRow>;
   now: () => number;

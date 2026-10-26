@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { startServer } from '../src/runtime/node-api';
 import { generateKeyPairSync } from 'node:crypto';
@@ -13,6 +13,7 @@ import { createSqliteStore } from '../src/core/store/sqlite';
 import { createApp } from '../src/index';
 import { handleSend } from '../src/send';
 import { handleSesEvent } from '../src/events/ses';
+import { signPanelAssertion } from '../src/core/panel';
 import { tokenSha256 } from '../src/clients';
 import { blindIndex } from '../src/core/crypto';
 import { options, notification, request } from './sns-fixture';
@@ -24,7 +25,12 @@ const waitUntil = (task: Promise<unknown>) => { tasks.push(task); };
 const pair = generateKeyPairSync('x25519');
 const keys = [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' }];
 const indices = [{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }];
-const env = { API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys }), INDEX_KEYS: JSON.stringify(indices) } as Env;
+const panelKey = Buffer.alloc(32, 9).toString('base64url');
+const panelHeaders = async (url: string, token: string) => {
+  const req = new Request(url); const now = Date.now();
+  return { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1', 'x-panel-assertion': await signPanelAssertion(req, { actor: 'user-1', role: 'admin', issuedAt: now, expiresAt: now + 60000, stepUpAt: now }, panelKey) };
+};
+const env = { PANEL_ASSERTION_KEY: panelKey, API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys }), INDEX_KEYS: JSON.stringify(indices) } as Env;
 const configured = () => parseConfig({ ...example, extensions: [{ module: 'demo-extension', options: { mode: 'test' } }] });
 const load = (extension: Extension) => loadExtensions(configured(), store, async () => ({ default: () => extension }));
 beforeEach(async () => { store = createSqliteStore(':memory:'); await store.migrate(); tasks.length = 0; });
@@ -81,7 +87,7 @@ it('mounts routes on the internal handler with panel credentials and actor', asy
   for (const headers of [{}, { authorization: 'Bearer test-key', 'x-panel-actor': 'user-1' }, { authorization: `Bearer ${token}` }] as Record<string, string>[]) {
     expect((await runtime.fetch(new Request(url, { headers }), env)).status).toBeGreaterThanOrEqual(400);
   }
-  const req = new Request(url, { headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' } });
+  const req = new Request(url, { headers: await panelHeaders(url, token) });
   expect(await (await runtime.fetch(req, env)).json()).toEqual({ ok: true });
   expect((await createApp().fetch(req, env, { waitUntil } as ExecutionContext)).status).toBe(404);
 });
@@ -153,6 +159,7 @@ it('keeps SES processing successful when extension context lookup fails', async 
 });
 
 it('loads an absolute module file and serves it only on the internal listener', async () => {
+  await mkdir('dist', { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), 'dist/extension-'));
   const file = join(directory, 'demo.mjs');
   const token = 'msk_panel_' + 'a'.repeat(43);
@@ -163,7 +170,7 @@ it('loads an absolute module file and serves it only on the internal listener', 
   const publicServer = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env, 0);
   const internalServer = await startServer((req, env) => runtime.fetch(req, env), env, 0);
   try {
-    const init = { headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' } };
+    const init = { headers: await panelHeaders('http://localhost/internal/ext/demo/ping', token) };
     expect((await fetch(`http://127.0.0.1:${publicServer.port}/internal/ext/demo/ping`, init)).status).toBe(404);
     expect(await (await fetch(`http://127.0.0.1:${internalServer.port}/internal/ext/demo/ping`, init)).json()).toEqual({ active: true });
   } finally { await Promise.all([publicServer.close(), internalServer.close()]); await rm(directory, { recursive: true }); }

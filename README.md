@@ -439,14 +439,14 @@ deployment notes and architecture: see [AGENTS.md](AGENTS.md).
 export MAILSTACK_CONFIG="$PWD/mailstack.json"
 npm run mailstack -- config check "$MAILSTACK_CONFIG"
 node scripts/mailstack.ts client create --id acme-app --scopes send --brands acme --templates notice,payment
-node scripts/mailstack.ts client create --id panel --scopes panel
+node scripts/mailstack.ts client create --id panel --scopes panel --brands '*' --templates '*'
 ```
 
 `client create` prints the token once alongside its configuration entry containing `tokenSha256`.
 Clients with `send` or `hook:sellf` require explicit `brands` and `templates` selections:
 pass comma-separated lists or quote `'*'` for all values. The CLI requires both `--brands`
 and `--templates` for these scopes. Panel-only clients may omit both; omitted selections
-become empty lists. Legacy key defaults remain `brands: "*"` and `templates: "*"`.
+become empty lists and grant no message access. Legacy key defaults remain `brands: "*"` and `templates: "*"`.
 
 The importer executes a trusted local TypeScript registry and writes JSON only to stdout.
 Move its output outside the repository and set `MAILSTACK_CONFIG` before `npm run setup`.
@@ -898,11 +898,14 @@ The contracts live in `src/core/extensions.ts`. Extension names match
   `app.route('GET', '/ping', (request, ctx) => Response.json({ ok: true }))`.
   They are mounted only on Node's internal port **8081**, at
   `/internal/ext/<name>/ping`. Requests require a configured `panel` client bearer
-  token and a nonempty `X-Panel-Actor` header. Do not publish this port externally.
+  token, `X-Panel-Actor`, and a signed `X-Panel-Assertion` as described in the
+  [internal API contract](docs/internal-api.md). Do not publish this port externally.
   Extensions must append an audit entry before content reads or state mutations.
 
 `ctx` provides a Kysely `db` handle, `appendAudit(entry)`, `now()` (epoch
 milliseconds), and `config` containing brand ids and logging policies only.
+Route handlers also receive the verified `ctx.panel` principal and must apply its
+scopes, selections, role and step-up requirements.
 It does not include runtime environment variables, sending keys or client tokens.
 Module-specific options are passed only to the factory. Modules run as trusted
 in-process Node code, not in a sandbox.
@@ -912,3 +915,10 @@ timeouts produce a generic log entry and never change the email/API result.
 The limit stops waiting; it cannot cancel a module's ongoing work. Modules should
 bound their own I/O and avoid blocking the Node event loop. Delivery is best-effort;
 there is no persistent event queue in the core.
+
+### Internal panel API
+
+The existing Node listener on port 8081 exposes the sealed log and privacy API.
+Panel calls require the configured panel client plus a signed, short-lived actor
+assertion; role and step-up checks run in the API. See the [internal API contract](docs/internal-api.md)
+for routes, role matrix, `PANEL_ASSERTION_KEY`, audit behavior and extension integration.

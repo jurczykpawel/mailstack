@@ -1,6 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
 import type { OperationNode } from 'kysely';
+import { internalFetch } from '../core/internal';
+import { verifyPanelAssertion } from '../core/panel';
 import { authenticate } from '../clients';
 import { appendAudit } from '../core/audit';
 import { eventId } from '../core/store/events';
@@ -70,8 +72,12 @@ export async function loadExtensions(config: Config, store: KyselyStore,
   return { emitEvent, async fetch(req: Request, env: object): Promise<Response> {
     const client = await authenticate(req, env, config);
     if (!client) return Response.json({ success: false }, { status: 401 });
-    if (!client.scopes.includes('panel') || !req.headers.get('x-panel-actor')?.trim()) return Response.json({ success: false }, { status: 403 });
+    if (!client.scopes.includes('panel')) return Response.json({ success: false }, { status: 403 });
+    const claims = await verifyPanelAssertion(req, env);
+    if (!claims) return Response.json({ success: false }, { status: 403 });
+    const panel = { ...claims, scopes: client.scopes, brands: client.brands, templates: client.templates };
+    if (new URL(req.url).pathname.startsWith('/internal/v1/')) return internalFetch(req, env, store, config, panel);
     const handler = routes.get(`${req.method} ${new URL(req.url).pathname}`);
-    return handler ? handler(req, ctx) : new Response(null, { status: 404 });
+    return handler ? handler(req, { ...ctx, panel }) : new Response(null, { status: 404 });
   } };
 }
