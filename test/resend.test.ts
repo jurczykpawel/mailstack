@@ -17,7 +17,7 @@ const pair = generateKeyPairSync('x25519');
 const privateKey = { ...pair.privateKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' };
 const env = { API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'c1' }] }), INDEX_KEYS: JSON.stringify([{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }]) } as Env;
 const principal = (): PanelPrincipal => ({ actor: 'user-1', role: 'operator', issuedAt: now, expiresAt: now + 60000, stepUpAt: now, scopes: ['panel'], brands: '*', templates: '*' });
-const request = (key = 'request-1', value: unknown = payload, panel = principal(), messageId = id) => service.forPanel(panel).request({ messageId, reason: 'Requested by customer', idempotencyKey: key, replay: value });
+const request = (key = 'request-1', value: unknown = payload, panel = principal(), messageId = id, ref = 'ORDER-1') => service.forPanel(panel).request({ messageId, reason: 'Requested by customer', idempotencyKey: key, replay: value, ref });
 async function original(template = 'notice', clientId = 'sender') {
   const result = await renderAndSend(deps, env, cfg.brands.acme, getTemplate(template)!, { paragraphs: 'Hello', licenseKey: 'synthetic-key' }, { to: ['buyer@example.com'], clientId, ref: 'ORDER-1' });
   return result.id!;
@@ -359,10 +359,54 @@ it.each(['message', 'actor', 'brand', 'strategy'].flatMap(difference => ['pendin
   const winner = request();
   await firstEntered;
   try {
-    const loser = await request('request-1', otherPayload, otherPanel, otherId);
+    const loser = await request('request-1', otherPayload, otherPanel, otherId, 'ORDER-2');
     expect(loser).toMatchObject({ ok: false, status: 409, code: 'idempotency_conflict' });
     expect(deps.sendEmail).toHaveBeenCalledTimes(state === 'pending' ? 0 : 1);
   } finally { release(); await winner; }
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   expect(vi.mocked(deps.sendEmail).mock.calls[0][1].to).toEqual(['buyer@example.com']);
+});
+
+it.each(['ORDER-2', undefined, '', 'x'.repeat(129)])('requires the original source reference %s', async ref => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  const input = { messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', ref };
+  expect(await service.forPanel(principal()).request(input)).toMatchObject({ ok: false, status: 409, code: 'resend_mismatch' });
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(0);
+  expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(0);
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await request('source-key')).toMatchObject({ ok: true, status: 202 });
+});
+it('checks source references on existing reservations', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  const approved = await request('source-key');
+  const guards = await store.db.selectFrom('guards').selectAll().execute();
+  expect(await service.forPanel(principal()).request({ messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', ref: 'ORDER-2' })).toMatchObject({ status: 409, code: 'resend_mismatch' });
+  expect(await request('source-key')).toMatchObject({ ok: true, status: 202, idempotent: true, resendId: approved.resendId });
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual(guards);
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('reserves one source job for twenty matching requests', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  const results = await Promise.all(Array.from({ length: 20 }, () => request('source-key')));
+  expect(results.every(r => r.ok && r.status === 202)).toBe(true);
+  expect(new Set(results.map(r => r.resendId)).size).toBe(1);
+  expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(1);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(3);
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('declines twenty concurrent requests with different source references', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  const results = await Promise.all(Array.from({ length: 20 }, (_, i) => service.forPanel(principal()).request({
+    messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-' + i, ref: 'ORDER-2',
+  })));
+  expect(results.every(r => !r.ok && r.status === 409 && r.code === 'resend_mismatch')).toBe(true);
+  expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(0);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(0);
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('matches source references with a retained index key', async () => {
+  id = await original('license');
+  const rotated = { ...env, INDEX_KEYS: JSON.stringify([{ kid: 'i2', key: Buffer.alloc(32, 8).toString('base64url') }, ...JSON.parse(env.INDEX_KEYS!)]) };
+  service = createResendService(cfg, store, rotated, deps);
+  expect(await request('source-key')).toMatchObject({ ok: true, status: 202 });
 });

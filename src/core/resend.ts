@@ -4,7 +4,7 @@ import { renderAndSend } from '../send';
 import { getTemplate } from '../templates';
 import type { Env, SendDeps, SendResult, Attachment } from '../types';
 import type { Config } from './config/schema';
-import { blindIndex, canonicalJson, createMac, verifyMac } from './crypto';
+import { blindIndex, canonicalJson, createMac, refIndex, verifyMac } from './crypto';
 import { parseKeyring } from './keyring';
 import { appendAudit } from './audit';
 import { panelAllows, type PanelPrincipal } from './panel';
@@ -132,6 +132,12 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
             if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500 ||
               typeof input.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.idempotencyKey)) fail(400, 'invalid_request');
             const { m, source } = await inspect(input.messageId, panel);
+            if (source.strategy === 'source') {
+              const ref = input.ref;
+              if (typeof ref !== 'string' || !ref.length || ref.length > 128 || !m.ref_idx) return fail(409, 'resend_mismatch');
+              const indexes = await Promise.all(parseKeyring(env).indexKeys.map(key => refIndex(ref, key)));
+              if (!indexes.some(value => value.index === m.ref_idx)) fail(409, 'resend_mismatch');
+            }
             const payload = source.strategy === 'replay' ? await validate(m.id, input.replay, m.replay_mac) : undefined;
             if (payload && payload.template !== m.template) fail(409, 'resend_mismatch');
             const identity = { message_id: m.id, root: m.resend_root ?? m.id, actor: panel.actor, strategy: source.strategy };

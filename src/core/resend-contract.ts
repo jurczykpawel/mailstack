@@ -15,7 +15,7 @@ export interface ResendSource {
   ref_sealed: string | null;
   owner?: { clientId: string; callback: { url: string; secretEnv: string } };
 }
-export interface ResendRequest { messageId: string; reason: string; idempotencyKey: string; replay?: unknown }
+export interface ResendRequest { messageId: string; reason: string; idempotencyKey: string; replay?: unknown; ref?: string }
 export type ResendOutcome = SendResult & { resendId?: string; source?: ResendSource };
 export interface ResendCapability {
   source(messageId: string): Promise<ResendSource | SendResult>;
