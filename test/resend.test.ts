@@ -135,3 +135,23 @@ it('does not expose history from the public send endpoint', async () => {
   const response = await handleSend(new Request('https://mail.example/v1/send', { method: 'POST', headers: { authorization: 'Bearer test-key' }, body: JSON.stringify({ brand: 'acme', template: 'notice', resendOf: id }) }), env, deps);
   expect(await response.json()).toMatchObject({ code: 'not_supported' });
 });
+
+it('accepts approved source calls through the send handler', async () => {
+  const { tokenSha256 } = await import('../src/clients');
+  const token = 'msk_sender_' + 'a'.repeat(43);
+  cfg.clients![0].tokenSha256 = await tokenSha256(token);
+  const previous = config.clients; config.clients = cfg.clients;
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
+  const call = (key = 'source-key', address = 'buyer@example.com') => handleSend(new Request('https://mail.example/v1/send', {
+    method: 'POST', headers: { authorization: `Bearer ${token}`, 'Idempotency-Key': key },
+    body: JSON.stringify({ brand: 'acme', template: 'license', to: address, licenseKey: 'fresh-key', resendOf: id }),
+  }), env, { ...deps, resendSource: (_env, client, messageId, key, payload, ref, attachments) => service.sendSource(client, messageId, key, payload, ref, attachments) });
+  try {
+    expect(await (await call()).json()).toMatchObject({ code: 'resend_mismatch' });
+    expect(await request('source-key', undefined)).toMatchObject({ status: 202 });
+    expect(await (await call('other-key')).json()).toMatchObject({ code: 'resend_mismatch' });
+    expect(await (await call('source-key', 'other@example.com')).json()).toMatchObject({ code: 'resend_mismatch' });
+    expect(await (await call()).json()).toMatchObject({ success: true, id: expect.any(String) });
+    expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  } finally { config.clients = previous; }
+});

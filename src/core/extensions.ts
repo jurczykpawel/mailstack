@@ -11,6 +11,7 @@ export interface DomainEvent {
 export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>>;
 export interface ExtensionContext {
   panel?: PanelPrincipal;
+  resend?: import('./resend-contract').ResendCapability;
   db: ExtensionDatabase;
   appendAudit: (entry: AuditEntry) => Promise<AuditRow>;
   now: () => number;
@@ -21,6 +22,7 @@ export interface ExtensionApp {
 }
 export interface Extension {
   name: string;
+  capabilities?: ('resend')[];
   migrate?(db: ExtensionDatabase): Promise<void>;
   onEvent?(event: DomainEvent, ctx: ExtensionContext): void | Promise<void>;
   routes?(app: ExtensionApp): void | Promise<void>;

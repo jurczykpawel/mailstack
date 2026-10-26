@@ -96,8 +96,8 @@ async function main() {
   const store = createSqliteStore(database);
   try {
     await store.migrate();
-    const extensions = await loadExtensions(config, store);
-    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent });
+    const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider });
+    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource });
     const stop = await startScheduler(() => runRetention(store, Date.now(), config), () => backupSqlite(database, '/data/backups', Date.now()));
     const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
       .catch(async error => { await stop(); throw error; });

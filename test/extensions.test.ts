@@ -184,3 +184,23 @@ it('emits no form submission event after an unsuccessful public send', async () 
 it('waits for route registration before completing initialization', async () => {
   await expect(load({ name: 'demo', routes: async () => { await Promise.resolve(); throw new Error('private initialization detail'); } })).rejects.toThrow('$.extensions.0.module');
 });
+
+it('provides an opted-in route with a scoped resend capability', async () => {
+  const token = 'msk_panel_' + 'a'.repeat(43), cfg = configured();
+  cfg.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', attachments: false, recipientOverride: false }];
+  let context: import('../src/core/extensions').ExtensionContext | undefined;
+  const runtime = await loadExtensions(cfg, store, async () => ({ default: {
+    name: 'demo', capabilities: ['resend'], routes(app: import('../src/core/extensions').ExtensionApp) {
+      app.route('GET', '/source', async (_req, ctx) => {
+        context = ctx;
+        return Response.json(await ctx.resend!.source('msg_missing'));
+      });
+    },
+  } }), { sendEmail: vi.fn() });
+  const url = 'http://localhost/internal/ext/demo/source';
+  const res = await runtime.fetch(new Request(url, { headers: await panelHeaders(url, token) }), env);
+  expect(await res.json()).toMatchObject({ code: 'not_found' });
+  expect(context!.resend).toBeDefined();
+  await expect(context!.db.selectFrom('messages').selectAll().execute()).rejects.toThrow();
+  await expect(sql`select * from messages`.execute(context!.db)).rejects.toThrow();
+});

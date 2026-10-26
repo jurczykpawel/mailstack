@@ -247,7 +247,7 @@ export async function handleSend(
 
   const idempotencyKey = trusted ? req.headers.get("Idempotency-Key") ?? undefined : undefined;
   if (trusted) {
-    const code = Object.hasOwn(body, "resendOf") ? "not_supported"
+    const code = Object.hasOwn(body, "resendOf") && !deps.resendSource ? "not_supported"
       : Object.hasOwn(body, "ref") && (typeof body.ref !== "string" || body.ref.length < 1 || body.ref.length > 128) ? "invalid_ref"
       : idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey) ? "invalid_idempotency_key" : undefined;
     if (code) return json({ success: false, message: code.replaceAll("_", " "), code }, { status: 400, cors: corsOrigin });
@@ -300,6 +300,16 @@ export async function handleSend(
     trusted && Object.prototype.hasOwnProperty.call(body, "markup")
       ? buildBlocks(body.markup)
       : undefined;
+
+  if (trusted && Object.hasOwn(body, "resendOf")) {
+    if (typeof body.resendOf !== "string" || !idempotencyKey)
+      return json({ success: false, message: "resend mismatch", code: "resend_mismatch" }, { status: 409, cors: corsOrigin });
+    const result = await deps.resendSource!(env, client!.id, body.resendOf, idempotencyKey, {
+      to: recipients, template: template.id, data, ...(replyTo ? { replyTo } : {}),
+      ...(subjectOverride ? { subjectOverride } : {}), ...(explicitJsonLd ? { markup: explicitJsonLd } : {}),
+    }, body.ref as string | undefined, attachments);
+    return json(deliveryResponse(result, true), { status: result.status, cors: corsOrigin });
+  }
 
   const result = await renderAndSend(deps, env, brand, template, data, {
     to: recipients,

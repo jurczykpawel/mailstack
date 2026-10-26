@@ -1,3 +1,7 @@
+import { createResendService } from '../core/resend';
+import { verifyTurnstile } from '../turnstile';
+import { verifyAltcha } from '../altcha';
+import type { Env, SendDeps } from '../types';
 import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
 import type { OperationNode } from 'kysely';
@@ -34,8 +38,11 @@ async function bounded(task: () => unknown): Promise<void> {
   finally { clearTimeout(timer); }
 }
 export async function loadExtensions(config: Config, store: KyselyStore,
-  importer: (module: string) => Promise<{ default?: unknown }> = module => import(module)) {
+  importer: (module: string) => Promise<{ default?: unknown }> = module => import(module),
+  delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>) {
   const extensions: Extension[] = [], routes = new Map<string, Parameters<ExtensionApp['route']>[2]>();
+  const contexts = new Map<Extension, ExtensionContext>();
+  const routeContexts = new Map<string, { db: ExtensionDatabase; resend: boolean }>();
   const ctx: ExtensionContext = { db: store.db as unknown as ExtensionDatabase, now: Date.now,
     appendAudit: entry => appendAudit(store, entry), config: { brands: Object.keys(config.brands), logging: structuredClone(config.logging) } };
   for (const [index, entry] of config.extensions.entries()) {
@@ -43,6 +50,7 @@ export async function loadExtensions(config: Config, store: KyselyStore,
       const loaded = await importer(isAbsolute(entry.module) ? pathToFileURL(entry.module).href : entry.module);
       const extension: Extension = typeof loaded.default === 'function' ? await loaded.default(entry.options ?? {}) : loaded.default;
       if (!extension || typeof extension.name !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(extension.name) || extensions.some(e => e.name === extension.name)) throw new Error('Invalid extension');
+      if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
       for (const key of ['migrate', 'routes', 'onEvent'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
       const db = ctx.db.withPlugin({
         transformQuery({ node }) {
@@ -53,12 +61,14 @@ export async function loadExtensions(config: Config, store: KyselyStore,
           return node;
         }, async transformResult({ result }) { return result; },
       });
+      contexts.set(extension, { ...ctx, db });
       await extension.migrate?.(db);
       await extension.routes?.({ route(method, path, handler) {
         if (!/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]*$/.test(path)) throw new Error('Invalid extension route');
         const key = `${method.toUpperCase()} /internal/ext/${extension.name}${path}`;
         if (routes.has(key)) throw new Error('Duplicate extension route');
         routes.set(key, handler);
+        routeContexts.set(key, { db, resend: extension.capabilities?.includes('resend') ?? false });
       } });
       extensions.push(extension);
     } catch { throw new Error(`$.extensions.${index}.module: extension initialization failed`); }
@@ -66,10 +76,13 @@ export async function loadExtensions(config: Config, store: KyselyStore,
   const emitEvent: EmitEvent = (input, waitUntil) => {
     const { type, at, brand, template, status, ref, messageId } = input;
     const event = { id: eventId(at), type, at, brand, template, status, ...(ref === undefined ? {} : { ref }), ...(messageId === undefined ? {} : { messageId }) };
-    const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), ctx))));
+    const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
     if (waitUntil) { try { waitUntil(task); } catch {} }
   };
-  return { emitEvent, async fetch(req: Request, env: object): Promise<Response> {
+  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, store, now: () => new Date(), logging: config.logging, emitEvent, verifyTurnstile, verifyAltcha });
+  const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
+  const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments) => service(env).sendSource(client, id, key, payload, ref, attachments) : undefined;
+  return { emitEvent, resendSource, async fetch(req: Request, env: object): Promise<Response> {
     const client = await authenticate(req, env, config);
     if (!client) return Response.json({ success: false }, { status: 401 });
     if (!client.scopes.includes('panel')) return Response.json({ success: false }, { status: 403 });
@@ -77,7 +90,8 @@ export async function loadExtensions(config: Config, store: KyselyStore,
     if (!claims) return Response.json({ success: false }, { status: 403 });
     const panel = { ...claims, scopes: client.scopes, brands: client.brands, templates: client.templates };
     if (new URL(req.url).pathname.startsWith('/internal/v1/')) return internalFetch(req, env, store, config, panel);
-    const handler = routes.get(`${req.method} ${new URL(req.url).pathname}`);
-    return handler ? handler(req, { ...ctx, panel }) : new Response(null, { status: 404 });
+    const key = `${req.method} ${new URL(req.url).pathname}`, handler = routes.get(key), route = routeContexts.get(key);
+    return handler ? handler(req, { ...ctx, panel, db: route!.db,
+      ...(enabled && route!.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });
   } };
 }
