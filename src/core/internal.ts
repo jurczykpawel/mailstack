@@ -7,6 +7,7 @@ import { boundedText } from './http';
 import { panelAllows, type PanelPrincipal } from './panel';
 import type { KyselyStore } from './store';
 import type { Config } from './config/schema';
+import type { BeforeMessageDelete, MessageDeletion } from './extensions';
 import type { MessageRow } from './store/messages';
 
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
@@ -16,7 +17,7 @@ function integer(value: string | null, fallback: number, max: number): number {
   if (!/^\d{1,16}$/.test(value) || !Number.isSafeInteger(+value) || +value > max) fail(400);
   return +value;
 }
-export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal): Promise<Response> {
+export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, beforeDelete?: BeforeMessageDelete): Promise<Response> {
   const now = Date.now(), url = new URL(req.url), path = url.pathname.slice('/internal/v1'.length), q = url.searchParams;
   const run = async <T>(query: RawBuilder<T>) => (await query.execute(store.db)).rows;
   const selection = (column: string, values: '*' | string[]) => values === '*' ? sql`1=1` :
@@ -135,10 +136,18 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
           replay: await blob('replays', m.id), ref_sealed: m.ref_sealed, evidence: await evidence(m.id) });
         return response({ messages, cursor: more ? btoa(rows.at(-1)!.id) : null });
       }
-      let count = 0;
+      const batches: string[][] = [];
+      let cursor = '';
       while (true) {
-        const selected = (await run<{ id: string }>(sql`select m.id from messages m where ${scope} and ${subject} order by m.id limit 50`)).map(r => r.id);
-        if (!selected.length) break;
+        const messages = await run<MessageDeletion['messages'][number]>(sql`select m.id,m.brand,m.template from messages m
+          where ${scope} and ${subject} and m.id > ${cursor} order by m.id limit 50`);
+        if (!messages.length) break;
+        await beforeDelete?.({ reason: 'erase', messages });
+        batches.push(messages.map(m => m.id));
+        cursor = messages.at(-1)!.id;
+      }
+      let count = 0;
+      for (const selected of batches) {
         const ids = sql`select m.id from messages m where m.id in (${sql.join(selected)}) and ${scope}`;
         const queries = ['recipients', 'events', 'contents', 'replays', 'subjects'].map(t => sql`delete from ${sql.table(t)} where message_id in (${ids})`);
         queries.push(sql`delete from messages where id in (${ids})`);

@@ -10,7 +10,6 @@ import { config } from '../core/config';
 import { effectivePolicies } from '../core/config/schema';
 import { parseKeyring } from '../core/keyring';
 import { createSqliteStore } from '../core/store/sqlite';
-import { runRetention } from '../core/retention';
 import { backupSqlite } from '../core/store/backup';
 import { createApp } from '../index';
 import { sendEmail } from '../ses';
@@ -98,7 +97,7 @@ async function main() {
     await store.migrate();
     const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider });
     const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource });
-    const stop = await startScheduler(() => runRetention(store, Date.now(), config), () => backupSqlite(database, '/data/backups', Date.now()));
+    const stop = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
     const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
       .catch(async error => { await stop(); throw error; });
     const internal = await startServer((req, env) => extensions.fetch(req, env), env, 8081)

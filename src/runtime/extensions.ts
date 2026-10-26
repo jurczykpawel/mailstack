@@ -6,6 +6,7 @@ import type { Env, SendDeps } from '../types';
 import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
 import type { OperationNode } from 'kysely';
+import { runRetention } from '../core/retention';
 import { internalFetch } from '../core/internal';
 import { verifyPanelAssertion } from '../core/panel';
 import { authenticate } from '../clients';
@@ -13,7 +14,7 @@ import { appendAudit } from '../core/audit';
 import { eventId } from '../core/store/events';
 import type { KyselyStore } from '../core/store';
 import type { Config } from '../core/config/schema';
-import type { EmitEvent, Extension, ExtensionApp, ExtensionContext, ExtensionDatabase } from '../core/extensions';
+import type { EmitEvent, Extension, ExtensionApp, ExtensionContext, ExtensionDatabase, BeforeMessageDelete } from '../core/extensions';
 
 function migrationNode(node: OperationNode, prefix: string): void {
   const value = node as unknown as Record<string, unknown>;
@@ -29,13 +30,16 @@ function migrationNode(node: OperationNode, prefix: string): void {
     }
   }
 }
-async function bounded(task: () => unknown): Promise<void> {
+async function bounded(task: () => unknown, required = false): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([Promise.resolve().then(task), new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('Extension timeout')), 5000);
     })]);
-  } catch { console.error('mailstack: extension event failed'); }
+  } catch (error) {
+    if (required) throw error;
+    console.error('mailstack: extension event failed');
+  }
   finally { clearTimeout(timer); }
 }
 export async function loadExtensions(config: Config, store: KyselyStore,
@@ -52,7 +56,7 @@ export async function loadExtensions(config: Config, store: KyselyStore,
       const extension: Extension = typeof loaded.default === 'function' ? await loaded.default(entry.options ?? {}) : loaded.default;
       if (!extension || typeof extension.name !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(extension.name) || extensions.some(e => e.name === extension.name)) throw new Error('Invalid extension');
       if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
-      for (const key of ['migrate', 'routes', 'onEvent'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
+      for (const key of ['migrate', 'routes', 'onEvent', 'onBeforeDelete'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
       const db = ctx.db.withPlugin({
         transformQuery({ node }) {
           if (!['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode', 'InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'SelectQueryNode'].includes(node.kind)) throw new Error('Unsupported migration');
@@ -80,17 +84,22 @@ export async function loadExtensions(config: Config, store: KyselyStore,
     const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
     if (waitUntil) { try { waitUntil(task); } catch {} }
   };
+  const beforeDelete: BeforeMessageDelete = async selection => {
+    for (const extension of extensions) if (extension.onBeforeDelete) {
+      await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
+    }
+  };
   const service = (env: Env) => createResendService(config, store, env, { ...delivery!, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
-  return { emitEvent, resendSource, async fetch(req: Request, env: object): Promise<Response> {
+  return { emitEvent, resendSource, runRetention: (now: number) => runRetention(store, now, config, beforeDelete), async fetch(req: Request, env: object): Promise<Response> {
     const client = await authenticate(req, env, config);
     if (!client) return Response.json({ success: false }, { status: 401 });
     if (!client.scopes.includes('panel')) return Response.json({ success: false }, { status: 403 });
     const claims = await verifyPanelAssertion(req, env);
     if (!claims) return Response.json({ success: false }, { status: 403 });
     const panel = { ...claims, scopes: client.scopes, brands: client.brands, templates: client.templates };
-    if (new URL(req.url).pathname.startsWith('/internal/v1/')) return internalFetch(req, env, store, config, panel);
+    if (new URL(req.url).pathname.startsWith('/internal/v1/')) return internalFetch(req, env, store, config, panel, beforeDelete);
     const key = `${req.method} ${new URL(req.url).pathname}`, handler = routes.get(key), route = routeContexts.get(key);
     return handler ? handler(req, { ...ctx, panel, db: route!.db,
       ...(enabled && route!.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });

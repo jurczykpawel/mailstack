@@ -2,24 +2,27 @@ import { sql } from 'kysely';
 import { appendAudit } from './audit.ts';
 import { pruneAudit } from './store/audit.ts';
 import type { KyselyStore } from './store';
+import type { BeforeMessageDelete, MessageDeletion } from './extensions';
 import type { Config } from './config/schema';
 
 export function isContentReadable(row: { expires_at: number } | null | undefined, now: number): boolean {
   return !!row && row.expires_at > now;
 }
-export async function runRetention(store: KyselyStore, now: number, cfg: Config): Promise<void> {
-  for (const table of ['contents', 'replays', 'guards', 'resend_jobs'])
-    await sql`delete from ${sql.table(table)} where expires_at <= ${now}`.execute(store.db);
+export async function runRetention(store: KyselyStore, now: number, cfg: Config, beforeDelete?: BeforeMessageDelete): Promise<void> {
   while (true) {
-    const ids = sql`select id from messages where meta_expires_at < ${now}
-      or created_at < ${now - cfg.logging.ceilings.metaDays * 86400000} order by id limit 500`;
-    if (!(await ids.execute(store.db)).rows.length) break;
+    const messages = (await sql<MessageDeletion['messages'][number]>`select id,brand,template from messages where meta_expires_at < ${now}
+      or created_at < ${now - cfg.logging.ceilings.metaDays * 86400000} order by id limit 500`.execute(store.db)).rows;
+    if (!messages.length) break;
+    await beforeDelete?.({ reason: 'retention', messages });
+    const ids = sql`select value from json_each(${JSON.stringify(messages.map(m => m.id))})`;
     await store.batch([
       ...['recipients', 'subjects', 'events', 'contents', 'replays'].map(table =>
         sql`delete from ${sql.table(table)} where message_id in (${ids})`),
       sql`delete from messages where id in (${ids})`,
     ].map(query => query.compile(store.db)));
   }
+  for (const table of ['contents', 'replays', 'guards', 'resend_jobs'])
+    await sql`delete from ${sql.table(table)} where expires_at <= ${now}`.execute(store.db);
   await sql`delete from contents where message_id in (select id from messages
     where created_at <= ${now - cfg.logging.ceilings.contentDays * 86400000})`.execute(store.db);
   await sql`delete from replays where message_id in (select id from messages

@@ -20,10 +20,16 @@ export interface ExtensionContext {
 export interface ExtensionApp {
   route(method: string, path: string, handler: (request: Request, ctx: ExtensionContext) => Response | Promise<Response>): void;
 }
+export interface MessageDeletion {
+  reason: 'erase' | 'retention';
+  messages: { id: string; brand: string; template: string }[];
+}
+export type BeforeMessageDelete = (selection: MessageDeletion) => Promise<void>;
 export interface Extension {
   name: string;
   capabilities?: ('resend')[];
   migrate?(db: ExtensionDatabase): Promise<void>;
+  onBeforeDelete?(selection: MessageDeletion, ctx: ExtensionContext): void | Promise<void>;
   onEvent?(event: DomainEvent, ctx: ExtensionContext): void | Promise<void>;
   routes?(app: ExtensionApp): void | Promise<void>;
 }
