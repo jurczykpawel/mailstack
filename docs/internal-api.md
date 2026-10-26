@@ -95,7 +95,10 @@ verification or disclosing another selection's entries.
   (10–500 characters) but not persisted. Audit keeps only matched count and an
   eight-character index prefix. Deletes include expired messages and explicitly
   remove every child table in atomic batches of at most 50 messages. Batch failure
-  returns 503; earlier completed batches remain erased, so retry is safe. Late SES
+  returns 503; earlier completed batches remain erased, so retry is safe.
+  [Extension cleanup](extension-privacy.md) completes for all selected messages
+  before core deletion begins; a cleanup error or deadline returns 503 without
+  deleting core messages or children. Late SES
   events and SMTP completion cannot recreate deleted messages or children. Backups expire independently.
 - `GET /internal/v1/audit?after_seq&limit`: `{rows}`, ascending seq, limit 1–500
   (default 100), after_seq nonnegative (default 0).
