@@ -169,6 +169,14 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect(await rows('events')).toEqual([]);
     const audit = JSON.stringify(await rows('audit')); expect(audit).not.toContain('one@example.com'); expect(audit).not.toContain('Requested by subject');
   });
+  it.each(['accepted', 'rejected'] as const)('completes %s SMTP results after subject erasure', async outcome => {
+    await seed();
+    await sql`update messages set status='sending' where id='msg_1'`.execute(store.db);
+    expect(await (await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } })).json()).toEqual({ count: 1 });
+    await store.markSent('msg_1', { providerMessageId: 'smtp-1', providerResponseSealed: 'sealed-response', sentAt: now,
+      smtp: { accepted: outcome === 'accepted' ? [0] : [], rejected: outcome === 'rejected' ? [0] : [], evidence: 'sealed-smtp' } });
+    for (const table of ['messages', 'recipients', 'subjects', 'contents', 'replays', 'events']) expect(await rows(table)).toEqual([]);
+  });
   it('records the matched count and processes more than one erase batch', async () => {
     const idx = await blindIndex('one@example.com', indices[0]);
     for (let offset = 0; offset < 105; offset += 15) {
@@ -182,6 +190,29 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
       await store.batch(statements.map(q => q.compile(store.db)));
     }
     const page = await (await call('/messages?limit=100')).json(); expect(page.messages).toHaveLength(100); expect(page.cursor).toBeTypeOf('string');
+    const executor = store.db.getExecutor(), execute = executor.executeQuery.bind(executor);
+    let active = 0, peak = 0;
+    const messageReads: string[] = [];
+    vi.spyOn(executor, 'executeQuery').mockImplementation(async (...args) => {
+      active++; peak = Math.max(peak, active);
+      if (args[0].sql.startsWith('select m.* from messages')) messageReads.push(args[0].sql);
+      try { return await execute(...args); } finally { active--; }
+    });
+    let cursor: string | null = null;
+    const exported: string[] = [];
+    do {
+      const page = await (await call('/subjects/export', { body: { email: 'one@example.com', limit: 20, cursor } })).json();
+      expect(page.messages.length).toBeLessThanOrEqual(20);
+      exported.push(...page.messages.map(m => m.id)); cursor = page.cursor;
+    } while (cursor);
+    expect(exported).toEqual(Array.from({ length: 105 }, (_, i) => 'bulk_' + i).sort());
+    expect(new Set(exported).size).toBe(105);
+    expect(peak).toBe(1);
+    expect(messageReads).toHaveLength(6);
+    expect(messageReads.every(query => /limit/.test(query))).toBe(true);
+    for (const body of [{ limit: 0 }, { limit: 51 }, { limit: 1.5 }, { cursor: 1 }, { cursor: 'invalid!' }]) {
+      expect((await call('/subjects/export', { body: { email: 'one@example.com', ...body } })).status).toBe(400);
+    }
     const response = await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } });
     expect(response.status).toBe(200); expect(await response.json()).toEqual({ count: 105 });
     for (const table of ['messages', 'subjects', 'contents', 'replays']) expect(await rows(table)).toEqual([]);

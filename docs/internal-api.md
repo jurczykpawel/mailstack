@@ -81,16 +81,22 @@ verification or disclosing another selection's entries.
   ref_sealed, replay}`; replay is `{sealed, expires_at}` or null. No MAC, index or
   signing/sending key is returned. This route prepares the panel-side read only;
   resend execution remains a separate task.
-- `POST /internal/v1/subjects/export` `{email}`: `{messages}`, each with metadata,
+- `POST /internal/v1/subjects/export` `{email, limit?, cursor?}`: `{messages, cursor}`, each with metadata,
   recipients, timeline, sealed content/replay/ref and an `evidence` object
   containing sealed provider response and event evidence. All subject
-  roles match: recipient, reply_to, submitter.
+  roles match: recipient, reply_to, submitter. Limit is an integer 1–50 (default
+  25); each page is audited before returning data. Pass the returned opaque cursor
+  with the same email on the next request until cursor is null. Pages use ascending
+  message ID order, read at most limit + 1 messages and load their data sequentially.
+  Each response buffers only one page; clients must collect all pages to complete
+  an export. This is a live view: concurrent erasure/expiry may remove records and
+  new messages may appear on later pages.
 - `POST /internal/v1/subjects/erase` `{email, reason}`: `{count}`. Reason is required
   (10–500 characters) but not persisted. Audit keeps only matched count and an
   eight-character index prefix. Deletes include expired messages and explicitly
   remove every child table in atomic batches of at most 50 messages. Batch failure
   returns 503; earlier completed batches remain erased, so retry is safe. Late SES
-  events cannot recreate deleted messages or children. Backups expire independently.
+  events and SMTP completion cannot recreate deleted messages or children. Backups expire independently.
 - `GET /internal/v1/audit?after_seq&limit`: `{rows}`, ascending seq, limit 1–500
   (default 100), after_seq nonnegative (default 0).
 - `GET /internal/v1/audit/head`: `{seq, hash}`, genesis `{seq:0, hash:64 zeros}`.

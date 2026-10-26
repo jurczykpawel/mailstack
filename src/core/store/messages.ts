@@ -91,7 +91,8 @@ export class MessageOperations implements MessageStore {
       for (const [type, positions] of [['accepted', update.smtp.accepted], ['send_failed', update.smtp.rejected]] as const) {
         for (const pos of positions) {
           queries.push(sql`insert into events(id,message_id,recipient_pos,source,source_event_id,type,occurred_at,received_at,auth,summary,evidence_sealed)
-            values (${eventId(update.sentAt)},${id},${pos},'smtp-response',${id + ':' + pos},${type},${update.sentAt},${update.sentAt},'smtp-response',${type === 'accepted' ? 'Relay accepted' : 'Relay refused'},${update.smtp.evidence})`.compile(this.db));
+            select ${eventId(update.sentAt)},${id},${pos},'smtp-response',${id + ':' + pos},${type},${update.sentAt},${update.sentAt},'smtp-response',${type === 'accepted' ? 'Relay accepted' : 'Relay refused'},${update.smtp.evidence}
+            where exists(select 1 from messages where id=${id})`.compile(this.db));
           queries.push(this.db.updateTable('recipients').set({ status: type, last_event_at: update.sentAt }).where('message_id', '=', id).where('pos', '=', pos).compile());
         }
       }

@@ -111,14 +111,30 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       const input = await body();
       if (typeof input.email !== 'string' || input.email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) return fail(400);
       if (path.endsWith('erase') && (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500)) return fail(400);
+      const exporting = path.endsWith('export');
+      const limit = input.limit === undefined ? 25 : input.limit;
+      let after = '';
+      if (exporting) {
+        if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) return fail(400);
+        if (input.cursor !== undefined && input.cursor !== null) {
+          try {
+            if (typeof input.cursor !== 'string' || input.cursor.length > 256) return fail(400);
+            after = atob(input.cursor);
+            if (!/^[A-Za-z0-9_-]{1,128}$/.test(after)) return fail(400);
+          } catch { return fail(400); }
+        }
+      }
       const indices = await blindIndexes(input.email, parseIndexKeys(Reflect.get(env, 'INDEX_KEYS')));
       const subject = sql`exists(select 1 from subjects s where s.message_id=m.id and (${sql.join(indices.map(i => sql`(s.idx_kid=${i.kid} and s.addr_idx=${i.index})`), sql` or `)}))`;
       const matched = (await run<{ count: number }>(sql`select count(*) count from messages m where ${scope} and ${subject} ${path.endsWith('export') ? sql`and ${live}` : sql``}`))[0].count;
       await audit(path.endsWith('erase') ? 'privacy.erase' : 'privacy.export', 'subject:' + indices[0].index.slice(0, 8), { count: matched });
       if (path.endsWith('export')) {
-        const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} order by m.id`);
-        return response({ messages: await Promise.all(rows.map(async m => ({ ...await detail(m), content: await blob('contents', m.id),
-          replay: await blob('replays', m.id), ref_sealed: m.ref_sealed, evidence: await evidence(m.id) }))) });
+        const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} and m.id > ${after} order by m.id limit ${Number(limit) + 1}`);
+        const more = rows.length > Number(limit); rows.splice(Number(limit));
+        const messages = [];
+        for (const m of rows) messages.push({ ...await detail(m), content: await blob('contents', m.id),
+          replay: await blob('replays', m.id), ref_sealed: m.ref_sealed, evidence: await evidence(m.id) });
+        return response({ messages, cursor: more ? btoa(rows.at(-1)!.id) : null });
       }
       let count = 0;
       while (true) {
