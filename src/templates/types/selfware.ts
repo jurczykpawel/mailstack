@@ -2,7 +2,8 @@ import type { Brand, RenderedBody, TemplateData } from "../../types.ts";
 import { humanizeLabel, paragraph, summaryTable } from "../layout.ts";
 
 export function selfwareReceived(data: TemplateData): RenderedBody {
-  const product = (data.summary || "").trim();
+  const summary = (data.summary || "").trim();
+  const product = summary === "Opis zadania" ? "" : summary;
   const greeting = data.name?.trim() ? `Cześć ${data.name.trim()},` : "Cześć,";
   const intro = product
     ? `Dostaliśmy Twoje zapytanie o podobne rozwiązanie do ${product}. Odezwę się osobiście na podany adres e-mail.`
@@ -21,7 +22,7 @@ export function selfwareContactSubject(brand: Brand, data: TemplateData): string
 }
 
 export function selfwareContact(brand: Brand, data: TemplateData): RenderedBody {
-  const intro = data.type?.trim()
+  const intro = data.type?.trim() && data.type.trim() !== "Opis zadania"
     ? `Ktoś pyta o rozwiązanie podobne do ${data.type.trim()}. Odpowiedz na ten mail, aby skontaktować się z nadawcą.`
     : "Przyszedł opis zadania. Odpowiedz na ten mail, aby skontaktować się z nadawcą. Darmową diagnozę zapowiadamy do 3 dni roboczych.";
   const rows = Object.entries(data).filter(([, value]) => value.trim()).map(([key, value]) => ({

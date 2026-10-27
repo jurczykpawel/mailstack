@@ -4,7 +4,7 @@ import { getBrand } from "../src/core/config";
 const brand = { ...getBrand("acme")!, id: "selfware", name: "Selfware", subjectPrefix: "Nowe zlecenie" };
 describe("Selfware templates", () => {
   it("confirms a task with the promised diagnosis deadline", () => {
-    const body = getTemplate("received")!.render(brand, {});
+    const body = getTemplate("received")!.render(brand, { summary: "Opis zadania" });
     expect(body.bodyText).toContain("Dostaliśmy opis Twojego zadania");
     expect(body.bodyText).toContain("darmową diagnozą do 3 dni roboczych");
     expect(body.bodyText).not.toContain(":");
@@ -25,6 +25,12 @@ describe("Selfware templates", () => {
     for (const value of Object.values(data)) expect(body.bodyText).toContain(value);
     expect(body.bodyHtml).toContain("&lt;opis&gt;");
     expect(body.bodyHtml).not.toContain("<opis>");
+  });
+  it("renders the technical task product as a task notification", () => {
+    const body = getTemplate("contact")!.render(brand, { type: "Opis zadania", message: "Zadanie" });
+    expect(body.bodyText).toContain("Przyszedł opis zadania");
+    expect(body.bodyText).toContain("3 dni roboczych");
+    expect(body.bodyText).not.toContain("podobne do");
   });
   it("keeps other brands on the existing templates", () => {
     const other = getBrand("acme")!;
