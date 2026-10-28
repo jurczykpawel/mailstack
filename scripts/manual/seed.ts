@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { withBackgroundTasks } from './lifecycle.ts';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
@@ -13,8 +14,8 @@ import { createNtfyNotifier } from '../../src/adapters/notify/ntfy.ts';
 const cfg = loadNodeConfig(), tokens = JSON.parse(readFileSync('/run/seed/tokens.json', 'utf8'));
 const db = new Database('/data/mailstack.db'), store = createSqliteStore(db);
 const command = process.argv[2] ?? 'seed';
-const runtime = ['retention','event'].includes(command) ? await loadExtensions(cfg,store,undefined,{sendEmail:smtpFromEnv(process.env),provider:'smtp'}) : undefined;
-try {
+const result = await withBackgroundTasks(async waitUntil => {
+  const runtime = ['retention','event'].includes(command) ? await loadExtensions(cfg,store,undefined,{sendEmail:smtpFromEnv(process.env),provider:'smtp'}) : undefined;
   if (command === 'retention') { await runtime!.runRetention(Date.now()); }
   else if (command === 'seed-events') {
     const {messages}=JSON.parse(readFileSync('/data/manual-seed.json','utf8'));
@@ -61,9 +62,12 @@ try {
     const signed = await response.json();
     const cert = readFileSync('/run/fixture/tls.crt','utf8');
     const fetcher: typeof fetch = async () => new Response(cert);
-    const pending:Promise<unknown>[]=[];
     const result = await handleSesEvent(new Request('http://fixture/v1/events/ses', { method:'POST', headers:{'x-amz-sns-message-type':'Notification'}, body:JSON.stringify(signed) }),
-      { store, emitEvent:runtime!.emitEvent, waitUntil:task=>pending.push(task), ...parseKeyring(process.env), options:cfg.events!.ses, verify:createVerifier(fetcher), now:Date.now, logging:cfg.logging, notifier:createNtfyNotifier({NTFY_URL:process.env.NTFY_URL,NTFY_TOKEN:process.env.NTFY_TOKEN}) });
-    await Promise.all(pending); console.log(result.status, await result.text());
+      { store, emitEvent:runtime!.emitEvent, waitUntil, ...parseKeyring(process.env), options:cfg.events!.ses, verify:createVerifier(fetcher), now:Date.now, logging:cfg.logging, notifier:createNtfyNotifier({NTFY_URL:process.env.NTFY_URL,NTFY_TOKEN:process.env.NTFY_TOKEN}) });
+    return { status: result.status, body: await result.json(), messageId };
   } else throw new Error('Use seed|expire|retention|event MESSAGE_ID [Bounce|Complaint|Delivery] [EVENT_ID]');
-} finally { await store.db.destroy(); }
+}, async () => { await store.db.destroy(); });
+if (result) {
+  console.log(JSON.stringify({ ...result, background: 'drained', webhookDelivery: 'not_confirmed' }));
+  if (result.status !== 200) process.exitCode = 1;
+}
