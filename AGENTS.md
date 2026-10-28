@@ -591,10 +591,28 @@ Sellf requires a Bearer client with `hook:sellf` scope. If that client configure
 `X-Sellf-Signature: t=<unix>,v1=<hex>` are additionally required. The signature is
 HMAC-SHA256 over `${t}.${rawBody}` with a 300-second tolerance. Missing or invalid
 signatures return `401 unauthorized`. Configure the secret in the runtime, never in
-the JSON file. Sellf uses automatic idempotency key
-`sellf:<event>:<order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]>`
-and the order/payment identifier as `ref` when present. Duplicate delivery sends once;
-conflicts, pending attempts and unknown outcomes follow the table above.
+the JSON file. Refunds use automatic idempotency key
+`"sellf:refund.issued:" + JSON.stringify([brandId, refund.stripeRefundId])`, scoped
+further to the authenticated client by the delivery pipeline. A missing, null or
+blank refund ID is rejected with `422 invalid_event_data`; there is no payment/body
+fallback. Different refund IDs for one payment create separate sends. The refund
+`ref` remains the payment identifier (PI preferred, CS fallback), separate from the
+refund ID shown in the notice. The notice includes the product, payment identifiers,
+refund ID, succeeded status, explicit full/partial flag, this refund's amount,
+cumulative total and currency, refundedAt, and reason only when supplied.
+
+Other events retain their existing keys: purchases use
+`sellf:purchase.completed:<order.paymentIntentId|order.sessionId>`; remaining mapped
+events use `sellf:<event>:<order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]>`.
+Duplicate delivery sends once; conflicts, pending attempts and unknown outcomes
+follow the table above. Conflict comparison covers the mapped delivery intent,
+not unused source fields; level `none` compares only the key.
+
+Automatic keys retain the existing 24-hour lifetime. Previously stored refund keys
+used the payment identifier and are not converted or looked up by the new formula.
+A retry of a refund processed before this change can therefore send again, even
+while its old key is still within 24 hours. There is no cross-version deduplication
+guarantee; reconcile earlier refunds before retrying them.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
 Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends

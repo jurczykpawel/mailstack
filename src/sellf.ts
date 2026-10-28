@@ -152,7 +152,7 @@ const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
     const product = obj(data, "product");
     const payment = obj(data, "payment");
     const txId =
-      str(payment, "sessionId") || str(payment, "paymentIntentId") || "-";
+      str(payment, "paymentIntentId") || str(payment, "sessionId");
     return {
       template: "notice",
       to: str(customer, "email"),
@@ -165,6 +165,13 @@ const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
             "name",
           )}.`,
           `Numer transakcji: ${txId}.`,
+          `Identyfikator płatności: ${str(payment, "id")}.`,
+          `Identyfikator zwrotu: ${str(refund, "stripeRefundId")}.`,
+          "Status zwrotu: zakończony (succeeded).",
+          `Zakres zwrotu: ${refund.isFullRefund ? "pełny" : "częściowy"}.`,
+          `Łącznie zwrócono: ${money(refund.totalRefunded)} ${upper(refund.currency)}.`,
+          `Data zwrotu: ${str(refund, "refundedAt")}.`,
+          ...(typeof refund.reason === "string" && refund.reason.trim() ? [`Powód: ${refund.reason}.`] : []),
         ].join("\n\n"),
       },
     };
@@ -297,10 +304,15 @@ export async function handleSellfHook(
 
   const order = obj(envelope.data, "order");
   const payment = obj(envelope.data, "payment");
-  const ref = event === "purchase.completed"
+  const refund = obj(envelope.data, "refund");
+  const ref = event === "refund.issued"
+    ? str(payment, "paymentIntentId") || str(payment, "sessionId")
+    : event === "purchase.completed"
     ? str(order, "paymentIntentId") || str(order, "sessionId")
     : str(order, "sessionId") || str(order, "paymentIntentId") || str(payment, "sessionId") || str(payment, "paymentIntentId");
-  const idempotencyKey = `sellf:${event}:${ref || (await tokenSha256(rawBody)).slice(0, 32)}`;
+  const idempotencyKey = event === "refund.issued"
+    ? `sellf:${event}:${JSON.stringify([brandId, str(refund, "stripeRefundId")])}`
+    : `sellf:${event}:${ref || (await tokenSha256(rawBody)).slice(0, 32)}`;
   const result = await renderAndSend(deps, env, brand, template, mapped.data, {
     to: [to],
     replyTo: brand.to[0],
