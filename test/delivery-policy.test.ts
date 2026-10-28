@@ -16,6 +16,7 @@ import { loadExtensions } from '../src/runtime/extensions';
 import { tokenSha256 } from '../src/clients';
 import { signPanelAssertion } from '../src/core/panel';
 import { idempotencyHash } from '../src/core/logging/writer';
+import { recordEvents, eventId } from '../src/core/store/events';
 import { runRetention } from '../src/core/retention';
 import type { Env, SendDeps } from '../src/types';
 
@@ -171,6 +172,48 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     await store.markFailed(recipient.message_id, 'sealed');
     expect((await store.db.selectFrom('recipients').select('status').orderBy('pos').execute()).map(r => r.status))
       .toEqual(['accepted', 'send_failed', 'send_failed']);
+  });
+  it.each((['accepted', 'delay', 'delivered', 'bounce_permanent', 'bounce_transient', 'bounce_undetermined', 'reject', 'render_failure'] as const)
+    .flatMap(status => (['success', 'refusal', 'exception', 'fallback'] as const).map(outcome => ({ status, outcome }))))(
+    'retains $status events through late $outcome', async ({ status, outcome }) => {
+      sender.mockImplementationOnce(async (_env, params) => {
+        const row = { id: eventId(now), message_id: params.messageId!, recipient_pos: 0, source: 'ses-sns',
+          source_event_id: outcome, type: status, occurred_at: now, received_at: now,
+          auth: 'sns-sig-v2', summary: 'Provider outcome', evidence_sealed: 'provider-evidence' };
+        await recordEvents(store, [row, { ...row, id: eventId(now), source_event_id: outcome + '-complaint', type: 'complaint' }]);
+        if (outcome === 'exception') throw new Error('SMTP interrupted');
+        return { ok: outcome === 'success', status: outcome === 'success' ? 200 : 400, messageId: 'provider-id',
+          smtp: { accepted: ['buyer@acme.example'], rejected: [] } };
+      });
+      const finalizer = outcome === 'fallback' ? vi.spyOn(store, 'markFailed').mockRejectedValueOnce(new Error('Write unavailable')) : undefined;
+      const result = await call('masked', outcome).finally(() => { finalizer?.mockRestore(); });
+      expect(await store.db.selectFrom('messages').select(['status', 'complained']).where('id', '=', result.id!).executeTakeFirst())
+        .toEqual({ status, complained: 1 });
+      expect(await store.db.selectFrom('recipients').select(['status', 'last_event_at']).where('message_id', '=', result.id!).execute())
+        .toEqual([{ status, last_event_at: now }]);
+      const evidence = (await sql<{ type: string; evidence_sealed: string }>`select type,evidence_sealed from events
+        where message_id=${result.id!} and source='ses-sns' order by type`.execute(store.db)).rows;
+      expect(evidence).toEqual([status, 'complaint'].sort().map(type => ({ type, evidence_sealed: 'provider-evidence' })));
+      if (outcome === 'success') expect(await store.db.selectFrom('messages').select(['provider_message_id', 'sent_at'])
+        .where('id', '=', result.id!).executeTakeFirst()).toEqual({ provider_message_id: 'provider-id', sent_at: now });
+      expect(await call('none', outcome)).toMatchObject({ ok: true, idempotent: true, id: result.id });
+      expect(sender).toHaveBeenCalledTimes(1);
+    });
+  it.each(['markFailed', 'setStatus'] as const)('resolves stale recipients after a late refusal through %s', async method => {
+    await call('masked');
+    const [recipient] = await store.db.selectFrom('recipients').selectAll().execute();
+    const states = ['sending', 'unknown', 'accepted', 'send_failed', 'delivered', 'bounce_permanent', 'bounce_transient', 'bounce_undetermined', 'reject', 'render_failure'] as const;
+    await store.db.deleteFrom('recipients').execute();
+    for (const [pos, status] of states.entries()) await store.db.insertInto('recipients').values({ ...recipient, pos, status }).execute();
+    await store.db.updateTable('messages').set({ status: 'sending' }).execute();
+    now += 900001;
+    await restart();
+    await runRetention(store, now, configuration('masked'));
+    if (method === 'markFailed') await store.markFailed(recipient.message_id, 'sealed');
+    else await store.setStatus(recipient.message_id, 'send_failed');
+    expect(await store.db.selectFrom('messages').select('status').execute()).toEqual([{ status: 'send_failed' }]);
+    expect((await store.db.selectFrom('recipients').select('status').orderBy('pos').execute()).map(r => r.status))
+      .toEqual(['send_failed', 'send_failed', ...states.slice(2)]);
   });
   it('does not recreate message children after erasure and late finalization', async () => {
     await call('masked');

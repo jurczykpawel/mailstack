@@ -735,7 +735,10 @@ An explicit refusal permits a matching request to retry under the current policy
 An exception or timeout marks unresolved recipients `unknown` along with the message.
 Retention applies the same update to `sending` attempts older than 15 minutes, including
 after restart. Known recipient outcomes, partial SMTP relay acceptance/refusal and the
-message complaint flag remain intact. Reconciliation never sends email automatically.
+message complaint flag remain intact. Late send finalization also preserves established
+provider delivery outcomes and their evidence. An explicit late refusal resolves both
+`sending` and `unknown` recipients without changing known recipient outcomes.
+Reconciliation never sends email automatically.
 An `unknown` result needs provider reconciliation before considering another send.
 The operator panel is supplied by an extension. The SES adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request

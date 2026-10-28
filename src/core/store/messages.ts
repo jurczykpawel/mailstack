@@ -45,6 +45,9 @@ export interface MessageStore {
 }
 export type AtomicBatch = (queries: CompiledQuery[]) => Promise<number[]>;
 
+const finalizedStatus = (status: MessageStatus) =>
+  sql<MessageStatus>`case when status in ('sending', 'unknown', 'sent', 'send_failed') then ${status} else status end`;
+
 export class MessageOperations implements MessageStore {
   readonly db: Kysely<Database>;
   private readonly atomic?: AtomicBatch;
@@ -105,7 +108,7 @@ export class MessageOperations implements MessageStore {
   }
 
   async markSent(id: string, update: SentUpdate): Promise<void> {
-    const queries = [this.db.updateTable('messages').set({ status: 'sent', provider_message_id: update.providerMessageId,
+    const queries = [this.db.updateTable('messages').set({ status: finalizedStatus('sent'), provider_message_id: update.providerMessageId,
       provider_response_sealed: update.providerResponseSealed, sent_at: update.sentAt }).where('id', '=', id).compile()];
     if (update.smtp) {
       for (const [type, positions] of [['accepted', update.smtp.accepted], ['send_failed', update.smtp.rejected]] as const) {
@@ -122,15 +125,15 @@ export class MessageOperations implements MessageStore {
 
   async markFailed(id: string, providerResponseSealed: string): Promise<void> {
     await this.batch([
-      this.db.updateTable('messages').set({ status: 'send_failed', provider_response_sealed: providerResponseSealed }).where('id', '=', id),
-      this.db.updateTable('recipients').set({ status: 'send_failed' }).where('message_id', '=', id).where('status', '=', 'sending'),
+      this.db.updateTable('messages').set({ status: finalizedStatus('send_failed'), provider_response_sealed: providerResponseSealed }).where('id', '=', id),
+      this.db.updateTable('recipients').set({ status: 'send_failed' }).where('message_id', '=', id).where('status', 'in', ['sending', 'unknown']),
     ].map(query => query.compile()));
   }
 
   async setStatus(id: string, status: MessageStatus): Promise<void> {
     await this.batch([
-      this.db.updateTable('messages').set({ status }).where('id', '=', id),
-      this.db.updateTable('recipients').set({ status }).where('message_id', '=', id).where('status', '=', 'sending'),
+      this.db.updateTable('messages').set({ status: finalizedStatus(status) }).where('id', '=', id),
+      this.db.updateTable('recipients').set({ status }).where('message_id', '=', id).where('status', 'in', ['sending', 'unknown']),
     ].map(query => query.compile()));
   }
 
