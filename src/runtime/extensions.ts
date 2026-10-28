@@ -142,7 +142,7 @@ export async function loadExtensions(config: Config, store: KyselyStore,
   }
   const emitEvent: EmitEvent = (input, waitUntil) => {
     const { type, at, brand, template, status, ref, messageId } = input;
-    const event = { id: eventId(at), type, at, brand, template, status, ...(ref === undefined ? {} : { ref }), ...(messageId === undefined ? {} : { messageId }) };
+    const event = { id: eventId(at), type, at, brand, template, status, messageId, ...(ref === undefined ? {} : { ref }) };
     const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
     if (waitUntil) { try { waitUntil(task); } catch {} }
   };

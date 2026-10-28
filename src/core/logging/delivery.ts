@@ -6,7 +6,7 @@ import { seal, verifyMac } from '../crypto';
 import { parseKeyring } from '../keyring';
 import type { MessageRow } from '../store/messages';
 import { resolvePolicy } from './policy';
-import { idempotencyHash, intentRequest, recordIntent } from './writer';
+import { idempotencyHash, intentRequest, messageId, recordIntent } from './writer';
 
 export interface DeliveryContext {
   clientId?: string;
@@ -90,9 +90,10 @@ export async function deliver(
       break;
     }
   }
+  const correlationId = id ?? messageId(deps.now().getTime());
   const emit = (status: 'sent' | 'send_failed' | 'unknown') => deps.emitEvent?.({
     type: `message.${status}`, at: deps.now().getTime(), brand: brand.id, template: template.id, status,
-    ...(id ? { messageId: id } : {}), ...(context.ref === undefined ? {} : { ref: context.ref }),
+    messageId: correlationId, ...(context.ref === undefined ? {} : { ref: context.ref }),
   }, deps.waitUntil);
   const alert = (type: string) => {
     if (!id) return;
@@ -108,7 +109,7 @@ export async function deliver(
     if (id) await deps.store!.setStatus(id, 'unknown').catch(() => {});
     emit('unknown');
     await alert('unknown');
-    return { ...failure(502, 'send_failed'), id };
+    return { ...failure(502, 'send_failed'), id, correlationId };
   }
   if (!result.ok && guardKey && !id) await deps.store!.release(guardKey).catch(() => {});
   if (id) {
@@ -125,10 +126,10 @@ export async function deliver(
       } else await deps.store!.markFailed(id, sealed);
     } catch {
       await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed').catch(() => {});
-      if (result.ok) { emit('unknown'); await alert('unknown'); return { ...failure(502, 'send_failed'), id }; }
+      if (result.ok) { emit('unknown'); await alert('unknown'); return { ...failure(502, 'send_failed'), id, correlationId }; }
     }
   }
   emit(result.ok ? 'sent' : 'send_failed');
   if (!result.ok) await alert('send_failed');
-  return result.ok ? { ok: true, status: 200, id } : { ...failure(502, 'send_failed'), id };
+  return result.ok ? { ok: true, status: 200, id, correlationId } : { ...failure(502, 'send_failed'), id, correlationId };
 }

@@ -41,7 +41,7 @@ export async function idempotencyHash(clientId: string, key: string): Promise<st
   return btoa(String.fromCharCode(...new Uint8Array(digest))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
-function messageId(now: number): string {
+export function messageId(now: number): string {
   const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
   let value = (BigInt(now) << 80n) | BigInt('0x' + Array.from(crypto.getRandomValues(new Uint8Array(10)), b => b.toString(16).padStart(2, '0')).join(''));
   let id = '';

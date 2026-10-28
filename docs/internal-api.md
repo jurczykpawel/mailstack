@@ -116,3 +116,41 @@ archives and replay payloads. Provider responses and event evidence follow metad
 retention, independently of archive expiry, both in evidence reads and subject
 exports. A source read can still return a retained sealed ref.
 Requests have a 64 KiB body limit and an 8 KiB URL limit. No route decrypts history.
+
+## Extension domain events
+
+`Extension.onEvent(event, ctx)` receives the `DomainEvent` contract from
+`src/core/extensions.ts`. `EmitEvent` accepts the same fields except `id`, which
+Node assigns once per event before passing it to extensions.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | nonempty opaque string | Event identity; separate events have separate IDs. |
+| `messageId` | nonempty opaque string | Message identity, stable across events for the same delivery attempt. |
+| `type` | string union | `message.sent`, `message.send_failed`, `message.unknown`, `message.delivered`, `message.bounced`, `message.complained`, or `form.submitted`. |
+| `at` | number | Event emission time, epoch milliseconds. |
+| `brand`, `template` | string | Configured brand and template IDs. |
+| `status` | string | Recorded delivery state, or the attempt outcome when unrecorded. |
+| `ref` | optional string | Independent caller correlation; never required for message correlation. |
+
+For recorded sends, `messageId` equals `messages.id` and the trusted send/hook
+response `id`. SES events retain that ID, including when Bounce precedes Delivery;
+`type` describes the event while `status` reflects the current projection. Neither
+an event ID nor a provider's `MessageId` is a substitute for the domain message ID.
+Two messages without `ref` have different message IDs. Core events contain no
+recipient addresses, subjects or message content. Treat the optional caller-supplied
+`ref` according to the extension's disclosure policy.
+
+At logging level `none`, or when optional logging is unavailable, the pipeline
+creates one ephemeral message ID for each actual send attempt. It writes no message
+row or content for that ID. The send outcome and a successful public
+`form.submitted` share it; an auto-reply is a separate attempt with its own ID.
+The internal result field `correlationId` carries this value to the form handler;
+`deliveryResponse` never exposes it. Public and unrecorded API responses remain
+unchanged. A `none` guard does not retain this ID, and later SNS events cannot
+recover it without a message row. Deduplication emits no new send event or attempt
+ID. A refusal before sending due to required logging emits no mail event.
+
+For SMTP, `message.sent` means acceptance by the configured relay, not confirmed
+recipient delivery. Extension consumers must preserve `messageId` when forwarding
+an event and use `id` independently to deduplicate that event.

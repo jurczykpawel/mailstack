@@ -16,7 +16,8 @@ import { handleSesEvent } from '../src/events/ses';
 import { signPanelAssertion } from '../src/core/panel';
 import { tokenSha256 } from '../src/clients';
 import { blindIndex } from '../src/core/crypto';
-import { options, notification, request } from './sns-fixture';
+import { options, notification, request, certificates, signed } from './sns-fixture';
+import { createVerifier } from '../src/events/sns';
 import type { Env, SendDeps } from '../src/types';
 
 let store: ReturnType<typeof createSqliteStore>;
@@ -56,8 +57,9 @@ it('passes options and a limited context to the module', async () => {
   expect(factory).toHaveBeenCalledWith({ mode: 'test' });
   expect(await runtime.fetch(new Request('http://localhost/internal/ext/demo/'), env)).toHaveProperty('status', 401);
   const onEvent = vi.fn(); const loaded = await load({ name: 'demo', onEvent });
-  loaded.emitEvent({ type: 'message.sent', at: 1, brand: 'acme', template: 'notice', status: 'sent' }, waitUntil);
+  loaded.emitEvent({ type: 'message.sent', at: 1, brand: 'acme', template: 'notice', status: 'sent', messageId: 'msg_original' }, waitUntil);
   await Promise.all(tasks);
+  expect(onEvent.mock.calls[0][0]).toMatchObject({ messageId: 'msg_original', id: expect.stringMatching(/^evt_/) });
   const context = onEvent.mock.calls[0][1];
   expect(Object.keys(context).sort()).toEqual(['appendAudit', 'config', 'db', 'now']);
   expect(Object.keys(context.config).sort()).toEqual(['brands', 'logging']);
@@ -112,6 +114,8 @@ it.each(['sent', 'send_failed', 'unknown'] as const)('emits one event after reco
   expect(response.status).toBe(outcome === 'sent' ? 200 : 502);
   expect(received).toHaveLength(outcome === 'send_failed' ? 2 : 1);
   expect(statuses).toEqual(received.map(() => outcome));
+  expect(received[0].messageId).toBe((await response.json() as { id: string }).id);
+  expect(new Set(received.map(event => event.messageId)).size).toBe(received.length);
   expect(received[0]).toMatchObject({ type: `message.${outcome}`, brand: 'acme', template: 'contact', status: outcome });
   for (const event of received) {
     expect(Object.keys(event).sort()).toEqual(['at', 'brand', 'id', 'messageId', 'status', 'template', 'type']);
@@ -203,4 +207,120 @@ it('provides an opted-in route with a scoped resend capability', async () => {
   expect(context!.resend).toBeDefined();
   await expect(context!.db.selectFrom('messages').selectAll().execute()).rejects.toThrow();
   await expect(sql`select * from messages`.execute(context!.db)).rejects.toThrow();
+});
+
+async function drainEvents() {
+  for (let i = 0; i < tasks.length; i++) await tasks[i];
+}
+
+it('correlates two payments without ref through signed SES events in either order', async () => {
+  const received: DomainEvent[] = [];
+  const runtime = await load({ name: 'demo', onEvent: event => { received.push(event); } });
+  const sendEmail = vi.fn<SendDeps['sendEmail']>().mockResolvedValue({ ok: true, status: 200, messageId: 'provider-only' });
+  const logging = structuredClone(config.logging); logging.defaults.level = 'meta';
+  const deps: SendDeps = { store, logging, sendEmail, now: () => new Date(), verifyAltcha: vi.fn(),
+    verifyTurnstile: vi.fn(), emitEvent: runtime.emitEvent, waitUntil };
+  const ids: string[] = [];
+  for (const amount of ['10.00', '20.00']) {
+    const response = await handleSend(new Request('https://mail.example/v1/send', { method: 'POST',
+      headers: { authorization: 'Bearer test-key', 'Idempotency-Key': amount },
+      body: JSON.stringify({ brand: 'acme', template: 'payment', amount }) }), env, deps);
+    expect(response.status).toBe(200);
+    ids.push((await response.json() as { id: string }).id);
+  }
+  expect(ids[0]).toMatch(/^msg_/); expect(ids[1]).not.toBe(ids[0]);
+  expect((await store.db.selectFrom('messages').select('id').execute()).map(row => row.id).sort()).toEqual([...ids].sort());
+  await drainEvents();
+  expect(received.map(event => event.messageId)).toEqual(ids);
+  const { cert, key } = certificates();
+  const eventDeps = { options, store, verify: createVerifier(async () => new Response(cert)),
+    contentKeys: keys, indexKeys: indices, now: Date.now, emitEvent: runtime.emitEvent, waitUntil };
+  const sequences = [['Delivery', 'Bounce', 'Complaint'], ['Bounce', 'Delivery', 'Complaint']];
+  for (const [index, id] of ids.entries()) {
+    for (const type of sequences[index]) {
+      const body = signed(key, notification(type, {
+        mail: { messageId: 'provider-only', tags: { ms_id: [id] } },
+        delivery: { recipients: ['inbox@acme.example'] },
+        bounce: { bounceType: 'Permanent', bouncedRecipients: ['inbox@acme.example'] },
+        complaint: { complainedRecipients: ['inbox@acme.example'] },
+      }));
+      expect(await (await handleSesEvent(request(body), eventDeps)).json()).toEqual({ ok: true, result: 'processed' });
+      await drainEvents();
+      expect(received.at(-1)).toMatchObject({ messageId: id, type: {
+        Delivery: 'message.delivered', Bounce: 'message.bounced', Complaint: 'message.complained',
+      }[type] });
+      const count = received.length;
+      expect(await (await handleSesEvent(request(body), eventDeps)).json()).toEqual({ ok: true, result: 'duplicate' });
+      await drainEvents(); expect(received).toHaveLength(count);
+    }
+  }
+  expect(new Set(received.map(event => event.id)).size).toBe(8);
+  expect(received.every(event => event.ref === undefined && event.messageId !== event.id && event.messageId !== 'provider-only')).toBe(true);
+  expect(received.filter(event => event.messageId === ids[1]).map(event => event.status))
+    .toEqual(['sent', 'bounce_permanent', 'bounce_permanent', 'bounce_permanent']);
+});
+
+it.each(['none', 'missing-store', 'failed-write', 'missing-keys'] as const)(
+  'correlates unrecorded attempts and public forms with %s', async mode => {
+    const received: DomainEvent[] = [];
+    const runtime = await load({ name: 'demo', onEvent: event => { received.push(event); } });
+    const logging = structuredClone(config.logging);
+    logging.defaults.level = mode === 'none' ? 'none' : 'meta';
+    logging.defaults.requireLog = false;
+    if (mode === 'failed-write') vi.spyOn(store, 'insertMessage').mockRejectedValue(new Error('Unavailable'));
+    const sendEmail = vi.fn<SendDeps['sendEmail']>().mockResolvedValue({ ok: true, status: 200, messageId: 'provider-only' });
+    const deps: SendDeps = { store: mode === 'missing-store' ? undefined : store, logging, sendEmail,
+      now: () => new Date(), verifyAltcha: async () => true, verifyTurnstile: async () => true,
+      emitEvent: runtime.emitEvent, waitUntil };
+    const sendEnv = mode === 'missing-keys' ? { API_KEY: 'test-key' } as Env : env;
+    for (const publicForm of [false, true]) {
+      const response = await handleSend(new Request('https://mail.example/v1/send', { method: 'POST',
+        headers: publicForm ? { origin: 'https://acme.example' } : { authorization: 'Bearer test-key' },
+        body: JSON.stringify({ brand: 'acme', template: 'payment', autoreply: false, 'cf-turnstile-response': 'token' }) }), sendEnv, deps);
+      expect(await response.json()).toEqual({ success: true });
+    }
+    await drainEvents();
+    expect(received.map(event => event.type)).toEqual(['message.sent', 'message.sent', 'form.submitted']);
+    for (const event of received) expect(event.messageId).toMatch(/^msg_[0-9A-Z]+$/);
+    expect(received[0].messageId).not.toBe(received[1].messageId);
+    expect(received[1].messageId).toBe(received[2].messageId);
+    expect(received.every(event => event.messageId !== 'provider-only')).toBe(true);
+    expect(await store.db.selectFrom('messages').selectAll().execute()).toEqual([]);
+    expect(await store.db.selectFrom('contents').selectAll().execute()).toEqual([]);
+    expect(sendEmail.mock.calls.every(([, params]) => params.messageId === undefined)).toBe(true);
+  });
+
+it.each(['sent', 'send_failed', 'unknown'] as const)('keeps unrecorded %s attempts separate from deduplication', async outcome => {
+  const received: DomainEvent[] = [];
+  const runtime = await load({ name: 'demo', onEvent: event => { received.push(event); } });
+  const logging = structuredClone(config.logging); logging.defaults.level = 'none';
+  const sendEmail = vi.fn<SendDeps['sendEmail']>().mockImplementation(async () => {
+    if (outcome === 'unknown') throw new Error('Unavailable');
+    return { ok: outcome === 'sent', status: 200, messageId: 'provider-only' };
+  });
+  const deps: SendDeps = { store, logging, sendEmail, now: () => new Date(), verifyAltcha: vi.fn(),
+    verifyTurnstile: vi.fn(), emitEvent: runtime.emitEvent, waitUntil };
+  const req = () => new Request('https://mail.example/v1/send', { method: 'POST',
+    headers: { authorization: 'Bearer test-key', 'Idempotency-Key': 'same' }, body: JSON.stringify({ brand: 'acme', template: 'payment' }) });
+  const first = await handleSend(req(), env, deps);
+  expect(await first.json()).toEqual(outcome === 'sent' ? { success: true } : { success: false, message: 'send failed', code: 'send_failed' });
+  const second = await handleSend(req(), env, deps);
+  expect(await second.json()).toEqual(outcome === 'send_failed' ? { success: false, message: 'send failed', code: 'send_failed' } : { success: true, idempotent: true });
+  await drainEvents();
+  expect(received).toHaveLength(outcome === 'send_failed' ? 2 : 1);
+  expect(new Set(received.map(event => event.messageId)).size).toBe(received.length);
+  for (const event of received) expect(event).toMatchObject({ type: `message.${outcome}`, messageId: expect.stringMatching(/^msg_/) });
+  expect(sendEmail).toHaveBeenCalledTimes(received.length);
+  expect(await store.db.selectFrom('messages').selectAll().execute()).toEqual([]);
+});
+
+it('emits no mail event when required logging fails before the send', async () => {
+  const onEvent = vi.fn(); const runtime = await load({ name: 'demo', onEvent });
+  const logging = structuredClone(config.logging); logging.defaults.level = 'meta'; logging.defaults.requireLog = true;
+  const sendEmail = vi.fn();
+  const response = await handleSend(new Request('https://mail.example/v1/send', { method: 'POST',
+    headers: { authorization: 'Bearer test-key' }, body: JSON.stringify({ brand: 'acme', template: 'payment' }) }), env,
+  { logging, sendEmail, now: () => new Date(), verifyAltcha: vi.fn(), verifyTurnstile: vi.fn(), emitEvent: runtime.emitEvent, waitUntil });
+  expect(response.status).toBe(503);
+  await drainEvents(); expect(onEvent).not.toHaveBeenCalled(); expect(sendEmail).not.toHaveBeenCalled();
 });

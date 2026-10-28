@@ -335,9 +335,9 @@ export async function handleSend(
     );
   }
 
-  if (!trusted && template.id === 'contact') deps.emitEvent?.({
+  if (!trusted && template.id === 'contact' && result.correlationId) deps.emitEvent?.({
     type: 'form.submitted', at: deps.now().getTime(), brand: brand.id, template: template.id, status: 'sent',
-    ...(result.id ? { messageId: result.id } : {}),
+    messageId: result.correlationId,
   }, deps.waitUntil);
 
   // Best-effort auto-reply to the submitter (public contact form only), dispatched

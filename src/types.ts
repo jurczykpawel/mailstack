@@ -135,6 +135,8 @@ export interface SendResult {
   messageId?: string;
   response?: unknown;
   id?: string;
+  /** Internal domain-event correlation for an executed delivery attempt. */
+  correlationId?: string;
   idempotent?: true;
   code?: string;
   message?: string;

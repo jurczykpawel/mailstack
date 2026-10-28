@@ -6,7 +6,7 @@ import type { Config } from './config/schema';
 export interface DomainEvent {
   id: string;
   type: 'message.sent' | 'message.send_failed' | 'message.unknown' | 'message.delivered' | 'message.bounced' | 'message.complained' | 'form.submitted';
-  at: number; brand: string; template: string; status: string; ref?: string; messageId?: string;
+  at: number; brand: string; template: string; status: string; ref?: string; messageId: string;
 }
 export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>>;
 export interface ExtensionContext {
