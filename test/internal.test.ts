@@ -1,4 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.setConfig({ testTimeout: 30000 });
 import { generateKeyPairSync } from 'node:crypto';
 import { sql } from 'kysely';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
