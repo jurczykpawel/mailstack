@@ -1,6 +1,6 @@
 import pathlib,sys,collections
 root=pathlib.Path(sys.argv[1]); lines=['# Podsumowanie testów manualnych','','Liczby pochodzą wyłącznie z unikalnego rejestru FINDING. Brak raportu/stopki nie oznacza PASS.','','| Przebieg | Stan | BŁĄD B/P/D/K | UWAGA B/P/D/K | Raport |','|---|---|---|---|---|']
-for id in ['REG-A','REG-B','EXP-1','EXP-2']:
+for id in ['REG-A','REG-B','EXP-1','RETEST','EXP-2','INTEGRATOR']:
     path=root/f'priv/reports/manual-{id}.md'; text=path.read_text() if path.exists() else ''
     counts={kind:collections.Counter() for kind in ['BŁĄD','UWAGA']}; seen=set()
     for line in text.splitlines():
