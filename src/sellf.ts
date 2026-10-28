@@ -10,7 +10,6 @@ import { renderAndSend } from "./send";
 // Brand used when the request omits `?brand=`. Override per deployment with the
 // SELLF_DEFAULT_BRAND var (wrangler.toml [vars]); falls back to "acme" (demo).
 const FALLBACK_BRAND = "acme";
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const nonempty = z.string().refine(value => value.trim().length > 0);
 const isoTimestamp = z.iso.datetime({ offset: true });
@@ -35,7 +34,7 @@ const transaction = z.object({
   }
 });
 const commonData = z.object({
-  customer: z.object({ email: z.string().trim().regex(EMAIL_RE) }),
+  customer: z.object({ email: z.string().trim().pipe(z.email()) }),
   product: z.object({ name: nonempty }),
 });
 const purchaseData = commonData.extend({ order: transaction });

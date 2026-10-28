@@ -419,6 +419,35 @@ function replacePath(input: Record<string, unknown>, path: string, value: unknow
 }
 
 const absent = [undefined, null, '', '   '];
+const mappedEvents = ['purchase.completed', 'refund.issued', 'waitlist.signup', 'lead.captured', 'access.expired'];
+const invalidRecipients = ['buyer@example..com', 'buyer@-example.com', 'buyer@example.com,other'];
+it.each(mappedEvents.flatMap(event => invalidRecipients.map(email => [event, email])))('validates the recipient for %s (%s)', async (event, email) => {
+  const corrected = event === 'refund.issued' ? refundBody() : { ...hookBody, event };
+  const payload = replacePath(corrected, 'data.customer.email', email);
+  const response = await hook(JSON.stringify(payload));
+  expect(response.status).toBe(422);
+  expect(await response.json()).toEqual({
+    success: false, code: 'invalid_event_data', message: 'invalid event data', fields: ['data.customer.email'],
+  });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+
+  const accepted = await hook(JSON.stringify(corrected));
+  expect(accepted.status).toBe(200);
+  const first = await accepted.json() as { success: boolean; id: string };
+  expect(first).toEqual({ success: true, id: expect.stringMatching(/^msg_/) });
+  expect(await (await hook(JSON.stringify(corrected))).json()).toEqual({ ...first, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledExactlyOnceWith(env, expect.objectContaining({ to: ['buyer@example.com'] }));
+  expect(await rows()).toHaveLength(1);
+});
+
+it.each(['buyer+orders@example.com', 'first.last@shop.example.com', '  buyer@example.com  '])('accepts a single recipient %s', async email => {
+  const response = await hook(JSON.stringify(replacePath(hookBody, 'data.customer.email', email)));
+  expect(response.status).toBe(200);
+  expect(deps.sendEmail).toHaveBeenCalledExactlyOnceWith(env, expect.objectContaining({ to: [email.trim()] }));
+});
+
 const invalidEvents: [string, Record<string, unknown>][] = [];
 for (const path of ['data.customer.email', 'data.product.name', 'data.order.currency']) {
   for (const value of [...absent, 42]) invalidEvents.push([path, replacePath(hookBody, path, value)]);
