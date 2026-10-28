@@ -941,6 +941,33 @@ return `415 attachment_type`; invalid shape, filename, base64, magic bytes, coun
 decoded total returns `422 attachment_invalid`. Oversized bodies return `413` with
 `message: "payload too large"`.
 
+The Node API Compose budget is **512 MiB**, separate from the SMTP sink. It is
+sized for sequential requests up to 10 MiB JSON and 7 MiB decoded attachments.
+Keep at most **one large send in flight per instance**, including the provider send;
+serialize these sends in the caller or proxy. The listener does not enforce this
+concurrency bound. More concurrent large requests, extensions, maintenance and larger
+archives require their own measured budget; 512 MiB does not cover arbitrary concurrency.
+Leave host memory for the sink, panel, filesystem cache and other processes.
+
+`node scripts/attachment-profile.mjs` runs a bounded, sequential regression in a
+separate Node API process with real loopback HTTP, SQLite logging and SMTP MIME.
+It checks eight prior small sends, 1 MiB, 7 MiB, five files totalling 7 MiB,
+decoded limit + 1, JSON bodies at 10 MiB / + 1, eight later small sends,
+health, decoded MIME SHA-256 and decrypted archive exclusions. `--fresh` measures
+one 7 MiB send without warmup. The RSS ceiling is 384 MiB, leaving 128 MiB of the
+Compose budget outside this profile. RSS is not a cgroup measurement.
+
+For Linux container validation, `node scripts/attachment-cgroup.mjs` creates one
+isolated TEST Compose project, uses an internal-only network and loopback ports,
+and removes its containers, volumes and local image afterward. It refuses to run
+alongside another Compose project and requires cached `node:24-alpine` and
+`axllent/mailpit:v1.29.7` images. It builds the API locally, measures fresh and warm
+runs, records each service's cgroup limit/peak/current/events and process RSS/HWM,
+checks `OOMKilled`, verifies MIME checksums and inbox preservation across a Mailpit
+restart. Save stdout as measurement evidence. Mailpit has its own 512 MiB budget
+and persistent volume. Run this validation on the target runtime before treating
+the container budget as confirmed; the host profiler alone cannot establish that.
+
 SES uses `Content.Simple.Attachments`; SMTP receives decoded buffers. Files and their
 names are excluded from archives and replays. Only `{count,totalBytes,types}` is stored
 in `attachments_meta`. Request MACs include each file's SHA-256, name and type; changing

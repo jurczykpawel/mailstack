@@ -16,7 +16,7 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-    mem_limit: 256m
+    mem_limit: 512m
     stop_grace_period: 60s
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/health').then(async r=>{const h=await r.json();if(!r.ok||h.store!=='ok')process.exit(1)}).catch(()=>process.exit(1))"]
