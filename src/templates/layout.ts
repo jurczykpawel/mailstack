@@ -48,7 +48,7 @@ export function textToHtml(s: string): string {
 
 /** A paragraph block of escaped text (preserves newlines as <br>). */
 export function paragraph(text: string): string {
-  return `<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">${textToHtml(
+  return `<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">${textToHtml(
     text,
   )}</p>`;
 }
@@ -65,10 +65,10 @@ export function ctaButton(brand: Brand, url: string, label: string): string {
   const safeUrl = escapeHtml(href);
   const safeLabel = escapeHtml(label.trim() || "Otwórz");
   return `
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:${accent};">
-                  <a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">${safeLabel}</a>
+                  <a href="${safeUrl}" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">${safeLabel}</a>
                 </td>
               </tr>
             </table>`;
@@ -119,7 +119,7 @@ export function renderLayout(brand: Brand, input: LayoutInput): RenderedEmail {
   const heading = escapeHtml(input.heading);
 
   const header = theme.logoUrl
-    ? `<img src="${escapeHtml(theme.logoUrl)}" alt="${safeName}" height="36" style="height:36px;display:block;border:0;">`
+    ? `<img src="${escapeHtml(theme.logoUrl)}" alt="${safeName}" height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;">`
     : `<span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">${safeName}</span>`;
 
   const preview = input.previewText
@@ -145,12 +145,12 @@ export function renderLayout(brand: Brand, input: LayoutInput): RenderedEmail {
     <title>${heading}</title>
     ${input.headHtml ?? ""}
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:${FONT_STACK};">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:${FONT_STACK};overflow-wrap:anywhere;word-break:break-word;">
     ${preview}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
               <td style="background:${accent};padding:20px 24px;">${header}</td>
             </tr>

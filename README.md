@@ -583,7 +583,10 @@ SMTP DSN polling and generic provider webhooks are not implemented.
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
 closed) · honeypot · fixed recipient / anti-relay · D1 rate limit (8/hour per brand+IP) ·
 constant-time bearer compare · all field values HTML-escaped · 64 KiB (10 MiB for attachment-enabled send clients) / ~40 fields / 5000
-chars-per-value guards · no secrets in code.
+UTF-16 code units per content value · no secrets in code. Content values are capped
+after string-array joining (with blank-line separators). If the boundary falls
+inside a surrogate pair, the whole final character is omitted, leaving 4999 units.
+The request body byte limits remain 64 KiB / 10 MiB.
 
 ### Secret scanning
 TruffleHog runs as a pre-commit hook (`.husky/pre-commit`, skips gracefully if not installed)

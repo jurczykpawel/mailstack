@@ -23,7 +23,7 @@ import { buildBlocks, serializeToHead } from "./markup";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_FIELDS = 40;
-const MAX_VALUE_CHARS = 5000;
+const MAX_VALUE_CODE_UNITS = 5000;
 const MAX_TRUSTED_RECIPIENTS = 5;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_TEMPLATE = "contact";
@@ -83,6 +83,12 @@ function json(
   });
 }
 
+function capValue(value: string): string {
+  let end = Math.min(value.length, MAX_VALUE_CODE_UNITS);
+  if (end < value.length && /[\uD800-\uDBFF]/.test(value[end - 1]) && /[\uDC00-\uDFFF]/.test(value[end])) end--;
+  return value.slice(0, end);
+}
+
 /**
  * Coerce a raw JSON value to a capped string. Arrays of strings are joined with
  * blank lines (so e.g. `notice.paragraphs: [...]` survives as text blocks);
@@ -90,17 +96,17 @@ function json(
  */
 function coerceValue(v: unknown): string {
   if (v === null || v === undefined) return "";
-  if (typeof v === "string") return v.slice(0, MAX_VALUE_CHARS);
+  if (typeof v === "string") return capValue(v);
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
-    return v.join("\n\n").slice(0, MAX_VALUE_CHARS);
+    return capValue(v.join("\n\n"));
   }
   return "";
 }
 
 /** Build the flat content map (non-reserved keys, coerced + capped). */
 function extractData(body: Record<string, unknown>, publicNonce: boolean): TemplateData {
-  const data: TemplateData = {};
+  const data: TemplateData = Object.create(null);
   let count = 0;
   for (const [key, raw] of Object.entries(body)) {
     if (RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;

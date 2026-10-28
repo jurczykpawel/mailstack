@@ -119,14 +119,14 @@ IP: -",
     <title>New message from — Consultation — Acme Inc.</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -274,13 +274,13 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`acme/notice retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Second</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>",
@@ -300,14 +300,14 @@ Open: https://example.com/start",
     <title>Notice</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">First</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -316,13 +316,13 @@ Open: https://example.com/start",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Second</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>
@@ -364,8 +364,8 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`acme/payment retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
@@ -386,10 +386,10 @@ exports[`acme/payment retains its rendering 1`] = `
               </tr>
             </table>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                  <a href="https://example.com/invoice" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
                 </td>
               </tr>
             </table>",
@@ -428,14 +428,14 @@ Pobierz fakturę: https://example.com/invoice",
     <title>Potwierdzenie płatności</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Potwierdzenie płatności: 149.00 USD</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -444,8 +444,8 @@ Pobierz fakturę: https://example.com/invoice",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
@@ -466,10 +466,10 @@ Pobierz fakturę: https://example.com/invoice",
               </tr>
             </table>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                  <a href="https://example.com/invoice" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
                 </td>
               </tr>
             </table>
@@ -519,8 +519,8 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`acme/received retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>",
     "bodyText": "Witaj Jane & Smith,
@@ -541,14 +541,14 @@ Consultation",
     <title>Dziękujemy za wiadomość</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -557,8 +557,8 @@ Consultation",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
               </td>
@@ -601,13 +601,13 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`acme/welcome retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Details</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>",
@@ -627,14 +627,14 @@ Open: https://example.com/start",
     <title>Witaj, Jane &amp; Smith w Acme Inc.!</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Welcome</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -643,13 +643,13 @@ Open: https://example.com/start",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Details</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>
@@ -807,12 +807,12 @@ IP: -",
     <title>New message — Consultation — Demo Brand</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
               <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
             </tr>
@@ -960,13 +960,13 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`demo/notice retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Second</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#008AFF;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>",
@@ -986,12 +986,12 @@ Open: https://example.com/start",
     <title>Notice</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">First</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
               <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
             </tr>
@@ -1002,13 +1002,13 @@ Open: https://example.com/start",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Second</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#008AFF;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>
@@ -1048,8 +1048,8 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`demo/payment retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
@@ -1070,10 +1070,10 @@ exports[`demo/payment retains its rendering 1`] = `
               </tr>
             </table>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#008AFF;">
-                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                  <a href="https://example.com/invoice" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
                 </td>
               </tr>
             </table>",
@@ -1112,12 +1112,12 @@ Pobierz fakturę: https://example.com/invoice",
     <title>Potwierdzenie płatności</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Potwierdzenie płatności: 149.00 USD</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
               <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
             </tr>
@@ -1128,8 +1128,8 @@ Pobierz fakturę: https://example.com/invoice",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
               <tr>
@@ -1150,10 +1150,10 @@ Pobierz fakturę: https://example.com/invoice",
               </tr>
             </table>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#008AFF;">
-                  <a href="https://example.com/invoice" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
+                  <a href="https://example.com/invoice" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Pobierz fakturę</a>
                 </td>
               </tr>
             </table>
@@ -1201,8 +1201,8 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`demo/received retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>",
     "bodyText": "Witaj Jane & Smith,
@@ -1223,12 +1223,12 @@ Consultation",
     <title>Dziękujemy za wiadomość</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
               <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
             </tr>
@@ -1239,8 +1239,8 @@ Consultation",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Witaj Jane &amp; Smith,</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
               </td>
@@ -1281,13 +1281,13 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`demo/welcome retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Details</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#008AFF;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>",
@@ -1307,12 +1307,12 @@ Open: https://example.com/start",
     <title>Witaj, Jane &amp; Smith w Demo Brand!</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Welcome</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
               <td style="background:#008AFF;padding:20px 24px;"><span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.2px;">Demo Brand</span></td>
             </tr>
@@ -1323,13 +1323,13 @@ Open: https://example.com/start",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Welcome</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Details</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Welcome</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Details</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#008AFF;">
-                  <a href="https://example.com/start" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
+                  <a href="https://example.com/start" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Open</a>
                 </td>
               </tr>
             </table>

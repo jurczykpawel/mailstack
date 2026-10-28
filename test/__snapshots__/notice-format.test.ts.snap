@@ -3,13 +3,13 @@
 exports[`notice formatting > preserves legacy output byte-for-byte: "  First & <plain>.\\nnext line\\n\\n\\n Second paragraph.  " 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First &amp; &lt;plain&gt;.<br>next line</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second paragraph.</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First &amp; &lt;plain&gt;.<br>next line</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Second paragraph.</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>",
@@ -32,15 +32,15 @@ next line",
     <title>Maintenance</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">First &amp; &lt;plain&gt;.
 next line</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -49,13 +49,13 @@ next line</span>
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First &amp; &lt;plain&gt;.<br>next line</p>
-<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Second paragraph.</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First &amp; &lt;plain&gt;.<br>next line</p>
+<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Second paragraph.</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>
@@ -99,10 +99,10 @@ exports[`notice formatting > preserves legacy output byte-for-byte: " \\n\\n " 1
 {
   "body": {
     "bodyHtml": "
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>",
@@ -119,14 +119,14 @@ exports[`notice formatting > preserves legacy output byte-for-byte: " \\n\\n " 1
     <title>Maintenance</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Maintenance</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -136,10 +136,10 @@ exports[`notice formatting > preserves legacy output byte-for-byte: " \\n\\n " 1
             <tr>
               <td style="padding:12px 24px 0 24px;">
                 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>
@@ -178,10 +178,10 @@ exports[`notice formatting > preserves legacy output byte-for-byte: "" 1`] = `
 {
   "body": {
     "bodyHtml": "
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>",
@@ -198,14 +198,14 @@ exports[`notice formatting > preserves legacy output byte-for-byte: "" 1`] = `
     <title>Maintenance</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">Maintenance</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -215,10 +215,10 @@ exports[`notice formatting > preserves legacy output byte-for-byte: "" 1`] = `
             <tr>
               <td style="padding:12px 24px 0 24px;">
                 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>
@@ -256,14 +256,14 @@ Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 exports[`notice formatting > preserves legacy output byte-for-byte: "First\\r\\n\\r\\nSecond" 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First
 <br>
 <br>Second</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>",
@@ -286,16 +286,16 @@ Second",
     <title>Maintenance</title>
     
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
     <span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;">First
 
 Second</span>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
             <tr>
-              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;display:block;border:0;"></td>
+              <td style="background:#0064BC;padding:20px 24px;"><img src="https://mail.example.com/brand/logo.png" alt="Acme Inc." height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;"></td>
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
@@ -304,14 +304,14 @@ Second</span>
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">First
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">First
 <br>
 <br>Second</p>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
                 <td style="border-radius:8px;background:#0064BC;">
-                  <a href="https://example.com/status" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
+                  <a href="https://example.com/status" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Status</a>
                 </td>
               </tr>
             </table>
