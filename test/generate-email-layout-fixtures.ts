@@ -19,7 +19,7 @@ await writeFile(resolve(destination, "index.html"), `<!doctype html>
 <button id="measure">Measure</button><pre id="results"></pre><iframe id="email" title="Original email HTML"></iframe>
 <script>
 const frame = document.querySelector('#email');
-const cases = ${JSON.stringify(layoutCases)};
+const cases = ${JSON.stringify(layoutCases).replace(/</g, "\\u003c")};
 const history = [];
 document.querySelector('#cases').onchange = () => { frame.src = document.querySelector('#cases').value + '.html'; };
 window.measureEmail = () => {
