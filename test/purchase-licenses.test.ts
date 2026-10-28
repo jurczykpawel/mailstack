@@ -166,6 +166,30 @@ it('validates activation configuration and retains existing brands', () => {
     expect(() => parseConfig({ ...original, brands: { acme: { ...original.brands.acme, licenseActivationUrls: urls } } })).toThrow('licenseActivationUrls');
 });
 
+it.each((['masked', 'full'] as const).flatMap(level => [
+  { level, tokens: ['ABCDE', 'BCDE'] },
+  { level, tokens: ['BCDE', 'ABCDE'] },
+  { level, tokens: ["A<&'Z", "<&'Z"] },
+]))('archives related purchase keys at level $level: $tokens', async ({ level, tokens }) => {
+  deps.logging!.defaults.level = level;
+  const body = bundlePurchase();
+  body.data.licenses.forEach((license, i) => { license.token = tokens[i]; });
+  expect((await request(body)).status).toBe(200);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  const mail = vi.mocked(deps.sendEmail).mock.calls[0][1];
+  const [row] = await store.db.selectFrom('messages').selectAll().execute();
+  const [content] = await store.db.selectFrom('contents').selectAll().execute();
+  const archive = await open(content.sealed,
+    { brand: 'acme', messageId: row.id, purpose: 'content' }, [privateKey]) as { html: string; text: string };
+  for (const { token } of body.data.licenses) {
+    expect(mail.html).toContain(escapeHtml(token));
+    expect(mail.text).toContain(token);
+    expect(archive.html).not.toContain(token);
+    expect(archive.html).not.toContain(escapeHtml(token));
+    expect(archive.text).not.toContain(token);
+  }
+});
+
 it.each(['masked', 'full'] as const)('projects complete short keys at level %s', level => {
   const body = bundlePurchase();
   body.data.licenses[0].token = 'ZQ7';

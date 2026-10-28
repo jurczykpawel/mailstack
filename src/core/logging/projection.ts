@@ -47,7 +47,13 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   const includeSecrets = policy.level === "full" && policy.includeSecrets;
   const secretFields = new Set([...template.secretFields ?? [], ...template.optionalSecretFields ?? []]);
   const show = new Set(policy.show);
-  const partial = (value: string) => "••••" + (Array.from(value).length > 4 ? Array.from(value).slice(-4).join("") : "");
+  const secretValues = [...secretFields].flatMap(field => data[field]
+    ? [...new Set([data[field], escapeHtml(data[field])])] : []);
+  const partial = (value: string): string => {
+    const candidate = "••••" + (Array.from(value).length > 4 ? Array.from(value).slice(-4).join("") : "");
+    return [candidate, "••••", ""].find(masked => !secretValues.some(secret =>
+      masked.includes(secret) || escapeHtml(masked).includes(secret)))!;
+  };
   const fields = policy.level === "masked" ? Object.entries(data)
     : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
   const replacements = fields
