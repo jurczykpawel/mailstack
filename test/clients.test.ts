@@ -19,7 +19,7 @@ function configure(overrides: Record<string, unknown> = {}) {
 function request(path: string, body: unknown, bearer: string | null = token, origin?: string) {
   return new Request(`https://mail.example.com${path}`, { method: "POST", headers: { "content-type": "application/json", ...(bearer ? { authorization: `Bearer ${bearer}` } : {}), ...(origin ? { origin } : {}) }, body: JSON.stringify(body) });
 }
-const purchase = { event: "purchase.completed", data: { customer: { email: "buyer@example.com" } } };
+const purchase = { event: "purchase.completed", timestamp: "2026-10-24T12:00:00Z", data: { customer: { email: "buyer@example.com" }, product: { name: "Plan" }, order: { sessionId: "cs-example", amount: 100, currency: "PLN" } } };
 const forbidden = { success: false, message: "forbidden", code: "scope" };
 beforeEach(() => configure());
 afterEach(() => {

@@ -155,8 +155,8 @@ describe("handleSellfHook — other mapped events", () => {
       data: {
         customer: makeCustomer(),
         product: { name: "Protocol: X" },
-        refund: { amount: 4999, currency: "pln" },
-        payment: { sessionId: "cs_refund_1" },
+        refund: { stripeRefundId: "re_test_1", amount: 4999, currency: "pln", status: "succeeded", isFullRefund: true, totalRefunded: 4999, refundedAt: "2026-06-10T10:00:00.000Z" },
+        payment: { id: "payment-1", sessionId: "cs_refund_1", amount: 4999, currency: "PLN" },
       },
     };
     const res = await handleSellfHook(hook(envelope), makeEnv(), deps);
@@ -218,7 +218,7 @@ describe("handleSellfHook — ignored / guards", () => {
   it("acks an unmapped event without sending", async () => {
     const deps = makeDeps();
     const envelope = {
-      event: "subscription.created",
+      event: "custom.event",
       timestamp: "2026-06-10T10:00:00.000Z",
       data: { customer: makeCustomer() },
     };
@@ -226,28 +226,28 @@ describe("handleSellfHook — ignored / guards", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       success: true,
-      ignored: "subscription.created",
+      ignored: "custom.event",
     });
     expect(deps.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("acks ignored 'no-email' when the customer email is missing", async () => {
+  it("rejects an event when the customer email is missing", async () => {
     const deps = makeDeps();
     const envelope = purchaseEnvelope();
     delete (envelope.data.customer as Record<string, unknown>).email;
     const res = await handleSellfHook(hook(envelope), makeEnv(), deps);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, ignored: "no-email" });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ success: false, code: "invalid_event_data", fields: ["data.customer.email"] });
     expect(deps.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("acks ignored 'no-email' when the email is invalid", async () => {
+  it("rejects an event when the email is invalid", async () => {
     const deps = makeDeps();
     const envelope = purchaseEnvelope();
     (envelope.data.customer as Record<string, unknown>).email = "not-an-email";
     const res = await handleSellfHook(hook(envelope), makeEnv(), deps);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, ignored: "no-email" });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ success: false, code: "invalid_event_data", fields: ["data.customer.email"] });
     expect(deps.sendEmail).not.toHaveBeenCalled();
   });
 

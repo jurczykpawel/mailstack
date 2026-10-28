@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { boundedText } from "./core/http";
 import type { Env, SendDeps, TemplateData } from "./types";
 import { config, getBrand } from "./core/config";
@@ -11,12 +12,55 @@ import { renderAndSend } from "./send";
 const FALLBACK_BRAND = "acme";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Sellf webhook envelope. `data` shape varies per event (see SELLF_EVENT_MAP). */
-interface SellfEnvelope {
-  event: string;
-  timestamp: string;
-  data: Record<string, unknown>;
-}
+const nonempty = z.string().refine(value => value.trim().length > 0);
+const isoTimestamp = z.iso.datetime({ offset: true });
+const envelopeSchema = z.object({
+  event: nonempty,
+  timestamp: isoTimestamp,
+  data: z.record(z.string(), z.unknown()),
+});
+type SellfEnvelope = z.infer<typeof envelopeSchema>;
+const currency = z.string().regex(/^[A-Za-z]{3}$/);
+const minorAmount = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const transaction = z.object({
+  sessionId: nonempty.nullish(),
+  paymentIntentId: nonempty.nullish(),
+  amount: minorAmount,
+  currency,
+}).superRefine((value, ctx) => {
+  if (!value.sessionId && !value.paymentIntentId) {
+    for (const field of ["sessionId", "paymentIntentId"]) {
+      ctx.addIssue({ code: "custom", path: [field], message: "required identifier" });
+    }
+  }
+});
+const commonData = z.object({
+  customer: z.object({ email: z.string().trim().regex(EMAIL_RE) }),
+  product: z.object({ name: nonempty }),
+});
+const purchaseData = commonData.extend({ order: transaction });
+const refundData = commonData.extend({
+  payment: transaction.safeExtend({ id: nonempty }),
+  refund: z.object({
+    stripeRefundId: nonempty,
+    amount: minorAmount.refine(value => value > 0),
+    currency,
+    status: z.literal("succeeded"),
+    isFullRefund: z.boolean(),
+    totalRefunded: minorAmount,
+    refundedAt: isoTimestamp,
+  }),
+}).superRefine(({ payment, refund }, ctx) => {
+  const invalid = (field: string) => ctx.addIssue({ code: "custom", path: ["refund", field], message: "inconsistent refund" });
+  if (refund.currency.toUpperCase() !== payment.currency.toUpperCase()) invalid("currency");
+  if (refund.totalRefunded < refund.amount || refund.totalRefunded > payment.amount) invalid("totalRefunded");
+  if (refund.isFullRefund !== (refund.totalRefunded === payment.amount)) invalid("isFullRefund");
+});
+const unsupportedEvents = new Set([
+  "subscription.created", "subscription.updated", "subscription.canceled",
+  "subscription.trial_ending", "subscription.renewal_upcoming",
+  "invoice.paid", "invoice.payment_failed", "license.revoked",
+]);
 
 /** A resolved outgoing email derived from a Sellf event. */
 interface MappedEmail {
@@ -79,9 +123,8 @@ function fullName(customer: Record<string, unknown>): string {
 }
 
 /**
- * Event -> email mapping. Add an entry here to handle a new Sellf event; any
- * event without an entry is acknowledged (200) and not emailed, so Sellf does
- * not retry. Payload paths mirror Sellf's webhook contract exactly.
+ * Event -> email mapping after envelope and event-data validation.
+ * Unknown events are acknowledged; explicitly unsupported events are declined.
  */
 const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
   "purchase.completed": ({ data, timestamp }) => {
@@ -206,22 +249,21 @@ export async function handleSellfHook(
   if (client.sellfSignatureSecretEnv && !await verifySignature(req, rawBody, Reflect.get(env, client.sellfSignatureSecretEnv), deps.now())) {
     return jsonResponse({ success: false, message: "unauthorized" }, 401);
   }
-  let envelope: SellfEnvelope;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(rawBody || "{}");
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error("not an object");
-    }
-    envelope = parsed as SellfEnvelope;
+    parsed = JSON.parse(rawBody);
   } catch {
     return jsonResponse({ success: false, message: "invalid JSON" }, 400);
   }
-
-  const event = typeof envelope.event === "string" ? envelope.event : "";
-  envelope.data =
-    envelope.data && typeof envelope.data === "object"
-      ? envelope.data
-      : {};
+  const validated = envelopeSchema.safeParse(parsed);
+  if (!validated.success) {
+    return jsonResponse({ success: false, code: "invalid_envelope", message: "invalid envelope" }, 400);
+  }
+  const envelope = validated.data;
+  const event = envelope.event;
+  if (unsupportedEvents.has(event)) {
+    return jsonResponse({ success: false, code: "unsupported_event", message: `Unsupported event: ${event}. Disable this event in the sender; retry will not help.` }, 422);
+  }
 
   const mapper = Object.hasOwn(SELLF_EVENT_MAP, event) ? SELLF_EVENT_MAP[event] : undefined;
   if (!mapper) {
@@ -229,13 +271,20 @@ export async function handleSellfHook(
     return jsonResponse({ success: true, ignored: event || "unknown" });
   }
 
+  const schema = event === "purchase.completed" ? purchaseData : event === "refund.issued" ? refundData : commonData;
+  const dataResult = schema.safeParse(envelope.data);
+  if (!dataResult.success) {
+    const fields = [...new Set(dataResult.error.issues.map(issue => ["data", ...issue.path].join(".")))];
+    return jsonResponse({ success: false, code: "invalid_event_data", message: "invalid event data", fields }, 422);
+  }
+
   const mapped = mapper(envelope);
   if (mapped && !permits(client, "hook:sellf", brandId, mapped.template)) {
     return jsonResponse({ success: false, message: "forbidden", code: "scope" }, 403);
   }
   const to = (mapped?.to || "").trim();
-  if (!mapped || !EMAIL_RE.test(to)) {
-    return jsonResponse({ success: true, ignored: "no-email" });
+  if (!mapped) {
+    return jsonResponse({ success: false, code: "invalid_event_data", message: "invalid event data", fields: ["data"] }, 422);
   }
 
   const template = getTemplate(mapped.template);
@@ -258,8 +307,7 @@ export async function handleSellfHook(
     idempotencyKey,
   });
 
-  if (!result.ok) return jsonResponse(deliveryResponse(result, false), result.status);
-  return jsonResponse({ success: true });
+  return jsonResponse(deliveryResponse(result, true), result.status);
 }
 
 async function verifySignature(req: Request, rawBody: string, secret: unknown, now: Date): Promise<boolean> {

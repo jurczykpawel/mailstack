@@ -25,7 +25,7 @@ it.each(['/v1/send', '/v1/hooks/sellf'])('drains the pending alert for %s before
   let closing: Promise<void> | undefined;
   try {
     const body = path === '/v1/send' ? { brand: 'acme', template: 'notice', to: 'buyer@example.com', paragraphs: 'Test' }
-      : { event: 'purchase.completed', timestamp: new Date().toISOString(), data: { customer: { email: 'buyer@example.com' }, order: { sessionId: 'order-1', amount: 100 }, product: { name: 'Plan' } } };
+      : { event: 'purchase.completed', timestamp: new Date().toISOString(), data: { customer: { email: 'buyer@example.com' }, order: { sessionId: 'order-1', amount: 100, currency: 'PLN' }, product: { name: 'Plan' } } };
     let status: number | undefined;
     const response = originalFetch(`http://127.0.0.1:${runtime.port}${path}?brand=acme`, { method: 'POST',
       headers: { authorization: 'Bearer test-key', connection: 'close' }, body: JSON.stringify(body) }).then(result => { status = result.status; return result; });

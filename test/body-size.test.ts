@@ -29,7 +29,7 @@ for (const mode of ['public', 'trusted', 'sellf'] as const) {
   describe(`${mode} request size`, () => {
     function setup(size: number, declared?: string) {
       const body = mode === 'sellf'
-        ? { event: 'lead.captured', data: { customer: { email: 'buyer@example.com' }, product: { name: 'Demo' } } }
+        ? { event: 'lead.captured', timestamp: '2026-10-24T12:00:00Z', data: { customer: { email: 'buyer@example.com' }, product: { name: 'Demo' } } }
         : { brand: 'acme', autoreply: false, 'cf-turnstile-response': 'token' };
       const base = JSON.stringify({ ...body, _meta: '' });
       const padding = size - new TextEncoder().encode(base).length;

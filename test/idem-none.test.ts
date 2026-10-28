@@ -152,15 +152,15 @@ for (const driver of ['sqlite', 'd1'] as const) {
       expect(await store.consume('second', now)).toBe(false);
     });
 
-    it('deduplicates automatic Sellf keys and preserves the hook response', async () => {
+    it('deduplicates automatic Sellf keys without a message id', async () => {
       const hook = () => handleSellfHook(new Request('https://mail.example/v1/hooks/sellf?brand=acme', {
         method: 'POST', headers: { authorization: 'Bearer test-key' }, body: JSON.stringify({
           event: 'purchase.completed', timestamp: new Date(now).toISOString(),
-          data: { customer: { email: 'buyer@example.com' }, order: { sessionId: 'order-1', amount: 100 }, product: { name: 'Plan' } },
+          data: { customer: { email: 'buyer@example.com' }, order: { sessionId: 'order-1', amount: 100, currency: 'PLN' }, product: { name: 'Plan' } },
         }),
       }), env, deps);
       expect(await (await hook()).json()).toEqual({ success: true });
-      expect(await (await hook()).json()).toEqual({ success: true });
+      expect(await (await hook()).json()).toEqual({ success: true, idempotent: true });
       expect(deps.sendEmail).toHaveBeenCalledTimes(1);
     });
 

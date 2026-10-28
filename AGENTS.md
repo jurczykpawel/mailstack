@@ -343,35 +343,48 @@ reusing the existing templates (no new template types).
   `X-Sellf-Signature` (see Send logging and idempotency below). Missing/invalid
   credentials return `401 {success:false,message:"unauthorized"}`.
 - **Brand:** `?brand=<id>`, defaults to `SELLF_DEFAULT_BRAND` env var or the first brand in the registry. Unknown brand → `400 {success:false,message:"unknown brand"}`.
-- **Body:** the Sellf envelope `{ event: string, timestamp: ISO string, data: object }`.
-  Bad JSON → `400`.
-- **Recipient:** the customer email from the payload (this endpoint may set `to`, like
-  trusted mode); `from: brand.from`, `replyTo: brand.to[0]`.
-- **Retries:** the SES send is **awaited** (not backgrounded). A failed send →
-  `502 {success:false,message:"send failed"}` so Sellf retries; success → `200 {success:true}`.
-  Unmapped events and missing/invalid recipients are **acked** (`200 {success:true, ignored:"..."}`)
-  so Sellf does not retry something we will never email.
+- **Body and response:** see the [Sellf event contract](README.md#sellf-event-contract).
+  Malformed JSON is 400; invalid envelopes are 400 `invalid_envelope`. Mapped events
+  with incomplete data return 422 `invalid_event_data` with field paths only, before
+  mapping, recording, deduplication or sending. Customer email and product name are
+  required; purchase/refund amounts must be safe integers in minor units and currency
+  must have three letters. Purchase needs CS or PI, not both. Refund additionally
+  requires payment/refund IDs, succeeded status, consistent cumulative/full amounts
+  and currencies, boolean full flag and valid refundedAt.
+- **Unsupported:** `subscription.created/updated/canceled/trial_ending/renewal_upcoming`,
+  `invoice.paid/payment_failed` and `license.revoked` return 422 `unsupported_event`
+  with the event name, for complete and incomplete data alike. Disable these events
+  in the sender; retry does not fix this permanent configuration error. Other unknown
+  events return 200 `{success:true,ignored:"<event>"}` without an id.
+- **Delivery:** awaits the shared pipeline and uses `deliveryResponse(result, true)`.
+  First success includes `id` when recorded; duplicates return that id and
+  `idempotent:true`. Level none has no id but retains deduplication. A lost ACK can be
+  retried with the identical event. Keep 409 in_progress/outcome_unknown/conflict,
+  502 send_failed and 503 log_unavailable decisions as documented in README.
 
 ### Event → template mapping
 
-Defined in `SELLF_EVENT_MAP` (`src/sellf.ts`). Payload paths mirror Sellf's contract exactly.
+Defined in `SELLF_EVENT_MAP` (`src/sellf.ts`), following event-data validation:
 
 | Sellf event | Template | Key mapping |
 |---|---|---|
-| `purchase.completed` | `payment` | `to=data.customer.email`, `name=firstName+lastName`, `amount=money(order.amount)`, `currency=order.currency.toUpperCase()`, `item=product.name`, `orderId=order.sessionId ?? order.paymentIntentId`, `date=plDate(timestamp)` |
-| `refund.issued` | `notice` | "Zwrot środków" — refunded `money(refund.amount)` `refund.currency` for `product.name`, plus the transaction id (`payment.sessionId ?? payment.paymentIntentId`) |
-| `waitlist.signup` | `notice` | "Jesteś na liście oczekujących" — thanks for signing up to `product.name` |
-| `lead.captured` | `welcome` | intro "Twój dostęp do `product.name` jest gotowy." (no CTA) |
-| `access.expired` | `notice` | "Dostęp wygasł" — access to `product.name` expired, reply to renew |
-| anything else (`subscription.*`, `invoice.*`, …) | — | not emailed → `200 {ignored:"<event>"}` |
+| `purchase.completed` | `payment` | customer.email, product.name, order.amount (minor), currency, CS or PI, envelope timestamp |
+| `refund.issued` | `notice` | customer.email, product.name, refund.amount (minor), refund.currency, payment CS or PI |
+| `waitlist.signup` | `notice` | customer.email, product.name |
+| `lead.captured` | `welcome` | customer.email, product.name; no CTA |
+| `access.expired` | `notice` | customer.email, product.name |
 
-Helpers: `money(cents) = (Number(cents)/100).toFixed(2)`; `plDate(iso) = new Date(iso).toLocaleDateString("pl-PL")` (invalid → `""`); currencies are upper-cased. HTML-escaping is handled by the templates.
+Source `invoice.paid` amounts are major and its subscription has only an ID, without
+status/period. Source revocation has license.email/id/order/revokedAt and optional
+expiry, without token or dispute reason/status. Stripe disputes notify only through
+revoked license rows; no rows means no notification. Renewal/revocation support is
+not implemented. The README table lists every explicitly unsupported event.
 
 ### Add a new event mapping
-Add an entry to `SELLF_EVENT_MAP` in `src/sellf.ts`: a function
-`(envelope) => { template, to, data, subject? } | null` that picks an existing template id,
-pulls `to` from the payload, and builds the template `data`. Add a case to
-`test/sellf-hook.test.ts`, then `npm run typecheck && npm run test`. No other wiring needed.
+Add its input schema and `SELLF_EVENT_MAP` entry in `src/sellf.ts`, choosing an existing
+template. Remove an explicit unsupported entry only when a complete consumer contract
+is implemented. Add handler regressions including invalid input and zero side effects,
+then run `npm run typecheck && npm run test`.
 
 ### Example
 
@@ -546,8 +559,8 @@ Trusted `POST /v1/send` requests accept:
 
 These keys are excluded from template content. Public requests ignore them and the
 idempotency header. Trusted responses include `id: "msg_..."` whenever the send has a
-message row; public response shapes are unchanged. Successful Sellf response shapes
-are also unchanged. Provider failures retain `message: "send failed"`, with additive
+message row; public response shapes are unchanged. Sellf hook responses use the
+same trusted delivery contract, including `id` and `idempotent` when applicable. Provider failures retain `message: "send failed"`, with additive
 `code: "send_failed"` and HTTP `502`.
 
 Idempotency keys are scoped to the authenticated client (`legacy` for the legacy API

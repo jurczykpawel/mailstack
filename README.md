@@ -555,8 +555,70 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
   Empty or omitted body `brand` falls back to `?brand=<id>`; different nonempty values return `400 brand mismatch`.
   Public requests may use ALTCHA instead of Turnstile; opted-in brands also require a nonce.
 - `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
+
 - `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
   `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
+
+### Sellf event contract
+
+The hook requires an object envelope with a nonblank string `event`, a valid ISO
+8601 `timestamp` including a timezone, and a non-null, non-array object `data`.
+Malformed JSON returns `400 invalid JSON`; a malformed envelope returns
+`400` with `code: "invalid_envelope"`. Authentication, configured HMAC, scope and
+64 KiB body limits apply before delivery. Extra custom fields are allowed.
+
+Mapped events require `data.customer.email` to be valid and `data.product.name`
+to be a nonblank string. A product containing only `{id}` cannot produce a complete
+email. Field selection must retain the required nested data; an empty selection
+is rejected. Missing, null, blank, wrong-type or inconsistent required data returns
+`422 {success:false,code:"invalid_event_data",message:"invalid event data",fields:[...]}`.
+`fields` contains paths such as `data.order.amount`, never submitted values.
+Validation precedes mapping, intent recording, deduplication and provider calls.
+
+| Event | Outcome and required data beyond customer email and product name |
+|---|---|
+| `purchase.completed` | Payment email: `order.amount` is a safe integer >= 0 in minor units; `order.currency` is three letters; at least one nonblank string `order.sessionId` or `order.paymentIntentId`. CS alone or PI alone is enough; the other may be absent/null. CS takes precedence when both exist. |
+| `refund.issued` | Notice: `payment.id`, at least one CS/PI, `payment.amount` in minor units, three-letter `payment.currency`; `refund.stripeRefundId`, positive safe integer `refund.amount` in minor units, matching three-letter `refund.currency`, `status: "succeeded"`, boolean `isFullRefund`, safe integer `totalRefunded` in minor units, valid ISO `refundedAt`. Cumulative total must be >= this refund and <= payment amount; full must equal whether cumulative total reaches payment amount. Pending/failed refunds are rejected. |
+| `waitlist.signup` | Signup notice; no order identifier required. |
+| `lead.captured` | Welcome email; no order identifier required. |
+| `access.expired` | Expiry notice; no order identifier required. |
+| `subscription.created` | `422 unsupported_event` |
+| `subscription.updated` | `422 unsupported_event` |
+| `subscription.canceled` | `422 unsupported_event` |
+| `subscription.trial_ending` | `422 unsupported_event` |
+| `subscription.renewal_upcoming` | `422 unsupported_event` |
+| `invoice.paid` | `422 unsupported_event`; source `invoice.amountPaid` is in major units. `subscription` contains only `stripeSubscriptionId`, without status or paid period. |
+| `invoice.payment_failed` | `422 unsupported_event`; source invoice amounts are in major units. |
+| `license.revoked` | `422 unsupported_event`; source recipient is `license.email`, with `license.id`, `order`, `revokedAt` and nullable/optional expiry. No token is included. |
+| Any other event | `200 {success:true,ignored:"<event>"}` after envelope validation; no email or message id. |
+
+Known unsupported events return `{success:false,code:"unsupported_event",message:...}`
+with the event name for both complete and incomplete `data` objects. This is a
+permanent configuration error: disable those events in the sender; retry alone
+will not help. This does not declare implemented renewal or revocation support.
+The source Stripe dispute path emits only `license.revoked` for licenses actually
+revoked. With no license rows there is no notification. Its payload has no dispute
+reason/status, so it cannot establish a complete chargeback notification contract.
+No subscription periods or revocation tokens are invented by the adapter.
+
+The hook awaits `renderAndSend` and returns its trusted delivery response for both
+success and failure. With a message row, first success is
+`200 {success:true,id:"msg_..."}`; duplicates return the same id plus
+`idempotent:true`, without another send. With logging level `none`, there is no id;
+a retained reservation still returns `idempotent:true` on duplicate. Public `/send`
+responses keep their existing shape.
+
+After losing an ACK, retry the identical event: a completed logged attempt returns
+its original id and `idempotent:true`. A concurrent logged attempt returns
+`409 in_progress`; wait and retry the same event. `409 outcome_unknown` requires
+provider reconciliation, and `409 idempotency_conflict` requires resolving the
+changed request; do not send again under a new key. `502 send_failed` after explicit
+provider refusal permits retry of the same event after the provider issue is fixed.
+An exception/timeout can instead leave an unknown outcome. `503 log_unavailable`
+means required intent recording failed without sending: restore logging and retry
+the same event. Fix 400/401/403/413/422 input/configuration errors before retrying.
+SMTP success means relay acceptance, not final delivery. These guarantees require
+available storage and follow the shared logging/idempotency policy below.
 
 ### SES events
 
@@ -703,8 +765,8 @@ Trusted `POST /v1/send` requests accept:
 
 These keys are excluded from template content. Public requests ignore them and the
 idempotency header. Trusted responses include `id: "msg_..."` whenever the send has a
-message row; public response shapes are unchanged. Successful Sellf response shapes
-are also unchanged. Provider failures retain `message: "send failed"`, with additive
+message row; public response shapes are unchanged. Sellf hook responses use the
+same trusted delivery contract, including `id` and `idempotent` when applicable. Provider failures retain `message: "send failed"`, with additive
 `code: "send_failed"` and HTTP `502`.
 
 Idempotency keys are scoped to the authenticated client (`legacy` for the legacy API

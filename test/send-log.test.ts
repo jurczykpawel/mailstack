@@ -21,9 +21,9 @@ const request = (data: object = body, key: string | null = 'request-1') => new R
 });
 const send = (data?: object, key?: string | null) => handleSend(request(data, key), env, deps);
 const rows = () => store.db.selectFrom('messages').selectAll().execute();
-const hookBody = { event: 'purchase.completed', timestamp: now.toISOString(), data: { customer: { email: 'buyer@example.com' }, order: { sessionId: 'order-1', amount: 100 }, product: { name: 'Plan' } } };
-const hook = (raw = JSON.stringify(hookBody), headers: Record<string, string> = {}) => handleSellfHook(new Request('https://mail.example/v1/hooks/sellf?brand=acme', {
-  method: 'POST', headers: { authorization: 'Bearer test-key', ...headers }, body: raw,
+const hookBody = { event: 'purchase.completed', timestamp: now.toISOString(), data: { customer: { email: 'buyer@example.com' }, order: { sessionId: 'order-1', amount: 100, currency: 'PLN' }, product: { name: 'Plan' } } };
+const hook = (raw = JSON.stringify(hookBody), headers: Record<string, string> = {}, signal?: AbortSignal) => handleSellfHook(new Request('https://mail.example/v1/hooks/sellf?brand=acme', {
+  method: 'POST', headers: { authorization: 'Bearer test-key', ...headers }, body: raw, signal,
 }), env, deps);
 
 beforeAll(async () => {
@@ -124,9 +124,10 @@ it.each(['', 'space key', 'x'.repeat(129)])('validates idempotency key %j', asyn
   expect(await res.json()).toMatchObject({ code: 'invalid_idempotency_key' });
 });
 
-it('deduplicates Sellf deliveries while keeping its response shape', async () => {
-  expect(await (await hook()).json()).toEqual({ success: true });
-  expect(await (await hook()).json()).toEqual({ success: true });
+it('returns the same Sellf message id on duplicate delivery', async () => {
+  const first = await (await hook()).json();
+  expect(first).toEqual({ success: true, id: expect.stringMatching(/^msg_/) });
+  expect(await (await hook()).json()).toEqual({ ...first as object, idempotent: true });
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   expect(await rows()).toMatchObject([{ client_id: 'legacy', status: 'sent' }]);
 });
@@ -145,12 +146,16 @@ it('requires a configured Sellf signature in addition to the bearer', async () =
     for (const signature of [undefined, `t=${t},v1=${'0'.repeat(64)}`, `t=${Number(t) - 301},v1=${sig}`]) expect((await call(signature)).status).toBe(401);
     expect((await call(`t=${t},v1=${sig}`, raw + ' ')).status).toBe(401);
     expect(deps.sendEmail).not.toHaveBeenCalled();
+    expect(await rows()).toEqual([]);
+    expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
     for (const seconds of [-301, 301]) {
       deps.now = () => new Date(now.getTime() + seconds * 1000);
       expect((await call(`t=${t},v1=${sig}`)).status).toBe(401);
     }
-    deps.now = () => new Date(now.getTime() + 300000);
-    expect((await call(`t=${t},v1=${sig}`)).status).toBe(200);
+    for (const seconds of [-300, 0, 300]) {
+      deps.now = () => new Date(now.getTime() + seconds * 1000);
+      expect((await call(`t=${t},v1=${sig}`)).status).toBe(200);
+    }
   } finally { config.clients = previous; }
 });
 
@@ -390,4 +395,208 @@ it('records attachment summaries and identity without archiving files', async ()
       expect(dump).not.toContain(value); expect(JSON.stringify(decoded)).not.toContain(value); expect(JSON.stringify(log.mock.calls)).not.toContain(value);
     }
   } finally { config.legacyApiKey = previous; }
+});
+
+
+const refundBody = () => ({
+  event: 'refund.issued', timestamp: now.toISOString(),
+  data: {
+    customer: { email: 'buyer@example.com', userId: null },
+    product: { id: 'product-1', name: 'Plan' },
+    payment: { id: 'payment-1', sessionId: 'cs-refund', paymentIntentId: null, amount: 10000, currency: 'PLN' },
+    refund: { stripeRefundId: 're-1', amount: 3000, currency: 'pln', status: 'succeeded', isFullRefund: false, totalRefunded: 3000, refundedAt: now.toISOString() },
+  },
+});
+
+function replacePath(input: Record<string, unknown>, path: string, value: unknown) {
+  const result = structuredClone(input);
+  const keys = path.split('.');
+  let target = result as Record<string, unknown>;
+  for (const key of keys.slice(0, -1)) target = target[key] as Record<string, unknown>;
+  if (value === undefined) delete target[keys.at(-1)!];
+  else target[keys.at(-1)!] = value;
+  return result;
+}
+
+const absent = [undefined, null, '', '   '];
+const invalidEvents: [string, Record<string, unknown>][] = [];
+for (const path of ['data.customer.email', 'data.product.name', 'data.order.currency']) {
+  for (const value of [...absent, 42]) invalidEvents.push([path, replacePath(hookBody, path, value)]);
+}
+for (const value of [...absent, '100', 'NaN', -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 'Infinity']) {
+  invalidEvents.push(['data.order.amount', replacePath(hookBody, 'data.order.amount', value)]);
+}
+for (const value of [...absent, 42]) invalidEvents.push(['data.order.sessionId', replacePath(hookBody, 'data.order.sessionId', value)]);
+for (const path of ['data.customer', 'data.product', 'data.order']) {
+  for (const value of [undefined, null, [], '']) invalidEvents.push([path, replacePath(hookBody, path, value)]);
+}
+for (const path of ['data.payment.id', 'data.refund.stripeRefundId', 'data.refund.status', 'data.refund.refundedAt', 'data.payment.currency', 'data.refund.currency']) {
+  for (const value of [...absent, 42]) invalidEvents.push([path, replacePath(refundBody(), path, value)]);
+}
+for (const path of ['data.refund.amount', 'data.payment.amount', 'data.refund.totalRefunded']) {
+  for (const value of [...absent, '3000', -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) invalidEvents.push([path, replacePath(refundBody(), path, value)]);
+}
+for (const value of ['pending', 'failed']) invalidEvents.push(['data.refund.status', replacePath(refundBody(), 'data.refund.status', value)]);
+for (const value of [undefined, null, 'false', 0]) invalidEvents.push(['data.refund.isFullRefund', replacePath(refundBody(), 'data.refund.isFullRefund', value)]);
+for (const [path, value] of [
+  ['data.refund.amount', 0], ['data.refund.totalRefunded', 2000], ['data.refund.totalRefunded', 10001],
+  ['data.refund.isFullRefund', true], ['data.refund.totalRefunded', 10000],
+  ['data.refund.currency', 'USD'], ['data.refund.currency', 'PL'], ['data.refund.refundedAt', '2026-02-30T12:00:00Z'],
+  ['data.payment.sessionId', null], ['data.order.currency', 'PLNN'], ['data.customer.email', 'invalid-address'],
+] as [string, unknown][]) invalidEvents.push([path, replacePath(path.startsWith('data.order') || path === 'data.customer.email' ? hookBody : refundBody(), path, value)]);
+for (const event of ['waitlist.signup', 'lead.captured', 'access.expired']) {
+  for (const path of ['data.customer.email', 'data.product.name']) {
+    for (const value of [...absent, 42]) invalidEvents.push([path, replacePath({ ...hookBody, event }, path, value)]);
+  }
+}
+invalidEvents.push(['data.customer.email', { ...hookBody, data: {} }]);
+
+it.each(invalidEvents)('rejects incomplete event at %s before recording or sending (%#)', async (_path, payload) => {
+  const response = await hook(JSON.stringify(payload));
+  expect(response.status).toBe(422);
+  const output = await response.json() as { fields: string[] };
+  expect(output).toMatchObject({ success: false, code: 'invalid_event_data', fields: expect.any(Array) });
+  expect(output.fields.length).toBeGreaterThan(0);
+  expect(output.fields.every(path => /^data\.[A-Za-z.]+$/.test(path))).toBe(true);
+  expect(JSON.stringify(output)).not.toContain('buyer@example.com');
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+  const corrected = payload.event === 'refund.issued' ? refundBody() : { ...hookBody, event: payload.event };
+  expect((await hook(JSON.stringify(corrected))).status).toBe(200);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+const invalidEnvelopes = [null, [], 12, {}, ...['event', 'timestamp', 'data'].flatMap(path =>
+  [undefined, null, '', '   ', 42, []].map(value => replacePath(hookBody, path, value))),
+  ...['not-a-date', '2026-02-30T12:00:00Z', '2026-06-10', '2026-06-10T25:00:00Z'].map(value => ({ ...hookBody, timestamp: value })),
+];
+it.each(invalidEnvelopes)('rejects an invalid envelope before delivery (%#)', async payload => {
+  const response = await hook(JSON.stringify(payload));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ success: false, code: 'invalid_envelope' });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+});
+
+const unsupportedEvents = ['subscription.created', 'subscription.updated', 'subscription.canceled', 'subscription.trial_ending', 'subscription.renewal_upcoming', 'invoice.paid', 'invoice.payment_failed', 'license.revoked'];
+it.each(unsupportedEvents)('explicitly declines %s regardless of data completeness', async event => {
+  // Shapes reflect the sender contract: invoice amounts are major, revocation uses license.email.
+  const complete = { customer: hookBody.data.customer, product: { id: 'product-1', name: 'Plan' },
+    subscription: { stripeSubscriptionId: 'sub-1', status: 'active', currentPeriodEnd: now.toISOString() },
+    invoice: { stripeInvoiceId: 'in-1', amountPaid: 100, currency: 'PLN' },
+    license: { id: 'license-1', email: 'buyer@example.com', order: 'order-1', revokedAt: now.toISOString() } };
+  if (event === 'invoice.paid') {
+    Reflect.deleteProperty(complete.subscription, 'status');
+    Reflect.deleteProperty(complete.subscription, 'currentPeriodEnd');
+  }
+  if (event === 'license.revoked') Reflect.deleteProperty(complete, 'customer');
+  for (const data of [complete, {}]) {
+    const response = await hook(JSON.stringify({ event, timestamp: now.toISOString(), data }));
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ success: false, code: 'unsupported_event', message: expect.stringContaining(event) });
+  }
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+});
+
+it.each([
+  { ...hookBody, data: { ...hookBody.data, order: { amount: 0, currency: 'pln', sessionId: 'cs-only', paymentIntentId: null } } },
+  { ...hookBody, data: { ...hookBody.data, order: { amount: 100, currency: 'pln', paymentIntentId: 'pi-only' } } },
+  { ...refundBody(), data: { ...refundBody().data, refund: { ...refundBody().data.refund, totalRefunded: 10000, isFullRefund: true } } },
+  { ...hookBody, extra: { custom: true } },
+])('accepts complete data and optional fields (%#)', async payload => {
+  expect((await hook(JSON.stringify(payload))).status).toBe(200);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a Sellf response available after a discarded acknowledgement', async () => {
+  await hook();
+  const [row] = await rows();
+  expect(await (await hook()).json()).toEqual({ success: true, id: row.id, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+it('reports Sellf in progress with its id during concurrent delivery', async () => {
+  let entered!: () => void;
+  let finish!: () => void;
+  const started = new Promise<void>(r => { entered = r; });
+  vi.mocked(deps.sendEmail).mockImplementation(() => { entered(); return new Promise(r => { finish = () => r({ ok: true, status: 200 }); }); });
+  const first = hook(); await started;
+  const [row] = await rows();
+  const duplicate = await hook();
+  expect(duplicate.status).toBe(409);
+  expect(await duplicate.json()).toMatchObject({ code: 'in_progress', id: row.id });
+  finish(); expect(await (await first).json()).toEqual({ success: true, id: row.id });
+  expect(await (await hook()).json()).toEqual({ success: true, id: row.id, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+it('reports Sellf uncertainty without another provider call', async () => {
+  vi.mocked(deps.sendEmail).mockRejectedValue(new Error('timeout'));
+  const first = await hook();
+  expect(first.status).toBe(502);
+  const [row] = await rows();
+  expect(await first.json()).toMatchObject({ code: 'send_failed', id: row.id });
+  const duplicate = await hook();
+  expect(duplicate.status).toBe(409);
+  expect(await duplicate.json()).toMatchObject({ code: 'outcome_unknown', id: row.id });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+it('allows Sellf retry after provider refusal with a new recorded attempt', async () => {
+  vi.mocked(deps.sendEmail).mockResolvedValueOnce({ ok: false, status: 550 });
+  const failed = await hook();
+  expect(failed.status).toBe(502);
+  expect(await failed.json()).toMatchObject({ code: 'send_failed', id: expect.stringMatching(/^msg_/) });
+  const retried = await (await hook()).json();
+  expect(retried).toMatchObject({ success: true, id: expect.stringMatching(/^msg_/) });
+  expect(await (await hook()).json()).toEqual({ ...retried as object, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(2);
+});
+
+it('allows Sellf retry after logging is restored', async () => {
+  deps.logging!.defaults.requireLog = true;
+  const insert = vi.spyOn(store, 'insertMessage').mockRejectedValue(new Error('unavailable'));
+  const response = await hook();
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ success: false, code: 'log_unavailable', message: 'log unavailable' });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+  insert.mockRestore();
+  expect((await hook()).status).toBe(200);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+
+it('finishes an accepted Sellf attempt after the request is aborted', async () => {
+  const controller = new AbortController();
+  let entered!: () => void;
+  let finish!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  vi.mocked(deps.sendEmail).mockImplementation(() => {
+    entered();
+    return new Promise(resolve => { finish = () => resolve({ ok: true, status: 200 }); });
+  });
+  const pending = hook(undefined, {}, controller.signal);
+  await started;
+  controller.abort();
+  finish();
+  await pending;
+  const [row] = await rows();
+  expect(await (await hook()).json()).toEqual({ success: true, id: row.id, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+
+it('rejects a numeric overflow before recording an intent', async () => {
+  const raw = JSON.stringify(hookBody).replace('"amount":100', '"amount":1e309');
+  const response = await hook(raw);
+  expect(response.status).toBe(422);
+  expect(await response.json()).toMatchObject({ code: 'invalid_event_data', fields: ['data.order.amount'] });
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+  expect(await rows()).toEqual([]);
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
 });
