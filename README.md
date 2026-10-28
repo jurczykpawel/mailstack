@@ -1275,6 +1275,91 @@ In the mixed SNS-fixture + SMTP sandbox, SQL and the timeline/proof may say
 difference is intentional: neither the local fixture event nor SMTP relay
 acceptance proves final delivery to a real recipient.
 
+The helper drains the dynamic `waitUntil` queue, including nested registrations,
+before closing SQLite and printing its event result. Rejected tasks produce a nonzero
+exit and no success result; cleanup still runs after the remaining tasks settle.
+`body.result: "processed"` means the SES event was recorded; `"duplicate"` means no
+new domain event was emitted. `background: "drained"` confirms completion of registered
+tasks only. Extension hooks retain their runtime error handling and filters; it does
+not assert a queue row or an HTTP webhook. `webhookDelivery: "not_confirmed"` is explicit.
+
+A deterministic local reproducer (no Docker, browser, or provider) exercises the real
+SNS verifier, SES handler, extension emitter and SQLite queue writes with a delayed
+`onEvent`, Delivery without a notifier, Bounce, Complaint, duplicates, and Bounce before
+Delivery. It also checks another nested task level, rejection and cleanup:
+
+```bash
+npm test -- test/manual-lifecycle.test.ts
+```
+
+For a sandbox retest, first configure an enabled webhook for `acme` / the selected
+template and all three event types, targeting `https://hooks.test.example/events`. Send a fresh message
+without `ref` and retain its response `id` as `MESSAGE_ID`; use its actual recipient
+(the default below is `buyer@acme.example`). Inject Delivery, then repeat the exact
+command with the same `EVENT_ID` to obtain `duplicate` without another queue row:
+
+```bash
+scripts/test-env.sh exec api node /workspace/mailstack-pro/dist/manual-seed.mjs event MESSAGE_ID Delivery EVENT_ID buyer@acme.example
+```
+
+Poll both the durable Pro queue and receiver with a deadline. This read-only host
+recipe requires the running sandbox; replace `MESSAGE_ID`. It fails if either side
+is missing after 60 seconds. The receiver body must contain the same `messageId` as
+the send response, plus the domain event `id` found in the queue:
+
+```bash
+python3 - MESSAGE_ID message.delivered <<'PYTHON'
+import json, ssl, subprocess, sys, time, urllib.request
+message_id, event_type = sys.argv[1:]
+context = ssl.create_default_context(cafile='/private/tmp/mailstack-test-local/fixture/tls.crt')
+query = """
+import Database from 'better-sqlite3';
+const db = new Database('/data/mailstack.db', { readonly: true });
+const rows = db.prepare(`SELECT event_id, state FROM ext_pro_webhook_deliveries
+  WHERE json_extract(body, '$.messageId')=? AND json_extract(body, '$.type')=?`)
+  .all(...process.argv.slice(1));
+console.log(JSON.stringify(rows)); db.close();
+"""
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline:
+    remaining = deadline - time.monotonic()
+    rows = json.loads(subprocess.check_output([
+        'scripts/test-env.sh', 'exec', 'api', 'node', '--input-type=module', '-e', query,
+        message_id, event_type], timeout=min(5, remaining)))
+    with urllib.request.urlopen('https://localhost:18843/records', context=context,
+                                timeout=min(5, max(.001, deadline - time.monotonic()))) as response:
+        records = json.load(response)
+    event_ids = {row['event_id'] for row in rows}
+    matches = []
+    for record in records:
+        if record.get('path') != '/events':
+            continue
+        try:
+            body = json.loads(record['body'])
+        except (ValueError, KeyError):
+            continue
+        if (isinstance(body, dict) and body.get('messageId') == message_id
+                and body.get('type') == event_type and body.get('id') in event_ids):
+            matches.append(record)
+    if rows and matches:
+        print(json.dumps({'queue': rows, 'receiverAttempts': len(matches), 'messageId': message_id}))
+        break
+    time.sleep(min(.25, max(0, deadline - time.monotonic())))
+else:
+    raise SystemExit('Deadline: queue and correlated receiver event not both confirmed')
+PYTHON
+```
+
+Preserve and independently verify the matching raw receiver body, signature and
+idempotency key as described above; a matching body alone does not verify its signature.
+Repeat with `Bounce` / `message.bounced` and `Complaint` / `message.complained`, using
+distinct source event IDs. For ordering, use a fresh message, inject Bounce before
+Delivery, and poll both event types: the late Delivery event keeps the projected bounce
+status. For duplicates compare queue event IDs and receiver decisions, since delivery
+retries may legitimately add HTTP attempts. Use two fresh messages without `ref` to
+verify independent correlation. Restart/retry and inbox preservation are separate
+manual acceptance checks; the focused reproducer does not claim them.
+
 Before **every fault or reset**, preserve all earlier mail outside the installation
 directory, including raw EML and SHA256, with this paginated capture/check procedure
 (use a new evidence directory for each capture):
