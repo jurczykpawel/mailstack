@@ -997,7 +997,14 @@ have no external network; a fixture gateway publishes their fixed ports on loopb
 The internal API port 8081 is not published. The panel has separate state and private
 content keys; API mounts contain public content keys and index keys only. The fixture
 gateway holds its own signing keys, never panel content keys. The containers use the
-host's non-root UID so private bind-mounted files can remain mode 0600.
+host's non-root UID so private bind-mounted files can remain mode 0600. Mailpit also
+runs with that UID; the init container assigns its separate `mailpit-data` volume.
+Its database is `/data/mailpit.db`, outside tmpfs, and survives stop/start, restart
+and container recreation within a run. `down` and `reset` remove this volume too.
+Mailpit has a separate 512 MiB budget: four times the previous 128 MiB allocation,
+with headroom for MIME/base64 parsing of a 7 MiB attachment and earlier messages.
+This is a test budget, not a measured peak or a guarantee: the full 7 MiB run must
+measure sink/API memory separately and verify attachment checksums after prior sends.
 
 `status` prints service addresses and writes account instructions, test tokens, source
 SHAs and invitations to `/private/tmp/mailstack-test-local/status.json` (0600).
@@ -1024,7 +1031,20 @@ The HTTPS receiver records exact bodies, signature headers, idempotency keys and
 signature validity. It supports 200/500/timeout/redirect modes per hook, ntfy, license
 or source callback. For an endpoint created in the panel, verify its signature using
 the one-time secret returned at creation; the receiver's built-in `signatureValid`
-uses the seeded endpoint secret. Use its CA at
+uses the seeded endpoint secret. Only selected signature, idempotency, content and
+notification headers are recorded; Authorization and cookies are not stored or
+exported. Existing history is filtered on export too. `/records` remains an array;
+`/records/diagnostics` reports recovered count, discarded line numbers (one-based),
+byte offsets (zero-based), lengths, and NUL ranges. NUL bytes are removed only in
+the read projection; unparsable entries are reported, while later valid entries
+remain readable. An affected original is saved byte-for-byte as a mode-0600
+`records.jsonl.original-<sha256>` beside the unchanged history. Keep these originals
+private, especially for history created by older versions. Response headers
+`X-Fixture-Discarded-Records` and `X-Fixture-Nul-Bytes` flag recovery, and the same
+diagnostics go to container stderr without record contents. Append uses a fresh
+append descriptor and fsync; an unterminated tail is preserved before a separating
+newline is added. No historical cause of NUL bytes has been established.
+Use its CA at
 `/private/tmp/mailstack-test-local/fixture/tls.crt` for host curl requests.
 
 The Pro test composition maps only `license.test.example`, `hooks.test.example` and
@@ -1039,6 +1059,66 @@ certificate, then the real event handler and extension emitter. It does not bypa
 signature verification or alter the public `/v1/events/ses` endpoint. These fixtures
 prove local processing and evidence handling, **not AWS certificate trust**. Expiry
 helpers change synthetic fixture timestamps; the host clock is never changed.
+In the mixed SNS-fixture + SMTP sandbox, SQL and the timeline/proof may say
+`delivered` after a fixture Delivery event while the summary still says
+`Relay accepted (delivery not confirmed)` because its provider is SMTP. This
+difference is intentional: neither the local fixture event nor SMTP relay
+acceptance proves final delivery to a real recipient.
+
+Before **every fault or reset**, preserve all earlier mail outside the installation
+directory, including raw EML and SHA256, with this paginated capture/check procedure
+(use a new evidence directory for each capture):
+
+```bash
+python3 - capture /private/tmp/mailstack-inbox-before-fault <<'PY'
+import hashlib, json, pathlib, sys, urllib.request
+mode, directory = sys.argv[1:]
+root = pathlib.Path(directory)
+base = 'http://127.0.0.1:18825'
+def get(path):
+    return urllib.request.urlopen(base + path, timeout=15).read()
+def inventory():
+    result, start = {}, 0
+    while True:
+        page = json.loads(get(f'/api/v1/messages?start={start}&limit=50'))
+        for message in page['messages']:
+            mid = message['ID']
+            raw = get(f'/api/v1/message/{mid}/raw')
+            result[mid] = hashlib.sha256(raw).hexdigest()
+            if mode == 'capture':
+                path = root / (mid + '.eml')
+                with path.open('xb') as stream:
+                    stream.write(raw)
+                path.chmod(0o600)
+        start += len(page['messages'])
+        if start >= page['total']:
+            return result
+        if not page['messages']:
+            raise RuntimeError('Incomplete inbox page')
+if mode == 'capture':
+    root.mkdir(mode=0o700)
+    manifest = inventory()
+    path = root / 'sha256.json'
+    path.write_text(json.dumps(manifest, sort_keys=True))
+    path.chmod(0o600)
+elif mode == 'check':
+    expected = json.loads((root / 'sha256.json').read_text())
+    actual = inventory()
+    assert expected and all(actual.get(k) == v for k, v in expected.items()), 'Inbox changed'
+else:
+    raise ValueError('Use capture or check')
+print('Inbox checksums OK')
+PY
+```
+
+For a restart check, capture a **nonempty** inbox first, run
+`docker compose -p mailstack-test -f /private/tmp/mailstack-test-local/compose.yml restart mailpit`,
+wait for Mailpit readiness, and repeat the Python block with `check` instead of
+`capture` and the same evidence path. All prior IDs/raw checksums must match; new
+messages may be present. For the large-attachment trial also download the attachment
+and compare its decoded SHA256 with the input file. A destructive reset intentionally
+starts an empty inbox; use the saved EML as evidence, not as a claim of persistence.
+Keep the original test run's earlier captures before starting another fault.
 
 `down` removes containers, volumes, locally built images and the entire temporary
 installation including credentials. The downloaded Mailpit image and evidence saved

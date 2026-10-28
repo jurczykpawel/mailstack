@@ -1,7 +1,8 @@
+import { readRecords, appendRecord } from './records.mjs';
 import { createServer as tcp, connect } from 'node:net';
 import { createServer } from 'node:https';
 import { createServer as http } from 'node:http';
-import { readFileSync, appendFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createHash, createHmac, sign } from 'node:crypto';
 const dir = '/run/fixture', records = '/data/records.jsonl';
 let modes = { hook: '200', ntfy: '200', license: '200', callback: '200' };
@@ -16,14 +17,23 @@ const server = createServer({ key: readFileSync(dir + '/tls.key'), cert: readFil
     }
     modes = { ...modes, ...input }; return json(res, modes);
   }
-  if (url.pathname === '/records') return json(res, existsSync(records) ? readFileSync(records, 'utf8').trim().split('\n').filter(Boolean).map(x => JSON.parse(x)) : []);
+  if (url.pathname === '/records' || url.pathname === '/records/diagnostics') {
+    try {
+      const history = readRecords(records);
+      res.setHeader('x-fixture-discarded-records', String(history.diagnostics.discarded.length));
+      res.setHeader('x-fixture-nul-bytes', String(history.diagnostics.nulBytes));
+      if (history.diagnostics.original) console.error(JSON.stringify(history.diagnostics));
+      return json(res, url.pathname === '/records' ? history.records : history.diagnostics);
+    } catch { return json(res, { error: 'History unavailable' }, 503); }
+  }
   if (url.pathname === '/health') return json(res, { ok: true, modes });
   const category = url.pathname === '/jwks' || url.pathname === '/crl' ? 'license' : url.pathname === '/ntfy' ? 'ntfy' : url.pathname === '/callback' ? 'callback' : 'hook';
   const match = /^t=(\d+),v1=([a-f0-9]{64})$/.exec(req.headers['x-mailstack-signature'] ?? '');
   const secret = category === 'callback' ? credentials.callbackSecret : credentials.webhookSecret;
   const signatureValid = !!match && Math.abs(Date.now() / 1000 - Number(match[1])) <= 300 &&
     createHmac('sha256', secret).update(match[1] + '.' + body).digest('hex') === match[2];
-  appendFileSync(records, JSON.stringify({ at: Date.now(), path: url.pathname, headers: req.headers, body, signatureValid }) + '\n', { mode: 0o600 });
+  try { appendRecord(records, { at: Date.now(), path: url.pathname, headers: req.headers, body, signatureValid }); }
+  catch { return json(res, { error: 'History unavailable' }, 503); }
   if (modes[category] === 'timeout') { const t = setTimeout(() => res.end(), 12000); res.on('close', () => clearTimeout(t)); return; }
   if (modes[category] === 'redirect') { res.writeHead(302, { location: 'https://hooks.test.example/redirect-target' }); return res.end(); }
   if (modes[category] === '500') return json(res, { error: 'Synthetic failure' }, 500);
@@ -40,7 +50,7 @@ const server = createServer({ key: readFileSync(dir + '/tls.key'), cert: readFil
 server.listen(8443, '0.0.0.0');
 http((req, res) => {
   if (req.url === '/health') return json(res, { ok: true });
-  if (req.url === '/ntfy') { let body=''; req.on('data',c=>body+=c); req.on('end',()=>{ appendFileSync(records,JSON.stringify({at:Date.now(),path:'/ntfy',body})+'\n',{mode:0o600}); if(modes.ntfy==='timeout'){const t=setTimeout(()=>res.end(),12000);res.on('close',()=>clearTimeout(t));} else if(modes.ntfy==='redirect'){res.writeHead(302,{location:'http://fixture:8082/health'});res.end();} else json(res,{ok:true},Number(modes.ntfy)); }); return; }
+  if (req.url === '/ntfy') { let body=''; req.on('data',c=>body+=c); req.on('end',()=>{ try { appendRecord(records,{at:Date.now(),path:'/ntfy',body}); } catch { return json(res,{error:'History unavailable'},503); } if(modes.ntfy==='timeout'){const t=setTimeout(()=>res.end(),12000);res.on('close',()=>clearTimeout(t));} else if(modes.ntfy==='redirect'){res.writeHead(302,{location:'http://fixture:8082/health'});res.end();} else json(res,{ok:true},Number(modes.ntfy)); }); return; }
   if (req.url === '/sign-sns' && req.method === 'POST') { let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{const b=JSON.parse(raw);const fields=['Message','MessageId',...(Object.hasOwn(b,'Subject')?['Subject']:[]),'Timestamp','TopicArn','Type'];b.Signature=sign('sha256',Buffer.from(fields.map(k=>k+'\n'+b[k]+'\n').join('')),readFileSync(dir+'/tls.key')).toString('base64');json(res,b);});return; }
   if (req.url === '/request' && req.method === 'POST') {
     // Same-origin utility only sends to the isolated API, never to a user-supplied URL.
