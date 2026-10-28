@@ -60,6 +60,7 @@ export interface Brand {
   turnstileAction?: string;
   requireNonce?: boolean;
   products?: string[];
+  licenseActivationUrls?: Record<string, string>;
 }
 
 /** A submitted content field after coercion (control keys are stripped out). */

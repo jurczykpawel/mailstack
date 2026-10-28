@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { handleSellfHook } from "../src/sellf";
 import type { Env, SendDeps, SendParams } from "../src/types";
 
+import { bundlePurchase } from "./purchase-license-fixture";
+
 const API_KEY = "trusted-secret-token";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -126,16 +128,16 @@ describe("handleSellfHook — purchase.completed", () => {
     expect(params.from).toBe("Acme Inc. <hello@acme.example>");
     expect(params.to).toEqual(["buyer@example.com"]);
     expect(params.replyTo).toBe("inbox@acme.example");
-    // payment template subject includes the orderId (sessionId preferred).
-    expect(params.subject).toBe("Potwierdzenie płatności - cs_test_123");
+    // payment template subject includes the orderId (paymentIntentId preferred).
+    expect(params.subject).toBe("Potwierdzenie płatności - pi_test_999");
     // amount 4999 cents -> "49.99" (money divides by 100), currency uppercased.
     expect(params.html).toContain("49.99 PLN");
     expect(params.html).toContain("Protocol: X");
-    expect(params.html).toContain("cs_test_123");
+    expect(params.html).toContain("pi_test_999");
     expect(params.html).toContain("Anna Nowak");
   });
 
-  it("falls back to paymentIntentId when sessionId is absent", async () => {
+  it("uses paymentIntentId when sessionId is absent", async () => {
     const deps = makeDeps();
     const env = purchaseEnvelope();
     delete (env.data.order as Record<string, unknown>).sessionId;
@@ -295,4 +297,25 @@ describe("handleSellfHook — send failure", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ success: false, message: "send failed", code: "send_failed" });
   });
+});
+
+it("includes every bundle key in the first provider email", async () => {
+  const deps = makeDeps();
+  const purchase = bundlePurchase();
+  const response = await handleSellfHook(hook(purchase), makeEnv(), deps);
+  expect(response.status).toBe(200);
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  const mail = deps.sendEmail.mock.calls[0][1] as SendParams;
+  for (const license of purchase.data.licenses) {
+    expect(mail.text).toContain(license.token);
+    expect(mail.html).toContain(license.token);
+  }
+  expect(mail.html.match(/<pre /g)).toHaveLength(2);
+  expect(mail.html).toContain('href="https://source.test.example/activate/bundle"');
+  expect(mail.html).toContain('href="https://source.test.example/activate/component"');
+  expect(mail.text).toContain("123.00 PLN");
+  expect(mail.text).toContain("Pakiet Żółw");
+  expect(mail.text).toContain("Moduł Łączność");
+  expect(mail.text).toContain("Każdy komponent aktywuje się oddzielnie");
+  expect(mail.subject).toContain("pi_bundle");
 });

@@ -15,6 +15,8 @@ const brand = z.strictObject({
   turnstileAction: z.string().optional(),
   requireNonce: z.boolean().optional(),
   products: z.array(z.string().min(1).max(100)).optional(),
+  licenseActivationUrls: z.record(z.string().trim().min(1).max(200),
+    z.url().max(2048).refine(value => /^https?:/.test(value))).optional(),
   captcha: z.enum(["altcha", "turnstile"]).optional(),
   theme: z.strictObject({
     accent: z.string(), accent2: z.string().optional(), logoUrl: z.string().optional(), siteUrl: z.string(),

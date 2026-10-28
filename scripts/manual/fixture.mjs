@@ -1,3 +1,4 @@
+import { activationPage } from './activation-page.ts';
 import { readRecords, appendRecord } from './records.mjs';
 import { createServer as tcp, connect } from 'node:net';
 import { createServer } from 'node:https';
@@ -11,6 +12,8 @@ const json = (res, value, status = 200) => { res.writeHead(status, { 'content-ty
 const server = createServer({ key: readFileSync(dir + '/tls.key'), cert: readFileSync(dir + '/tls.crt') }, async (req, res) => {
   const url = new URL(req.url, 'https://fixture'); let body = '';
   for await (const chunk of req) { body += chunk; if (body.length > 11 * 1024 * 1024) { req.destroy(); return; } }
+  const activation = activationPage(url.pathname);
+  if (activation && req.method === 'GET') { res.setHeader('content-type', 'text/html; charset=utf-8'); return res.end(activation); }
   if (url.pathname === '/control' && req.method === 'POST') {
     const input = JSON.parse(body); for (const [k, v] of Object.entries(input)) {
       if (!(k in modes) || !['200', '500', 'timeout', 'redirect'].includes(v)) return json(res, { error: 'Invalid mode' }, 400);

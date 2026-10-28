@@ -25,6 +25,10 @@
         "siteUrl": "https://acme.example",
         "address": "123 Example Street, 00-000 Example City",
         "phone": "+00 000 000 000"
+      },
+      "licenseActivationUrls": {
+        "bundle": "https://source.test.example/activate/bundle",
+        "component": "https://source.test.example/activate/component"
       }
     },
     "demo": {
@@ -44,7 +48,8 @@
         "accent": "#008AFF",
         "accent2": "#A8D603",
         "siteUrl": "https://demo.example"
-      }
+      },
+      "licenseActivationUrls": {}
     }
   },
   "logging": {

@@ -1,0 +1,61 @@
+{
+  "event": "purchase.completed",
+  "timestamp": "2026-10-28T22:11:34Z",
+  "data": {
+    "customer": {
+      "email": "buyer@acme.example",
+      "firstName": "Żaneta",
+      "lastName": "Łącka",
+      "userId": null
+    },
+    "product": {
+      "id": "bundle",
+      "name": "Pakiet Żółw",
+      "slug": "pakiet",
+      "price": 123,
+      "currency": "PLN",
+      "icon": null
+    },
+    "bundleComponents": [
+      {
+        "id": "component",
+        "name": "Moduł Łączność",
+        "slug": "modul",
+        "price": 23,
+        "currency": "PLN",
+        "icon": null
+      }
+    ],
+    "bumpProduct": null,
+    "bumpProducts": [],
+    "order": {
+      "amount": 12300,
+      "currency": "pln",
+      "sessionId": "cs_bundle",
+      "paymentIntentId": "pi_bundle",
+      "couponId": null,
+      "isGuest": true
+    },
+    "customFields": [
+      {
+        "id": "domain",
+        "label": "Domain",
+        "value": "customer.test.example"
+      }
+    ],
+    "licenses": [
+      {
+        "productId": "bundle",
+        "token": "DEMO-A-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaEND1",
+        "kid": "test-kid",
+        "jwksUrl": "https://source.test.example/jwks"
+      },
+      {
+        "productId": "component",
+        "token": "DEMO-B-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbEND2",
+        "kid": "test-kid",
+        "jwksUrl": "https://source.test.example/jwks"
+      }
+    ]
+  }
+}

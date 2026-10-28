@@ -559,6 +559,55 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
 - `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
   `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
 
+### Purchase licenses and activation
+
+The first `purchase.completed` payment email includes every supplied `licenses[]`
+entry, each with its full key in a separate code box and in plain text. Names come
+from `product` and `bundleComponents` by product ID; an unknown ID is displayed
+explicitly. Bump products do not implicitly receive licenses. Missing or empty
+`licenses` means an ordinary payment email. Invalid entries, repeated product IDs,
+more than 32 entries, or more than 48 KiB of serialized license data return
+`422 invalid_event_data` before recording or sending. The hook body remains capped
+at 64 KiB. Keys are never silently shortened, including when their total exceeds
+5000 characters. License dates are not derived from tokens.
+
+The owner may configure `licenseActivationUrls` on each brand as a product-ID to
+HTTP(S)-URL map. Omission is equivalent to an empty map. Use exact, owner-managed
+product settings pages, with no license tokens in their URLs:
+
+```json
+"licenseActivationUrls": {
+  "bundle": "https://source.test.example/activate/bundle",
+  "component": "https://source.test.example/activate/component"
+}
+```
+
+The example `acme` brand demonstrates both routes; `demo` has an empty map. Replace
+these synthetic routes in your external config with your own product settings
+pages. The email tells the buyer to paste each key into the matching product's
+license settings and activate each component separately. Without a configured
+page, it gives the same complete instructions and the brand inbox for help,
+without an activation button. JWKS, CRL, custom domains and token contents never
+supply activation links. Configured activation URLs and individual keys use the
+payment template's secret fields in standard archives. Payment policies must use
+`resend: "off"` or an explicitly supported source callback, as for `license`;
+replay cannot restore secret-bearing content.
+
+Purchase order IDs, correlation refs and automatic deduplication prefer PI, falling
+back to CS. This changes the key for purchases carrying both IDs. At an upgrade,
+coordinate pending producer retries over the 24-hour deduplication window: an old
+CS-keyed purchase and a new PI-keyed retry can be distinct sends. No historical
+jobs are guessed or migrated. Refund identifiers are unchanged by this rule.
+
+For local review, generate synthetic first-email fixtures with
+`node test/generate-purchase-license-fixtures.ts <output-directory>` and serve that
+directory locally. The index provides configured/unconfigured emails and full
+expected keys for copy checks at 390 and 1440 px. The isolated test fixture serves
+`https://source.test.example/activate/bundle` and `/activate/component`, where a
+buyer can paste the complete synthetic key and confirm the matching product.
+These pages are explicitly demonstrations, with no provider activation. Browser
+review and real provider integration are separate checks.
+
 ### Sellf event contract
 
 The hook requires an object envelope with a nonblank string `event`, a valid ISO
@@ -577,7 +626,7 @@ Validation precedes mapping, intent recording, deduplication and provider calls.
 
 | Event | Outcome and required data beyond customer email and product name |
 |---|---|
-| `purchase.completed` | Payment email: `order.amount` is a safe integer >= 0 in minor units; `order.currency` is three letters; at least one nonblank string `order.sessionId` or `order.paymentIntentId`. CS alone or PI alone is enough; the other may be absent/null. CS takes precedence when both exist. |
+| `purchase.completed` | Payment email: `order.amount` is a safe integer >= 0 in minor units; `order.currency` is three letters; at least one nonblank string `order.sessionId` or `order.paymentIntentId`. CS alone or PI alone is enough; the other may be absent/null. PI takes precedence when both exist, matching Sellf license issuance. |
 | `refund.issued` | Notice: `payment.id`, at least one CS/PI, `payment.amount` in minor units, three-letter `payment.currency`; `refund.stripeRefundId`, positive safe integer `refund.amount` in minor units, matching three-letter `refund.currency`, `status: "succeeded"`, boolean `isFullRefund`, safe integer `totalRefunded` in minor units, valid ISO `refundedAt`. Cumulative total must be >= this refund and <= payment amount; full must equal whether cumulative total reaches payment amount. Pending/failed refunds are rejected. |
 | `waitlist.signup` | Signup notice; no order identifier required. |
 | `lead.captured` | Welcome email; no order identifier required. |
@@ -744,7 +793,9 @@ Policies resolve from `logging.defaults` through `logging.brands.<id>.defaults` 
 
 `secretFields` is declared by templates in code; the `license` template declares
 `licenseKey` and `activationUrl`. Secret values in archive projections show only their
-last four characters. `patterns` supports named `regex` or `urlParams` rules. Archive
+last four characters when longer than four; shorter secrets are fully hidden.
+The `payment` template declares each purchase key and configured activation URL
+separately. `patterns` supports named `regex` or `urlParams` rules. Archive
 projections omit JSON-LD; outgoing email keeps the original rendering. `subjectRoles`
 identifies submitter address fields for data-subject indexing (`contact.email`).
 
@@ -825,7 +876,9 @@ Sellf requires a Bearer client with `hook:sellf` scope. If that client configure
 HMAC-SHA256 over `${t}.${rawBody}` with a 300-second tolerance. Missing or invalid
 signatures return `401 unauthorized`. Configure the secret in the runtime, never in
 the JSON file. Sellf uses automatic idempotency key
-`sellf:<event>:<order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]>`
+`sellf:<event>:<ref>`
+where purchases use `order.paymentIntentId|order.sessionId`; other events retain
+`order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]`
 and the order/payment identifier as `ref` when present. Duplicate delivery sends once;
 conflicts, pending attempts and unknown outcomes follow the table above.
 

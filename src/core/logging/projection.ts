@@ -47,7 +47,7 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   const includeSecrets = policy.level === "full" && policy.includeSecrets;
   const secretFields = new Set(template.secretFields);
   const show = new Set(policy.show);
-  const partial = (value: string) => "••••" + Array.from(value).slice(-4).join("");
+  const partial = (value: string) => "••••" + (Array.from(value).length > 4 ? Array.from(value).slice(-4).join("") : "");
   const fields = policy.level === "masked" ? Object.entries(data)
     : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
   const replacements = fields

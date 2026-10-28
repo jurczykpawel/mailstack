@@ -1,6 +1,7 @@
+import { purchaseLicenseData, purchaseLicensesSchema } from "./purchase-licenses";
 import { z } from "zod";
 import { boundedText } from "./core/http";
-import type { Env, SendDeps, TemplateData } from "./types";
+import type { Brand, Env, SendDeps, TemplateData } from "./types";
 import { config, getBrand } from "./core/config";
 import { deliveryResponse } from "./core/logging/delivery";
 import { authenticate, permits, tokenSha256 } from "./clients.ts";
@@ -37,7 +38,7 @@ const commonData = z.object({
   customer: z.object({ email: z.string().trim().pipe(z.email()) }),
   product: z.object({ name: nonempty }),
 });
-const purchaseData = commonData.extend({ order: transaction });
+const purchaseData = commonData.extend({ order: transaction, licenses: purchaseLicensesSchema.optional() });
 const refundData = commonData.extend({
   payment: transaction.safeExtend({ id: nonempty }),
   refund: z.object({
@@ -71,7 +72,7 @@ interface MappedEmail {
 }
 
 /** Maps one Sellf event payload to an email, or null to skip rendering. */
-type SellfMapper = (env: SellfEnvelope) => MappedEmail | null;
+type SellfMapper = (env: SellfEnvelope, brand: Brand) => MappedEmail | null;
 
 function jsonResponse(
   body: Record<string, unknown>,
@@ -126,7 +127,7 @@ function fullName(customer: Record<string, unknown>): string {
  * Unknown events are acknowledged; explicitly unsupported events are declined.
  */
 const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
-  "purchase.completed": ({ data, timestamp }) => {
+  "purchase.completed": ({ data, timestamp }, brand) => {
     const customer = obj(data, "customer");
     const order = obj(data, "order");
     const product = obj(data, "product");
@@ -138,8 +139,9 @@ const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
         amount: money(order.amount),
         currency: upper(order.currency),
         item: str(product, "name"),
-        orderId: str(order, "sessionId") || str(order, "paymentIntentId"),
+        orderId: str(order, "paymentIntentId") || str(order, "sessionId"),
         date: plDate(timestamp),
+        ...purchaseLicenseData(data, brand),
       },
     };
   },
@@ -277,7 +279,7 @@ export async function handleSellfHook(
     return jsonResponse({ success: false, code: "invalid_event_data", message: "invalid event data", fields }, 422);
   }
 
-  const mapped = mapper(envelope);
+  const mapped = mapper(envelope, brand);
   if (mapped && !permits(client, "hook:sellf", brandId, mapped.template)) {
     return jsonResponse({ success: false, message: "forbidden", code: "scope" }, 403);
   }
@@ -295,7 +297,9 @@ export async function handleSellfHook(
 
   const order = obj(envelope.data, "order");
   const payment = obj(envelope.data, "payment");
-  const ref = str(order, "sessionId") || str(order, "paymentIntentId") || str(payment, "sessionId") || str(payment, "paymentIntentId");
+  const ref = event === "purchase.completed"
+    ? str(order, "paymentIntentId") || str(order, "sessionId")
+    : str(order, "sessionId") || str(order, "paymentIntentId") || str(payment, "sessionId") || str(payment, "paymentIntentId");
   const idempotencyKey = `sellf:${event}:${ref || (await tokenSha256(rawBody)).slice(0, 32)}`;
   const result = await renderAndSend(deps, env, brand, template, mapped.data, {
     to: [to],

@@ -23,7 +23,8 @@ async function start(root) {
   const source = readFileSync(resolve('scripts/manual/fixture.mjs'), 'utf8')
     .replace("'/run/fixture'", JSON.stringify(root)).replace("'/data/records.jsonl'", JSON.stringify(join(root, 'records.jsonl')))
     .replaceAll(/\.listen\((?:8443|8082|port),/g, '.listen(0,');
-  copyFileSync(resolve('scripts/manual/records.mjs'), join(root, 'records.mjs'));
+  for (const file of ['records.mjs', 'activation-page.ts', 'purchase-fixture.json'])
+    copyFileSync(resolve('scripts/manual', file), join(root, file));
   const script = join(root, 'fixture.mjs');
   writeFileSync(script, source + "\nserver.on('listening',()=>process.send(server.address().port));\n");
   const child = spawn(process.execPath, [script], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });

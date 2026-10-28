@@ -50,7 +50,7 @@ cfg.brands['selfware-like'] = { ...cfg.brands.demo, id: 'selfware-like', name: '
 cfg.clients = clients; cfg.legacyApiKey = { enabled: true, env: 'API_KEY' };
 cfg.logging.defaults = { ...cfg.logging.defaults, level: 'meta', alertOn: ['bounce_permanent', 'complaint', 'send_failed', 'unknown'] };
 cfg.logging.brands = { acme: { templates: {
-  contact: { level: 'full' }, payment: { level: 'masked', show: ['amount', 'currency', 'item', 'orderId', 'date'], resend: 'replay' },
+  contact: { level: 'full' }, payment: { level: 'masked', show: ['amount', 'currency', 'item', 'orderId', 'date'], resend: 'off' },
   license: { level: 'masked', show: ['productName', 'tier', 'domain'], resend: 'source', requireLog: true },
   welcome: { level: 'none' }, received: { level: 'full' }, notice: { level: 'meta' },
 } } };

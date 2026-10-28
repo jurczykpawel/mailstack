@@ -1,3 +1,4 @@
+import { purchaseLicenseSecrets } from "../src/purchase-licenses";
 import { expect, it } from "vitest";
 import { parseConfig } from "../src/core/config/schema";
 import { getTemplate, renderLayout } from "../src/templates";
@@ -9,7 +10,7 @@ const config = () => parseConfig(structuredClone(example));
 it("classifies registered templates and validates license replay", () => {
   expect(getTemplate("contact")?.subjectRoles).toEqual(["email"]);
   expect(getTemplate("license")?.secretFields).toEqual(["licenseKey", "activationUrl"]);
-  expect(getTemplate("payment")?.secretFields ?? []).toEqual([]);
+  expect(getTemplate("payment")?.secretFields).toEqual(purchaseLicenseSecrets);
   const value = config();
   value.logging.brands.acme = { templates: { license: { level: "masked", resend: "replay" } } };
   expect(() => parseConfig(value)).toThrow("$.logging.brands.acme.templates.license.resend");
