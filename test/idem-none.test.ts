@@ -122,7 +122,7 @@ for (const driver of ['sqlite', 'd1'] as const) {
       deps.store = undefined;
       expect((await send()).status).toBe(200);
       deps.store = store;
-      vi.spyOn(store, 'consume').mockRejectedValue(new Error('unavailable'));
+      vi.spyOn(store, 'claimIdempotency').mockRejectedValue(new Error('unavailable'));
       expect((await send()).status).toBe(200);
       expect((await send()).status).toBe(200);
       expect(deps.sendEmail).toHaveBeenCalledTimes(3);
@@ -164,7 +164,7 @@ for (const driver of ['sqlite', 'd1'] as const) {
       expect(deps.sendEmail).toHaveBeenCalledTimes(1);
     });
 
-    it.each(['meta', 'masked', 'full'] as const)('uses message rows without a none guard at level %s', async level => {
+    it.each(['meta', 'masked', 'full'] as const)('uses message rows and a shared reservation at level %s', async level => {
       deps.logging!.defaults.level = level;
       const consume = vi.spyOn(store, 'consume');
       const call = (data = {}) => renderAndSend(deps, loggedEnv, getBrand('acme')!, getTemplate('notice')!, data, {
@@ -176,7 +176,7 @@ for (const driver of ['sqlite', 'd1'] as const) {
       expect(await call({ heading: 'Changed' })).toMatchObject({ ok: false, status: 409, code: 'idempotency_conflict' });
       expect(await store.findByIdempotency('legacy', await idempotencyHash('legacy', level))).toMatchObject({ id: first.id, status: 'sent', level });
       expect(consume).not.toHaveBeenCalled();
-      expect(await guards()).toEqual([]);
+      expect(await guards()).toHaveLength(1);
       expect(deps.sendEmail).toHaveBeenCalledTimes(1);
     });
   });

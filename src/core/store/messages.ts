@@ -35,6 +35,7 @@ export interface MessageIntent {
 export interface SentUpdate { providerMessageId: string; providerResponseSealed: string; sentAt: number; smtp?: { accepted: number[]; rejected: number[]; evidence: string } }
 export interface MessageStore {
   alertContext(id: string, pos?: number): Promise<{ brand: string; template: string; addr_hint: string } | undefined>;
+  claimIdempotency(clientId: string, keyHash: string, now: number, recorded: boolean): Promise<boolean>;
   clearIdempotency(id: string, keyHash: string): Promise<void>;
   insertMessage(intent: MessageIntent): Promise<void>;
   markSent(id: string, update: SentUpdate): Promise<void>;
@@ -79,9 +80,28 @@ export class MessageOperations implements MessageStore {
     await this.batch(queries);
   }
 
+  async claimIdempotency(clientId: string, keyHash: string, now: number, recorded: boolean): Promise<boolean> {
+    const key = 'idem:' + clientId + ':' + keyHash;
+    const changes = await this.batch([
+      sql`delete from guards where key = ${key} and expires_at <= ${now}`,
+      sql`update messages set idem_key_hash = null where client_id = ${clientId}
+        and idem_key_hash = ${keyHash} and created_at <= ${now - 86400000}`,
+      sql`insert into guards(key,count,expires_at)
+        select ${key},${recorded ? 2 : 1},${now + 86400000} where not exists (
+          select 1 from messages where client_id = ${clientId} and idem_key_hash = ${keyHash})
+        on conflict(key) do nothing`,
+    ].map(query => query.compile(this.db)));
+    return changes[2] === 1;
+  }
+
   async clearIdempotency(id: string, keyHash: string): Promise<void> {
-    await this.db.updateTable('messages').set({ idem_key_hash: null }).where('id', '=', id)
-      .where('idem_key_hash', '=', keyHash).where('status', '=', 'send_failed').execute();
+    await this.batch([
+      sql`delete from guards where count = 2 and key = (
+        select 'idem:' || client_id || ':' || idem_key_hash from messages
+        where id = ${id} and idem_key_hash = ${keyHash} and status = 'send_failed')`,
+      this.db.updateTable('messages').set({ idem_key_hash: null }).where('id', '=', id)
+        .where('idem_key_hash', '=', keyHash).where('status', '=', 'send_failed'),
+    ].map(query => query.compile(this.db)));
   }
 
   async markSent(id: string, update: SentUpdate): Promise<void> {
@@ -93,7 +113,7 @@ export class MessageOperations implements MessageStore {
           queries.push(sql`insert into events(id,message_id,recipient_pos,source,source_event_id,type,occurred_at,received_at,auth,summary,evidence_sealed)
             select ${eventId(update.sentAt)},${id},${pos},'smtp-response',${id + ':' + pos},${type},${update.sentAt},${update.sentAt},'smtp-response',${type === 'accepted' ? 'Relay accepted' : 'Relay refused'},${update.smtp.evidence}
             where exists(select 1 from messages where id=${id})`.compile(this.db));
-          queries.push(this.db.updateTable('recipients').set({ status: type, last_event_at: update.sentAt }).where('message_id', '=', id).where('pos', '=', pos).compile());
+          queries.push(this.db.updateTable('recipients').set({ status: type, last_event_at: update.sentAt }).where('message_id', '=', id).where('pos', '=', pos).where('status', 'in', ['sending', 'unknown']).compile());
         }
       }
     }
@@ -101,12 +121,17 @@ export class MessageOperations implements MessageStore {
   }
 
   async markFailed(id: string, providerResponseSealed: string): Promise<void> {
-    await this.db.updateTable('messages').set({ status: 'send_failed', provider_response_sealed: providerResponseSealed })
-      .where('id', '=', id).execute();
+    await this.batch([
+      this.db.updateTable('messages').set({ status: 'send_failed', provider_response_sealed: providerResponseSealed }).where('id', '=', id),
+      this.db.updateTable('recipients').set({ status: 'send_failed' }).where('message_id', '=', id).where('status', '=', 'sending'),
+    ].map(query => query.compile()));
   }
 
   async setStatus(id: string, status: MessageStatus): Promise<void> {
-    await this.db.updateTable('messages').set({ status }).where('id', '=', id).execute();
+    await this.batch([
+      this.db.updateTable('messages').set({ status }).where('id', '=', id),
+      this.db.updateTable('recipients').set({ status }).where('message_id', '=', id).where('status', '=', 'sending'),
+    ].map(query => query.compile()));
   }
 
   async findByIdempotency(clientId: string, keyHash: string): Promise<MessageRow | undefined> {

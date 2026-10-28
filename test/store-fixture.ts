@@ -4,6 +4,7 @@ export function memoryStore(): Store {
   const guards = new Map<string, { count: number; expires: number }>();
   return {
     async alertContext() { return undefined; },
+    async claimIdempotency(clientId, keyHash, now) { return this.consume('idem:' + clientId + ':' + keyHash, now + 86400000); },
     async clearIdempotency() { throw new Error('Unsupported operation'); },
     async insertMessage() { throw new Error('Unsupported operation'); },
     async markSent() { throw new Error('Unsupported operation'); },

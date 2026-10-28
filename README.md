@@ -695,13 +695,34 @@ are also unchanged. Provider failures retain `message: "send failed"`, with addi
 `code: "send_failed"` and HTTP `502`.
 
 Idempotency keys are scoped to the authenticated client (`legacy` for the legacy API
-key; public sends use client id `public` without deduplication). At level `none`, a
-repeated key returns `200 {success:true,idempotent:true}` without an `id` or another
-send, including while the original attempt is pending or its outcome is uncertain.
-Explicit provider refusal releases the key for retry; preparation errors leave it
-available. Success and uncertain outcomes retain the key until expiry and guard cleanup.
-Only levels `meta`, `masked` and `full` detect conflicts when the same key has a different
-request body. At those levels, a matching request follows this table:
+key; public sends use client id `public` without deduplication). All logging levels
+share one atomic reservation in `guards`, lasting 24 hours from the first attempt.
+Changing a logging policy or restarting the runtime preserves that reservation.
+Existing unexpired `none` guards and `meta`/`masked`/`full` message records are recognized
+without a backfill or access to plaintext keys. If an old unlogged reservation coexists
+with a refused message, it remains reserved until expiry. Recorded reservations use
+`guards.count = 2`; unlogged and legacy reservations use `1`, so clearing a refused
+message's binding cannot release an older unlogged reservation.
+Changing policy never removes message evidence.
+At the 24-hour boundary, a new attempt may claim the key without waiting for retention;
+only the expired key binding is cleared from old messages, leaving their evidence intact.
+
+When the first attempt used `none`, a repeated key returns
+`200 {success:true,idempotent:true}` without an `id` or another send, including while
+the original attempt is pending or its outcome is uncertain. That first attempt has
+no request MAC, so a different body cannot be distinguished and receives the same
+acknowledgement even after switching to a logged level. A reservation without a
+message row (including an interruption before recording the intent) follows this rule.
+An explicit provider refusal releases an unlogged reservation for retry; preparation
+errors leave the key available. Missing or unavailable storage at `none` still allows
+sending without deduplication, regardless of `requireLog`.
+
+When the original attempt has a message record, its request MAC and state determine
+the response below, even if the current policy is `none`. A missing or unverifiable
+MAC returns `409 idempotency_conflict` without sending. Reservation hashes do not depend
+on index keys. Keep previous index keys during rotation to verify recorded request MACs;
+removing a required key returns a conflict until the 24-hour reservation expires.
+An explicit refusal permits a matching request to retry under the current policy.
 
 | Original state | Repeated request |
 |---|---|
@@ -711,6 +732,10 @@ request body. At those levels, a matching request follows this table:
 | `unknown` (exception, timeout, or uncertain result) | `409`, `code: "outcome_unknown"`; no automatic retry |
 | Different request with the same key | `409`, `code: "idempotency_conflict"` |
 
+An exception or timeout marks unresolved recipients `unknown` along with the message.
+Retention applies the same update to `sending` attempts older than 15 minutes, including
+after restart. Known recipient outcomes, partial SMTP relay acceptance/refusal and the
+message complaint flag remain intact. Reconciliation never sends email automatically.
 An `unknown` result needs provider reconciliation before considering another send.
 The operator panel is supplied by an extension. The SES adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request

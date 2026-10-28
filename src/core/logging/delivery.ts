@@ -43,12 +43,14 @@ export async function deliver(
   const request = intentRequest(input);
   let id: string | undefined;
   let keyHash: string | undefined;
+  let guardKey: string | undefined;
   const previous = async (): Promise<SendResult | 'retry' | undefined> => {
     if (!keyHash || !deps.store) return;
     const row: MessageRow | undefined = await deps.store.findByIdempotency(clientId, keyHash);
-    if (!row) return;
-    const keys = parseKeyring(env).indexKeys;
-    if (!row.request_mac || !await verifyMac(request, JSON.parse(row.request_mac), keys)) return { ...failure(409, 'idempotency_conflict'), id: row.id };
+    if (!row || row.created_at <= deps.now().getTime() - 86400000) return;
+    let matches = false;
+    try { matches = !!row.request_mac && await verifyMac(request, JSON.parse(row.request_mac), parseKeyring(env).indexKeys); } catch {}
+    if (!matches) return { ...failure(409, 'idempotency_conflict'), id: row.id };
     if (row.status === 'send_failed') {
       await deps.store.clearIdempotency(row.id, keyHash);
       return 'retry';
@@ -57,13 +59,22 @@ export async function deliver(
     if (row.status === 'unknown') return { ...failure(409, 'outcome_unknown'), id: row.id };
     return { ok: true, status: 200, id: row.id, idempotent: true };
   };
-  while (policy.level !== 'none') {
+  while (true) {
     try {
       if (context.idempotencyKey !== undefined) {
         keyHash = await idempotencyHash(clientId, context.idempotencyKey);
         const existing = await previous();
         if (existing && existing !== 'retry') return existing;
+        if (deps.store) {
+          if (!await deps.store.claimIdempotency(clientId, keyHash, deps.now().getTime(), policy.level !== 'none')) {
+            const winner = await previous();
+            if (winner === 'retry') continue;
+            return winner ?? { ok: true, status: 200, idempotent: true };
+          }
+          guardKey = 'idem:' + clientId + ':' + keyHash;
+        }
       }
+      if (policy.level === 'none') break;
       ({ id } = await recordIntent({ store: deps.store, logging, env, now: deps.now }, input));
       break;
     } catch {
@@ -72,7 +83,10 @@ export async function deliver(
         if (existing === 'retry') continue;
         if (existing) return existing;
       } catch { /* Storage may be unavailable for both reads and writes. */ }
-      if (policy.requireLog || context.resendOf) return failure(503, 'log_unavailable');
+      if (policy.level !== 'none' && (policy.requireLog || context.resendOf)) {
+        if (guardKey) await deps.store!.release(guardKey).catch(() => {});
+        return failure(503, 'log_unavailable');
+      }
       break;
     }
   }
@@ -88,14 +102,6 @@ export async function deliver(
     else return task;
   };
   let result: SendResult;
-  let guardKey: string | undefined;
-  if (policy.level === 'none' && context.idempotencyKey !== undefined && deps.store) {
-    try {
-      const key = 'idem:' + clientId + ':' + await idempotencyHash(clientId, context.idempotencyKey);
-      if (!await deps.store.consume(key, deps.now().getTime() + 86400000)) return { ok: true, status: 200, idempotent: true };
-      guardKey = key;
-    } catch {}
-  }
   try {
     result = await deps.sendEmail(env, { ...params, ...(id ? { messageId: id, brand: brand.id } : {}) });
   } catch {
@@ -104,7 +110,7 @@ export async function deliver(
     await alert('unknown');
     return { ...failure(502, 'send_failed'), id };
   }
-  if (!result.ok && guardKey) await deps.store!.release(guardKey).catch(() => {});
+  if (!result.ok && guardKey && !id) await deps.store!.release(guardKey).catch(() => {});
   if (id) {
     try {
       const sealed = await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'provider_response' }, parseKeyring(env).contentKeys);

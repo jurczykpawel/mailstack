@@ -39,6 +39,8 @@ export async function runRetention(store: KyselyStore, now: number, cfg: Config,
         select ${eventId(now)},id,'local',${'unknown:' + id},'unknown',${now},${now},'local'
         from messages where id = ${id} and status = 'sending' and created_at < ${now - 900000}
         on conflict(source,source_event_id) do nothing`,
+      sql`update recipients set status = 'unknown' where message_id = ${id} and status = 'sending'
+        and exists(select 1 from messages where id = ${id} and status = 'sending' and created_at < ${now - 900000})`,
       sql`update messages set status = 'unknown' where id = ${id} and status = 'sending' and created_at < ${now - 900000}`,
     ]).map(query => query.compile(store.db)));
   }

@@ -42,7 +42,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`send outcomes: ${drive
     await store.migrate();
   });
   beforeEach(async () => {
-    await store.db.deleteFrom('messages').execute();
+    for (const table of ['guards', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages'])
+      await sql`delete from ${sql.table(table)}`.execute(store.db);
     env = { API_KEY: 'test-key', SES_REGION: 'eu-west-1', SES_ACCESS_KEY_ID: '', SES_SECRET_ACCESS_KEY: '', TURNSTILE_SECRET: '', ALTCHA_HMAC_KEY: '',
       CONTENT_PUBLIC_KEYS: publicKeys, INDEX_KEYS: JSON.stringify([{ kid: 'i1', key: Buffer.alloc(32, 11).toString('base64url') }]) };
     deps = { store, logging: structuredClone(config.logging), now: () => new Date('2026-10-24T12:00:00Z'),
