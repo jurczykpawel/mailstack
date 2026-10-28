@@ -1,5 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
+import { generateKeyPairSync } from 'node:crypto';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { startScheduler, startServer } from '../src/runtime/node-api';
 import { createSqliteStore } from '../src/core/store/sqlite';
@@ -55,6 +57,56 @@ it('checks the actual store and retains liveness after storage closes', async ()
   expect(await (await call()).json()).toMatchObject({ ok: true, store: 'ok' });
   await store.db.destroy();
   expect(await (await call()).json()).toMatchObject({ ok: true, store: 'down' });
+});
+
+it.each(['readonly', 'busy'] as const)('keeps read health separate from required writes: %s', async fault => {
+  const filename = join(backupDir, 'store.sqlite');
+  let store = createSqliteStore(filename);
+  await store.migrate(); await store.db.destroy();
+  const connection = new Database(filename, { readonly: fault === 'readonly', timeout: 1 });
+  store = createSqliteStore(connection);
+  const lock = fault === 'busy' ? new Database(filename) : undefined;
+  const logging = structuredClone(config.logging);
+  logging.defaults.requireLog = true;
+  logging.defaults.level = 'meta';
+  const pair = generateKeyPairSync('x25519');
+  const env = { API_KEY: 'test-token', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [{
+    ...pair.publicKey.export({ format: 'jwk' }), kty: 'OKP', crv: 'X25519', kid: 'c1',
+  }] }), INDEX_KEYS: JSON.stringify([{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }]) } as Env;
+  const sender = vi.fn().mockResolvedValue({ ok: true, status: 200,
+    smtp: { accepted: ['A@acme.example'], rejected: [] } });
+  const app = () => createApp({ store, logging, provider: 'smtp', sendEmail: sender });
+  const call = (path: string, init?: RequestInit) => app().fetch(new Request(`http://localhost${path}`, init), env, {} as ExecutionContext);
+  const send = () => call('/v1/send', { method: 'POST', headers: {
+    'content-type': 'application/json', authorization: 'Bearer test-token',
+  }, body: JSON.stringify({ brand: 'acme', template: 'license', to: 'A@acme.example', licenseKey: 'TEST-END4' }) });
+  try {
+    lock?.exec('BEGIN IMMEDIATE');
+    const health = await call('/health');
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({ ok: true, store: 'ok' });
+    const failed = await send();
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({ success: false, code: 'log_unavailable' });
+    expect(sender).not.toHaveBeenCalled();
+    expect(await store.db.selectFrom('messages').select('id').execute()).toEqual([]);
+    lock?.exec('ROLLBACK');
+    await store.db.destroy();
+    const closed = await call('/health');
+    expect(closed.status).toBe(200);
+    expect(await closed.json()).toMatchObject({ ok: true, store: 'down' });
+    expect((await send()).status).toBe(503);
+    expect(sender).not.toHaveBeenCalled();
+    store = createSqliteStore(filename);
+    expect(await (await call('/health')).json()).toMatchObject({ ok: true, store: 'ok' });
+    expect((await send()).status).toBe(200);
+    expect(sender).toHaveBeenCalledTimes(1);
+    expect(await store.db.selectFrom('messages').select(['status', 'provider']).execute()).toEqual([{ status: 'sent', provider: 'smtp' }]);
+    expect(await store.db.selectFrom('recipients').select('status').execute()).toEqual([{ status: 'accepted' }]);
+  } finally {
+    if (lock?.inTransaction) lock.exec('ROLLBACK');
+    lock?.close(); await store.db.destroy();
+  }
 });
 
 it.each([undefined, 'cloudflare', 'proxy'])('uses the configured client address for rate limits: %s', async mode => {

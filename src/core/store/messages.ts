@@ -34,7 +34,7 @@ export interface MessageIntent {
 }
 export interface SentUpdate { providerMessageId: string; providerResponseSealed: string; sentAt: number; smtp?: { accepted: number[]; rejected: number[]; evidence: string } }
 export interface MessageStore {
-  alertContext(id: string, pos?: number): Promise<{ brand: string; template: string; addr_hint: string } | undefined>;
+  alertContext(id: string, pos?: number | null): Promise<{ brand: string; template: string; addr_hint: string } | undefined>;
   claimIdempotency(clientId: string, keyHash: string, now: number, recorded: boolean): Promise<boolean>;
   clearIdempotency(id: string, keyHash: string): Promise<void>;
   insertMessage(intent: MessageIntent): Promise<void>;
@@ -56,9 +56,13 @@ export class MessageOperations implements MessageStore {
     this.atomic = atomic;
   }
 
-  async alertContext(id: string, pos?: number) {
+  async alertContext(id: string, pos?: number | null) {
+    if (pos == null) {
+      const row = await this.db.selectFrom('messages').select(['brand', 'template']).where('id', '=', id).executeTakeFirst();
+      return row ? { ...row, addr_hint: 'unassigned' } : undefined;
+    }
     return this.db.selectFrom('messages').leftJoin('recipients', join => join.onRef('recipients.message_id', '=', 'messages.id')
-      .on('recipients.pos', '=', pos ?? 0)).select(['brand', 'template', 'addr_hint']).where('messages.id', '=', id)
+      .on('recipients.pos', '=', pos)).select(['brand', 'template', 'addr_hint']).where('messages.id', '=', id)
       .executeTakeFirst().then(row => row ? { ...row, addr_hint: row.addr_hint ?? 'unassigned' } : undefined);
   }
 

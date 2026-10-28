@@ -49,6 +49,10 @@ The API is published on `127.0.0.1:8080` by default. For public traffic, put a r
 proxy in front and configure `TRUSTED_PROXY` as described below, or deliberately set
 `MAILSTACK_BIND=0.0.0.0` to publish on all host interfaces. `/health` reports `store: "ok"` after a database query;
 `ok` remains true if storage goes down, while the container healthcheck reports unhealthy.
+For diagnostics, `store: "ok"` proves database reads only, not writes or email delivery:
+`requireLog: true` can return `503 log_unavailable` on read-only storage or a busy writer
+while `/health` still returns `200` with `store: "ok"`. Check the send response and
+storage permissions or write locks; after restoring writes, verify a controlled send.
 Use `MAILSTACK_CONFIG` to mount a different configuration file and `MAILSTACK_PORT` to
 change the published port. The container runs as a non-root user on a read-only root filesystem;
 only `/data` and the `/tmp` tmpfs are writable. The named data volume survives container restarts.
@@ -543,6 +547,8 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
 
 ### API (summary)
 - `GET /health` → `{ ok: true, service: "mailstack", version, commit }` (`commit: "dev"` locally).
+  This is liveness, not readiness; its `store: "ok"` field proves reads, not writes or
+  delivery, and read-only storage can still cause `requireLog: true` sends to return `503`.
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
   keys: `brand` (body or query), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
   `template` (trusted only), `autoreply` (public contact), plus the reserved fields documented below.
@@ -860,7 +866,8 @@ overrides with `bounce_permanent`, `complaint`, `reject`, `send_failed`,
 
 Alerts use the stored recipient hint and a bounded summary of diagnostic status
 codes and bounce classification; arbitrary provider prose is omitted. They contain
-no subject or message content. Templates declaring secret fields use high priority;
+no subject or message content. Message-level events without a matched recipient use
+`unassigned` instead of a recipient hint. Templates declaring secret fields use high priority;
 others use default priority. `PANEL_URL` adds a link to `/m/<messageId>`.
 One attempt per message/type is claimed in guards for the effective `metaDays`
 (or seven days when absent). A failed notification is logged without its details
