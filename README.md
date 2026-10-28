@@ -519,7 +519,14 @@ selections and scope are checked before sending. Keep a `panel` client separate 
 
 ### Migrating a legacy brand registry
 
-The input must export `BRANDS`; the importer executes trusted local TypeScript. From
+The input must export JSON-compatible `BRANDS`; the importer executes trusted local
+TypeScript in a child Node process with the same permissions and environment. This
+is not a sandbox. Standard output and error from the module (including
+`console.log`, `process.stdout.write` and deferred diagnostics) go to CLI stderr;
+stdout contains only the validated configuration JSON on success. Import, export
+serialization or validation failures return a nonzero exit code with empty stdout.
+The registry transfer is limited to 1 MiB; modules must finish their pending work
+before the command returns. From
 the repository root, with your old registry saved as `legacy/brands.ts`:
 
 ```bash
@@ -776,7 +783,11 @@ node scripts/mailstack.ts log show msg_EXAMPLE --db ./data/mailstack.sqlite --ke
 `list` and `find` print a table of message id, creation time (UTC), brand, template,
 status and latest delivery event. Add `--json` for JSON output. Results are newest
 first, with message id breaking timestamp ties; the default limit is 100 and
-`list --limit` accepts 1-100. `--since` accepts an ISO timestamp with a timezone.
+`list --limit` accepts 1-100. `--since` accepts a valid calendar ISO timestamp with
+seconds and a timezone (`Z` or `±HH:MM`, offset hours 00-23 and minutes 00-59).
+Fractional seconds are optional. Impossible dates, out-of-range clock components
+(including 24:00 and leap seconds) and missing timezones are rejected before opening
+the database. Equivalent UTC and offset timestamps select the same rows.
 Lists contain no recipient addresses or address hints. The `none` logging level
 creates no message row, so those sends cannot appear in results.
 

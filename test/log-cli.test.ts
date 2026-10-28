@@ -94,6 +94,46 @@ it('filters list rows and bounds its limit', () => {
     expect(result.status).toBe(1); expect(result.stdout).toBe('');
   }
 });
+it('rejects invalid calendar timestamps before opening a database', () => {
+  const missing = join(dir, 'calendar-absent.sqlite');
+  for (const since of [
+    '2026-02-30T00:00:00Z', '2026-02-29T00:00:00Z', '2026-04-31T00:00:00Z',
+    '1900-02-29T00:00:00Z', '2026-00-01T00:00:00Z', '2026-13-01T00:00:00Z',
+    '2026-01-00T00:00:00Z', '2026-01-32T00:00:00Z', '2026-01-01T24:00:00Z',
+    '2026-01-01T23:60:00Z', '2026-01-01T23:59:60Z', '2026-01-01T00:00:00',
+    '2026-01-01T00:00:00+24:00', '2026-01-01T00:00:00-00:60',
+    '2026-02-30T01:00:00+01:00',
+  ]) {
+    for (const filename of [db, missing]) {
+      const result = cli(['list', '--db', filename, '--since', since, '--json']);
+      expect.soft(result.status, since).toBe(1);
+      expect.soft(result.stdout, since).toBe('');
+      expect.soft(result.stderr, since).toBe('Since must be an ISO timestamp with a timezone\n');
+    }
+  }
+  expect(existsSync(missing)).toBe(false);
+});
+it('preserves calendar cutoffs and equivalent timezone offsets', () => {
+  const connection = new Database(db);
+  try {
+    const update = connection.prepare('update messages set created_at=? where id=?');
+    update.run(Date.parse('2026-03-01T12:00:00Z'), ids.meta);
+    update.run(Date.parse('2026-03-02T00:00:00Z'), ids.masked);
+    update.run(Date.parse('2026-03-02T00:00:00.001Z'), ids.full);
+  } finally { connection.close(); }
+  const rows = (since: string) => {
+    const result = run('list', '--since', since);
+    expect(result.status, result.stderr).toBe(0);
+    return JSON.parse(result.stdout).map((row: { id: string }) => row.id);
+  };
+  const all = [ids.full, ids.masked, ids.meta];
+  for (const since of ['2026-02-28T00:00:00Z', '2024-02-29T00:00:00Z', '2000-02-29T00:00:00Z'])
+    expect(rows(since)).toEqual(all);
+  for (const since of ['2026-03-02T00:00:00Z', '2026-03-02T01:00:00+01:00',
+    '2026-03-02T23:59:00+23:59', '2026-03-01T00:01:00-23:59', '2026-03-02T00:00:00-00:00'])
+    expect(rows(since)).toEqual([ids.full, ids.masked]);
+  expect(rows('2026-03-02T00:00:00.001Z')).toEqual([ids.full]);
+});
 it('finds addresses through all index generations and all subject roles', () => {
   for (const level of ['meta', 'masked', 'full']) {
     const result = run('find', '--email', ` ${level}@EXAMPLE.COM `, '--index-keys', indexFile);

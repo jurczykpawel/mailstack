@@ -13,6 +13,20 @@ const fail = (message: string): never => { throw new LogReadError(message); };
 const usage = () => fail('Usage: mailstack log list|find|show <id> --db <file> [options] [--json]');
 const metadata = ['id', 'created_at', 'brand', 'template', 'status'] as const;
 
+function parseSince(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  const invalid = () => fail('Since must be an ISO timestamp with a timezone');
+  if (!match) return invalid();
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1]
+    || hour > 23 || minute > 59 || second > 59
+    || Number(match[7] ?? 0) > 23 || Number(match[8] ?? 0) > 59) return invalid();
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : invalid();
+}
+
 function options(args: string[]) {
   const action = args.shift();
   if (!action || !['list', 'find', 'show'].includes(action)) return usage();
@@ -34,9 +48,7 @@ function options(args: string[]) {
   if (action === 'find') { required('--email'); required('--index-keys'); }
   const limit = Number(values.get('--limit') ?? 100);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail('Limit must be an integer from 1 to 100');
-  const since = values.get('--since');
-  if (since && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(since) || !Number.isFinite(Date.parse(since))))
-    fail('Since must be an ISO timestamp with a timezone');
+  const since = values.has('--since') ? parseSince(values.get('--since')!) : undefined;
   return { action, id, filename, values, limit, since };
 }
 
@@ -93,7 +105,7 @@ export async function readLog(args: string[]): Promise<void> {
       .select(sql<string | null>`(select type from events where message_id=messages.id order by occurred_at desc,id desc limit 1)`.as('last_event'));
     if (values.has('--brand')) query = query.where('brand', '=', values.get('--brand')!);
     if (values.has('--status')) query = query.where(sql<string>`status`, '=', values.get('--status')!);
-    if (since) query = query.where('created_at', '>=', Date.parse(since));
+    if (since !== undefined) query = query.where('created_at', '>=', since);
     if (action === 'find') {
       let indexes;
       try {
