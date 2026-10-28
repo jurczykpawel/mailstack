@@ -589,9 +589,11 @@ license settings and activate each component separately. Without a configured
 page, it gives the same complete instructions and the brand inbox for help,
 without an activation button. JWKS, CRL, custom domains and token contents never
 supply activation links. Configured activation URLs and individual keys use the
-payment template's secret fields in standard archives. Payment policies must use
-`resend: "off"` or an explicitly supported source callback, as for `license`;
-replay cannot restore secret-bearing content.
+payment template's optional secret fields in standard archives. Existing payment
+`resend: "replay"` policies remain valid for ordinary payments. When a purchase
+contains a key or activation URL, core stores no replay payload or replay MAC and
+disables replay for that message. Use `off` or an explicitly supported source
+callback for those purchases.
 
 Purchase order IDs, correlation refs and automatic deduplication prefer PI, falling
 back to CS. This changes the key for purchases carrying both IDs. At an upgrade,
@@ -795,14 +797,15 @@ Policies resolve from `logging.defaults` through `logging.brands.<id>.defaults` 
 `licenseKey` and `activationUrl`. Secret values in archive projections show only their
 last four characters when longer than four; shorter secrets are fully hidden.
 The `payment` template declares each purchase key and configured activation URL
-separately. `patterns` supports named `regex` or `urlParams` rules. Archive
-projections omit JSON-LD; outgoing email keeps the original rendering. `subjectRoles`
+separately in `optionalSecretFields`; these have the same archive projection rules
+and disable replay only when present in the message. `patterns` supports named
+`regex` or `urlParams` rules. Archive projections omit JSON-LD; outgoing email keeps the original rendering. `subjectRoles`
 identifies submitter address fields for data-subject indexing (`contact.email`).
 
 Retention values are positive integer days; `contentDays <= metaDays`, and both must
 fit the global ceilings. `requireLog` controls whether a missing intent prevents delivery.
-`resend: "replay"` validates only with `masked`/`full` and templates without secret fields;
-`source` needs a matching `send` client with `resendCallback`. Defaults remain
+`resend: "replay"` validates only with `masked`/`full` and templates without
+unconditional secret fields; `source` needs a matching `send` client with `resendCallback`. Defaults remain
 `resend: "off"`; execution requires an extension declaring the resend capability. `includeSecrets` requires `full` and a boot audit sink; current runtimes require false.
 
 Trusted `POST /v1/send` requests accept:

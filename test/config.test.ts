@@ -57,8 +57,8 @@ describe("configuration schema", () => {
     expect(() => parseConfig(value, { payment: { secretFields: ["key"] } })).toThrow("$.logging.defaults.resend");
   });
   it("accepts replay for projected content without secretFields", () => {
-    const value = parseConfig(config()); value.logging.defaults.level = "masked"; value.logging.brands = { acme: { templates: { notice: { resend: "replay" } } } };
-    expect(parseConfig(value).logging.brands.acme.templates?.notice.resend).toBe("replay");
+    const value = parseConfig(config()); value.logging.defaults.level = "masked"; value.logging.brands = { acme: { templates: { payment: { resend: "replay" } } } };
+    expect(parseConfig(value).logging.brands.acme.templates?.payment.resend).toBe("replay");
   });
   it("requires a callback matching the effective brand and template", () => {
     const value = { ...config(), clients: [{ ...clientDefaults, brands: ["demo"], templates: ["payment"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } }] };
@@ -117,9 +117,9 @@ it("accepts an optional Turnstile action string", () => {
   expect(() => parseConfig({ ...value, brands: { ...brands, acme: { ...brands.acme, turnstileAction: 42 } } })).toThrow("$.brands.acme.turnstileAction");
 });
 
-it("requires off or source for payment archives", () => {
+it("accepts existing full payment archive configuration", () => {
   const value = parseConfig(config());
   value.logging.defaults.level = "full";
   value.logging.brands = { acme: { templates: { payment: { resend: "replay" } } } };
-  expect(() => parseConfig(value)).toThrow("$.logging.brands.acme.templates.payment.resend");
+  expect(parseConfig(value).logging.brands.acme.templates?.payment.resend).toBe("replay");
 });

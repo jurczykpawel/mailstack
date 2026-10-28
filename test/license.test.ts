@@ -10,7 +10,7 @@ const config = () => parseConfig(structuredClone(example));
 it("classifies registered templates and validates license replay", () => {
   expect(getTemplate("contact")?.subjectRoles).toEqual(["email"]);
   expect(getTemplate("license")?.secretFields).toEqual(["licenseKey", "activationUrl"]);
-  expect(getTemplate("payment")?.secretFields).toEqual(purchaseLicenseSecrets);
+  expect(getTemplate("payment")?.optionalSecretFields).toEqual(purchaseLicenseSecrets);
   const value = config();
   value.logging.brands.acme = { templates: { license: { level: "masked", resend: "replay" } } };
   expect(() => parseConfig(value)).toThrow("$.logging.brands.acme.templates.license.resend");

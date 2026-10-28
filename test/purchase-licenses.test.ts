@@ -189,3 +189,24 @@ it('sends the full unconfigured bundle instructions in one first email', async (
   expect(mail.text).not.toContain('Otwórz aktywację');
   expect(mail.html).not.toContain('/activate/');
 });
+
+it.each(['Z', 'Z7'])('projects embedded key %s in shown content and subject', token => {
+  const body = bundlePurchase();
+  body.data.licenses[0].token = token;
+  body.data.product.name = `prefix${token}suffix`;
+  const brand = getBrand('acme')!;
+  const data = { ...purchaseLicenseData(body.data, brand), item: body.data.product.name };
+  for (const level of ['masked', 'full'] as const) {
+    const archive = projectArchive({ brand, data, template: getTemplate('payment')!, patterns: [],
+      subject: `order${token}number`, policy: { ...config.logging.defaults, level, show: ['item'] } });
+    expect(archive && archive.level !== 'meta').toBe(true);
+    if (archive && archive.level !== 'meta') {
+      expect(archive.html).not.toContain(token);
+      expect(archive.text).not.toContain(token);
+      expect(archive.subject).not.toContain(token);
+      expect(archive.subject).toBe('order••••number');
+      expect(archive.html).toContain('prefix••••suffix');
+      expect(archive.text).toContain('prefix••••suffix');
+    }
+  }
+});

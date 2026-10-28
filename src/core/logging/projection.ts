@@ -45,7 +45,7 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   const metadata = { ...structuredClone(input.metadata), brand: brand.id, template: template.id };
   if (policy.level === "meta") return { level: "meta", metadata };
   const includeSecrets = policy.level === "full" && policy.includeSecrets;
-  const secretFields = new Set(template.secretFields);
+  const secretFields = new Set([...template.secretFields ?? [], ...template.optionalSecretFields ?? []]);
   const show = new Set(policy.show);
   const partial = (value: string) => "••••" + (Array.from(value).length > 4 ? Array.from(value).slice(-4).join("") : "");
   const fields = policy.level === "masked" ? Object.entries(data)
@@ -54,7 +54,7 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     .filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
     .flatMap(([field, value]) => [...new Set([value, escapeHtml(value)])].map((representation) => ({
       representation, replacement: secretFields.has(field) ? partial(value) : "[ukryte]",
-      secret: secretFields.has(field), short: policy.level === "masked" && Array.from(value).length < 3,
+      secret: secretFields.has(field), short: !secretFields.has(field) && policy.level === "masked" && Array.from(value).length < 3,
     })));
   if (policy.level === "masked") replacements.sort((a, b) => b.representation.length - a.representation.length);
   const secretReplacements = replacements.filter(({ secret }) => secret);

@@ -88,6 +88,8 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
       const address = input.data[field];
       if (address && /^[^\s@]+@[^\s@]+$/.test(address.trim())) await addSubject('submitter', address);
     }
+    const canReplay = policy.resend === 'replay' && !input.template.secretFields?.length
+      && !input.template.optionalSecretFields?.some(field => input.data[field]);
     const replay = { to: input.recipients.filter(r => r.role === 'to').map(r => r.address),
       ...(input.recipients.some(r => r.role === 'cc') ? { cc: input.recipients.filter(r => r.role === 'cc').map(r => r.address) } : {}),
       ...(input.recipients.some(r => r.role === 'bcc') ? { bcc: input.recipients.filter(r => r.role === 'bcc').map(r => r.address) } : {}),
@@ -104,7 +106,7 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
         ref_sealed: input.ref === undefined ? null : await encrypt(input.ref, 'ref'),
         idem_key_hash: idemHash,
         request_mac: canonicalJson(await createMac(intentRequest(input), indexKeys)),
-        replay_mac: policy.resend === 'replay' ? canonicalJson(await createMac(replay, indexKeys)) : null,
+        replay_mac: canReplay ? canonicalJson(await createMac(replay, indexKeys)) : null,
         resend_of: input.resendOf ?? null, resend_root: input.resendRoot ?? null, attachments_meta: input.attachments ? JSON.stringify(input.attachments.meta) : null,
         meta_expires_at: at + policy.metaDays * 86400000, content_expires_at: hasContent ? expires : null,
       }, recipients, subjects,
@@ -113,7 +115,7 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
       policy, patterns: deps.logging.patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
       metadata: { clientId: input.clientId, status: 'sending', createdAt: now.toISOString() },
     }), 'content') };
-    if (policy.resend === 'replay') intent.replay = { message_id: id, expires_at: expires, sealed: await encrypt(replay, 'replay') };
+    if (canReplay) intent.replay = { message_id: id, expires_at: expires, sealed: await encrypt(replay, 'replay') };
     await deps.store.insertMessage(intent);
     return { id };
   } catch { throw new LogUnavailableError(); }
