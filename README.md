@@ -1463,3 +1463,5 @@ logs are `priv/run-logs/manual`, and the final table is
 `priv/reports/manual-summary.md`. A completed report may still contain product bugs;
 completion is not release approval. SMOKE and RETEST are separate coordinator briefs.
 Never commit generated tokens, reports containing credentials, or temporary state.
+
+When connecting to SMTP by IP, set `SMTP_TLS_SERVERNAME` to the certificate hostname. This preserves TLS certificate verification with a direct address, including when `SMTP_URL` supplies the connection. The value must be a hostname.

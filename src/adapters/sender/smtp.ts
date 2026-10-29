@@ -23,6 +23,7 @@ export function createSmtpSender(transport: Transport): Sender {
 }
 export function smtpFromEnv(env: NodeJS.ProcessEnv): Sender {
   const common = { connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 30000, pool: false as const };
+  const servername = env.SMTP_TLS_SERVERNAME === undefined ? undefined : z.hostname().parse(env.SMTP_TLS_SERVERNAME);
   if (env.SMTP_URL) {
     const url = new URL(z.url().refine(v => /^smtps?:/.test(v)).parse(env.SMTP_URL));
     env = { SMTP_HOST: url.hostname.replace(/^\[|\]$/g, ''), SMTP_PORT: url.port || (url.protocol === 'smtps:' ? '465' : '587'),
@@ -35,5 +36,6 @@ export function smtpFromEnv(env: NodeJS.ProcessEnv): Sender {
     secure: env.SMTP_SECURE ?? 'false', user: env.SMTP_USER, pass: env.SMTP_PASS });
   return createSmtpSender(nodemailer.createTransport({ ...common, host: options.host, port: options.port, secure: options.secure,
     ...(options.user && !options.secure ? { requireTLS: true } : {}),
+    ...(servername ? { tls: { servername } } : {}),
     ...(options.user ? { auth: { user: options.user, pass: options.pass } } : {}) }));
 }
