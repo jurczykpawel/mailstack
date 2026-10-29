@@ -72,7 +72,10 @@ it('retains delivery state across API restarts and an interrupted SMTP response'
       const key = 'transition-' + first;
       expect((await send(await start(first), key)).status).toBe(200);
       const before = mimes.length;
-      expect(await (await send(await start(first === 'masked' ? 'none' : 'masked'), key)).json()).toMatchObject({ success: true, idempotent: true });
+      const repeated = await send(await start(first === 'masked' ? 'none' : 'masked'), key);
+      expect(repeated.status).toBe(first === 'masked' ? 200 : 409);
+      expect(await repeated.json()).toMatchObject(first === 'masked'
+        ? { success: true, idempotent: true } : { success: false, code: 'in_progress' });
       expect(mimes).toHaveLength(before);
     }
     expect(mimes).toHaveLength(2);

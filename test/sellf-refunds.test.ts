@@ -9,6 +9,7 @@ import { open } from '../src/core/crypto';
 import { idempotencyHash } from '../src/core/logging/writer';
 import { tokenSha256 } from '../src/clients';
 import { handleSellfHook } from '../src/sellf';
+import { bundlePurchase } from './purchase-license-fixture';
 import type { Env, SendDeps } from '../src/types';
 
 // Synthetic refund sequence matching the source's cumulative-refund contract.
@@ -55,6 +56,116 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
   });
   afterEach(() => { config.clients = structuredClone(originalClients); vi.restoreAllMocks(); });
   afterAll(async () => { await store?.db.destroy(); await mf?.dispose(); });
+
+  for (const event of ['purchase', 'refund'] as const) {
+    const envelope = () => event === 'purchase' ? bundlePurchase() : refundEnvelope();
+    it.each(['meta', 'masked', 'full'] as const)(`${event} waits for a recorded result at level %s`, async level => {
+      deps.logging!.defaults.level = level;
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const insert = store.insertMessage.bind(store);
+      vi.spyOn(store, 'insertMessage').mockImplementationOnce(async intent => {
+        entered.resolve();
+        await resume.promise;
+        await insert(intent);
+      });
+      const winner = request(envelope());
+      await entered.promise;
+      const reads = vi.spyOn(store, 'findByIdempotency');
+      try {
+        const duplicate = await request(envelope());
+        expect(duplicate.status).toBe(409);
+        expect(await duplicate.json()).toEqual({ success: false, code: 'in_progress', message: 'in progress' });
+        expect(reads.mock.calls.length).toBeGreaterThan(2);
+        expect(reads.mock.calls.length).toBeLessThanOrEqual(6);
+        expect(mails()).toHaveLength(0);
+      } finally { resume.resolve(); await winner; }
+      const response = await winner;
+      expect(response.status).toBe(200);
+      const body = await response.json() as { id: string };
+      expect(body.id).toMatch(/^msg_/);
+      expect(await (await request(envelope())).json()).toEqual({ ...body, idempotent: true });
+      expect(mails()).toHaveLength(1);
+      expect(await store.db.selectFrom('messages').selectAll().execute()).toHaveLength(1);
+    });
+
+    it(`${event} returns the completed result when it becomes readable`, async () => {
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const insert = store.insertMessage.bind(store);
+      vi.spyOn(store, 'insertMessage').mockImplementationOnce(async intent => {
+        entered.resolve(); await resume.promise; await insert(intent);
+      });
+      const winner = request(envelope());
+      await entered.promise;
+      const find = store.findByIdempotency.bind(store);
+      let reads = 0;
+      vi.spyOn(store, 'findByIdempotency').mockImplementation(async (...args) => {
+        if (++reads === 2) {
+          resume.resolve();
+          await winner;
+          return undefined;
+        }
+        return find(...args);
+      });
+      try {
+        const duplicate = await request(envelope());
+        expect(duplicate.status).toBe(200);
+        const original = await winner;
+        expect(await duplicate.json()).toEqual({ ...await original.json() as object, idempotent: true });
+        expect(reads).toBeGreaterThan(2);
+        expect(mails()).toHaveLength(1);
+      } finally { resume.resolve(); await winner; }
+    });
+
+    it.each(['refusal', 'write failure'] as const)(`${event} keeps pending and %s results separate`, async outcome => {
+      deps.logging!.defaults.requireLog = true;
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const insert = store.insertMessage.bind(store);
+      vi.spyOn(store, 'insertMessage').mockImplementationOnce(async intent => {
+        entered.resolve(); await resume.promise;
+        if (outcome === 'write failure') throw new Error('Unavailable');
+        await insert(intent);
+      });
+      if (outcome === 'refusal') vi.mocked(deps.sendEmail).mockResolvedValueOnce({ ok: false, status: 400 });
+      const winner = request(envelope());
+      await entered.promise;
+      try {
+        const duplicate = await request(envelope());
+        expect(duplicate.status).toBe(409);
+        expect(await duplicate.json()).toMatchObject({ success: false, code: 'in_progress' });
+        expect(mails()).toHaveLength(0);
+      } finally { resume.resolve(); await winner; }
+      const failed = await winner;
+      expect(failed.status).toBe(outcome === 'refusal' ? 502 : 503);
+      expect(await failed.json()).toMatchObject({ code: outcome === 'refusal' ? 'send_failed' : 'log_unavailable' });
+      const retried = await request(envelope());
+      expect(retried.status).toBe(200);
+      const body = await retried.json() as { id: string };
+      expect(body.id).toMatch(/^msg_/);
+      expect(await (await request(envelope())).json()).toEqual({ ...body, idempotent: true });
+      expect(mails()).toHaveLength(outcome === 'refusal' ? 2 : 1);
+    });
+
+    it(`${event} retains the unrecorded duplicate response at none`, async () => {
+      deps.logging!.defaults.level = 'none';
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      vi.mocked(deps.sendEmail).mockImplementationOnce(async () => {
+        entered.resolve(); await resume.promise; return { ok: true, status: 200 };
+      });
+      const winner = request(envelope());
+      await entered.promise;
+      try {
+        expect(await (await request(envelope())).json()).toEqual({ success: true, idempotent: true });
+      } finally { resume.resolve(); await winner; }
+      expect(await (await winner).json()).toEqual({ success: true });
+      expect(await (await request(envelope())).json()).toEqual({ success: true, idempotent: true });
+      expect(mails()).toHaveLength(1);
+      expect(await store.db.selectFrom('messages').selectAll().execute()).toEqual([]);
+    });
+  }
 
   it('sends both partial refunds and retains each duplicate result', async () => {
     const first = refundEnvelope();

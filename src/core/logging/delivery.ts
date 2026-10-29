@@ -67,9 +67,16 @@ export async function deliver(
         if (existing && existing !== 'retry') return existing;
         if (deps.store) {
           if (!await deps.store.claimIdempotency(clientId, keyHash, deps.now().getTime(), policy.level !== 'none')) {
-            const winner = await previous();
+            let winner = await previous();
+            if (policy.level !== 'none') {
+              for (let attempt = 0; !winner && attempt < 3; attempt++) {
+                await new Promise<void>(resolve => setTimeout(resolve, 10));
+                winner = await previous();
+              }
+            }
             if (winner === 'retry') continue;
-            return winner ?? { ok: true, status: 200, idempotent: true };
+            return winner ?? (policy.level === 'none'
+              ? { ok: true, status: 200, idempotent: true } : failure(409, 'in_progress'));
           }
           guardKey = 'idem:' + clientId + ':' + keyHash;
         }

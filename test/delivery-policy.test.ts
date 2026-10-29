@@ -70,7 +70,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     const original = await call(first);
     await restart();
     const second = first === 'masked' ? 'none' : 'masked';
-    expect(await call(second)).toMatchObject({ ok: true, idempotent: true });
+    expect(await call(second)).toMatchObject(first === 'masked'
+      ? { ok: true, idempotent: true, id: original.id } : { status: 409, code: 'in_progress' });
     expect(sender).toHaveBeenCalledTimes(1);
     const messages = await store.db.selectFrom('messages').selectAll().execute();
     expect(messages).toHaveLength(first === 'masked' ? 1 : 0);
@@ -84,12 +85,13 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     await call('masked');
     expect(await call('none', 'request-1', '24.41')).toMatchObject({ status: 409, code: 'idempotency_conflict' });
     await call('none', 'request-1', '23.41', 'client-b');
-    expect(await call('masked', 'request-1', '24.41', 'client-b')).toMatchObject({ ok: true, idempotent: true });
+    expect(await call('masked', 'request-1', '24.41', 'client-b')).toMatchObject({ status: 409, code: 'in_progress' });
     expect(sender).toHaveBeenCalledTimes(2);
   });
   it.each(['masked', 'none'] as const)('expires %s reservations at 24 hours without deleting evidence', async level => {
     await call(level); now += 86400000 - 1;
-    expect(await call(level === 'masked' ? 'none' : 'masked')).toMatchObject({ idempotent: true });
+    expect(await call(level === 'masked' ? 'none' : 'masked')).toMatchObject(level === 'masked'
+      ? { idempotent: true } : { status: 409, code: 'in_progress' });
     now++;
     expect(await call('masked')).toMatchObject({ ok: true, id: expect.any(String) });
     expect(sender).toHaveBeenCalledTimes(2);
@@ -103,7 +105,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
   });
   it('recognizes existing guard and message records without a backfill', async () => {
     await store.consume('idem:client-a:' + await idempotencyHash('client-a', 'old-none'), now + 86400000);
-    expect(await call('masked', 'old-none')).toMatchObject({ ok: true, idempotent: true });
+    expect(await call('masked', 'old-none')).toMatchObject({ status: 409, code: 'in_progress' });
     await call('masked', 'old-message');
     await store.db.deleteFrom('guards').execute();
     await restart();
@@ -116,7 +118,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     const guard = 'idem:client-a:' + await idempotencyHash('client-a', 'request-1');
     await store.release(guard);
     await store.consume(guard, now + 86400000);
-    expect(await call('masked')).toMatchObject({ ok: true, idempotent: true });
+    expect(await call('masked')).toMatchObject({ status: 409, code: 'in_progress' });
     expect(sender).toHaveBeenCalledTimes(1);
   });
   it('retains the reservation across index key rotation and unavailable verification keys', async () => {

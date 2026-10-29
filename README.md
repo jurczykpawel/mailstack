@@ -836,12 +836,14 @@ Changing policy never removes message evidence.
 At the 24-hour boundary, a new attempt may claim the key without waiting for retention;
 only the expired key binding is cleared from old messages, leaving their evidence intact.
 
-When the first attempt used `none`, a repeated key returns
+With the current policy at `none`, a repeated key without a message record returns
 `200 {success:true,idempotent:true}` without an `id` or another send, including while
-the original attempt is pending or its outcome is uncertain. That first attempt has
-no request MAC, so a different body cannot be distinguished and receives the same
-acknowledgement even after switching to a logged level. A reservation without a
-message row (including an interruption before recording the intent) follows this rule.
+the original attempt is pending or its outcome is uncertain. Without a request MAC,
+a different body cannot be distinguished.
+At `meta`, `masked` or `full`, a reserved key without a message record is read again
+up to three times, 10 ms apart, then returns `409 in_progress` if still absent.
+This also applies after switching from `none` to a logged level: the original
+reservation remains in force until expiry, without another send or a success without ID.
 An explicit provider refusal releases an unlogged reservation for retry; preparation
 errors leave the key available. Missing or unavailable storage at `none` still allows
 sending without deduplication, regardless of `requireLog`.
