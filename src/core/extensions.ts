@@ -11,6 +11,7 @@ export interface DomainEvent {
 export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>>;
 export interface ExtensionContext {
   panel?: PanelPrincipal;
+  sesStatus?: () => Promise<import('./store/ses-status').SesStatusV1>;
   resend?: import('./resend-contract').ResendCapability;
   db: ExtensionDatabase;
   appendAudit: (entry: AuditEntry) => Promise<AuditRow>;

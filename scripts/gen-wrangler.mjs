@@ -10,7 +10,7 @@
  * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE (optional).
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { INITIAL_SCHEMA } from "../src/core/store/migration.ts";
+import { INITIAL_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
 import { BUILD_CONFIG_SHA } from "../src/core/config/bundled.ts";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,7 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
 
 mkdirSync(resolve(root, ".wrangler/migrations"), { recursive: true });
 writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SCHEMA);
+writeFileSync(resolve(root, ".wrangler/migrations/0002_ses_status.sql"), SES_STATUS_SCHEMA);
 writeFileSync(resolve(root, "wrangler.toml"), out);
 
 const placeholder = d1Id.startsWith("PLACEHOLDER");

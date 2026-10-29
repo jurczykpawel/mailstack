@@ -112,3 +112,16 @@ CREATE TABLE IF NOT EXISTS audit (
   hash      TEXT NOT NULL
 );
 `;
+
+export const SES_STATUS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS ses_status (
+  id TEXT PRIMARY KEY,
+  confirmed_at INTEGER,
+  received INTEGER NOT NULL DEFAULT 0,
+  rejected_signature INTEGER NOT NULL DEFAULT 0,
+  rejected_topic INTEGER NOT NULL DEFAULT 0,
+  rejected_account INTEGER NOT NULL DEFAULT 0,
+  last_received_at INTEGER,
+  last_received_type TEXT
+);
+`;

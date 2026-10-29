@@ -27,9 +27,9 @@ const pair = generateKeyPairSync('x25519');
 const keys = [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' }];
 const indices = [{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }];
 const panelKey = Buffer.alloc(32, 9).toString('base64url');
-const panelHeaders = async (url: string, token: string) => {
+const panelHeaders = async (url: string, token: string, role: 'viewer' | 'admin' = 'admin') => {
   const req = new Request(url); const now = Date.now();
-  return { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1', 'x-panel-assertion': await signPanelAssertion(req, { actor: 'user-1', role: 'admin', issuedAt: now, expiresAt: now + 60000, stepUpAt: now }, panelKey) };
+  return { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1', 'x-panel-assertion': await signPanelAssertion(req, { actor: 'user-1', role, issuedAt: now, expiresAt: now + 60000, stepUpAt: role === 'viewer' ? null : now }, panelKey) };
 };
 const env = { PANEL_ASSERTION_KEY: panelKey, API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys }), INDEX_KEYS: JSON.stringify(indices) } as Env;
 const configured = () => parseConfig({ ...example, extensions: [{ module: 'demo-extension', options: { mode: 'test' } }] });
@@ -323,4 +323,26 @@ it('emits no mail event when required logging fails before the send', async () =
   { logging, sendEmail, now: () => new Date(), verifyAltcha: vi.fn(), verifyTurnstile: vi.fn(), emitEvent: runtime.emitEvent, waitUntil });
   expect(response.status).toBe(503);
   await drainEvents(); expect(onEvent).not.toHaveBeenCalled(); expect(sendEmail).not.toHaveBeenCalled();
+});
+
+it('provides SES status only to globally selected panel routes', async () => {
+  const token = 'msk_status_' + 's'.repeat(43);
+  const cfg = parseConfig({ ...example, events: { ses: options }, extensions: [{ module: 'status-extension' }],
+    clients: [{ id: 'status', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
+  const extension: Extension = { name: 'status', routes(app) {
+    app.route('GET', '/ses', async (_req, ctx) => ctx.sesStatus ? Response.json(await ctx.sesStatus()) : new Response(null, { status: 403 }));
+  } };
+  const call = async (brands: '*' | string[], templates: '*' | string[]) => {
+    const runtime = await loadExtensions({ ...cfg, clients: [{ ...cfg.clients![0], brands, templates }] }, store, async () => ({ default: extension }));
+    const url = 'http://localhost/internal/ext/status/ses';
+    expect((await runtime.fetch(new Request(url), env)).status).toBe(401);
+    const server = await startServer((req, runtimeEnv) => runtime.fetch(req, runtimeEnv), { ...env, SES_REGION: 'eu-west-1' }, 0);
+    try { return await fetch(`http://127.0.0.1:${server.port}/internal/ext/status/ses`, { headers: await panelHeaders(url, token, 'viewer') }); }
+    finally { await server.close(); }
+  };
+  const result = await call('*', '*');
+  expect(result.status).toBe(200);
+  expect(await result.json()).toMatchObject({ version: 1, region: 'eu-west-1', topicArns: options.topicArns, received: 0 });
+  expect((await call(['acme'], '*')).status).toBe(403);
+  expect((await call('*', ['notice'])).status).toBe(403);
 });

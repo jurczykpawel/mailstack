@@ -1,3 +1,4 @@
+import { observeSes, confirmSes } from '../core/store/ses-status';
 import { alertMessage } from '../core/alerts';
 import type { Notifier } from '../core/ports';
 import type { Config } from '../core/config/schema';
@@ -38,13 +39,27 @@ export async function handleSesEvent(req: Request, deps: EventDeps): Promise<Res
   try { body = JSON.parse(await boundedText(req, 256 * 1024)); }
   catch (error) { return response(error instanceof RangeError ? 413 : 400); }
   if (!envelope(body, req.headers.get('x-amz-sns-message-type'))) return response(400);
-  if (!deps.options || !await deps.verify(body, body.Type, deps.options)) return response(403);
+  const verified = !!deps.options && await deps.verify(body, body.Type, deps.options);
+  if (deps.store) {
+    const rejection = verified ? undefined : !deps.options?.topicArns.includes(body.TopicArn) ? 'topic'
+      : !deps.options.accountIds.includes(body.TopicArn.split(':')[4]) ? 'account' : 'signature';
+    let type = body.Type;
+    if (verified && body.Type === 'Notification') {
+      try {
+        const event = sesSchema.parse(JSON.parse(body.Message));
+        if (Object.hasOwn(mapping, event.eventType)) type = event.eventType;
+      } catch {}
+    }
+    try { await observeSes(deps.store, deps.now(), type, rejection); } catch {}
+  }
+  if (!verified) return response(403);
   if (!deps.store) return response(503);
   if (body.Type === 'UnsubscribeConfirmation') return response(200, 'ignored');
   if (body.Type === 'SubscriptionConfirmation') {
     try {
       await confirm(body, deps.fetcher ?? fetch);
       await appendAudit(deps.store, { at: deps.now(), actor: 'system', action: 'events.subscription_confirmed', details: {} });
+      try { await confirmSes(deps.store, body.TopicArn, deps.now()); } catch {}
       return response(200, 'confirmed');
     } catch { return response(503); }
   }

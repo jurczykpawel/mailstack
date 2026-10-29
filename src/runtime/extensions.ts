@@ -1,3 +1,4 @@
+import { readSesStatus } from '../core/store/ses-status';
 import { createNtfyNotifier } from '../adapters/notify/ntfy';
 import { createResendService } from '../core/resend';
 import { verifyTurnstile } from '../turnstile';
@@ -164,6 +165,7 @@ export async function loadExtensions(config: Config, store: KyselyStore,
     if (new URL(req.url).pathname.startsWith('/internal/v1/')) return internalFetch(req, env, store, config, panel, beforeDelete);
     const key = `${req.method} ${new URL(req.url).pathname}`, handler = routes.get(key), route = routeContexts.get(key);
     return handler ? handler(req, { ...ctx, panel, db: route!.db,
+      ...(panel.brands === '*' && panel.templates === '*' ? { sesStatus: () => readSesStatus(store, config.events?.ses, String(Reflect.get(env, 'SES_REGION') ?? 'eu-west-1')) } : {}),
       ...(enabled && route!.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });
   } };
 }

@@ -685,6 +685,42 @@ projection run atomically with SQLite transactions or D1 batches. Evidence conta
 complete SNS envelope sealed with purpose `evidence`; complaint events set the message's
 `complained` flag. Unknown/deleted messages are acknowledged without creating rows.
 
+Extensions can read operational status through `ctx.sesStatus()` (contract
+`SesStatusV1`, `version: 1`). It is available only in authenticated internal Node
+extension routes whose panel client selects both brands and templates as `"*"`;
+viewer, operator and admin assertions are accepted without step-up. It is absent
+from event/deletion hooks and scoped panel routes. For example:
+
+```ts
+app.route('GET', '/ses-status', async (_request, ctx) => {
+  if (!ctx.sesStatus) return new Response(null, { status: 403 });
+  return Response.json(await ctx.sesStatus(), { headers: { 'cache-control': 'no-store' } });
+});
+```
+
+The snapshot contains `configured`, `region` (runtime `SES_REGION`), configured
+`topicArns`/`accountIds`, and `subscriptions: [{topicArn, confirmedAt}]`.
+`confirmedAt` is epoch milliseconds of the latest successful local confirmation,
+not an AWS subscription lookup; null means none observed since this migration.
+It also contains `received`, `rejected: {signature, topic, account}`,
+`lastReceivedAt` and `lastReceivedType` (null until first observation).
+Counters count structurally valid SNS envelopes, including retries and ignored or
+unmatched notifications, independently of message logging. Rejection categories
+are exclusive: topic first, then account, then signature/verification failure.
+Malformed/oversized bodies are excluded. The last type is a recognized SES event
+name for verified, valid SES payloads; otherwise it is the SNS envelope type.
+Times use local receipt time, never the supplied event timestamp, and do not move
+backwards. No addresses, message ids, tokens, content or raw envelopes are included.
+
+Observations are aggregate, retained with the database across restarts and message
+retention, and shared by SQLite and D1; apply the generated
+`0002_ses_status.sql` D1 migration to existing installations. Old events are not
+backfilled. Observation writes are best-effort and do not change endpoint results;
+storage outages can leave gaps. Reads reject on storage failure, rather than
+reporting zero. Confirmation is recorded only after the confirmation request and
+audit succeed. `configured: false` reports empty configuration selections but
+preserves historical counters. This adds no public endpoint or `DomainEvent` type.
+
 To connect SES and SNS:
 
 1. In the same AWS region as SES, create an SNS topic with signature version 2 and
