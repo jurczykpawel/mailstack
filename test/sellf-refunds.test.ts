@@ -89,6 +89,46 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
       expect(await store.db.selectFrom('messages').selectAll().execute()).toHaveLength(1);
     });
 
+    it.each(['meta', 'masked', 'full'] as const)(`${event} keeps read failures pending at level %s`, async level => {
+      deps.logging!.defaults.level = level;
+      for (const requireLog of [false, true]) for (const failedRead of [2, 3]) {
+        deps.logging!.defaults.requireLog = requireLog;
+        await store.db.deleteFrom('messages').execute();
+        await store.db.deleteFrom('guards').execute();
+        vi.mocked(deps.sendEmail).mockClear();
+        const entered = Promise.withResolvers<void>();
+        const resume = Promise.withResolvers<void>();
+        const insert = store.insertMessage.bind(store);
+        const insertion = vi.spyOn(store, 'insertMessage').mockImplementationOnce(async intent => {
+          entered.resolve(); await resume.promise; await insert(intent);
+        });
+        const winner = request(envelope());
+        await entered.promise;
+        const find = store.findByIdempotency.bind(store);
+        let reads = 0;
+        const reading = vi.spyOn(store, 'findByIdempotency').mockImplementation(async (...args) => {
+          if (++reads === failedRead) throw new Error('Unavailable');
+          return find(...args);
+        });
+        try {
+          const duplicate = await request(envelope());
+          expect(duplicate.status).toBe(409);
+          expect(await duplicate.json()).toEqual({ success: false, code: 'in_progress', message: 'in progress' });
+          expect(mails()).toHaveLength(0);
+        } finally {
+          resume.resolve(); await winner;
+          reading.mockRestore(); insertion.mockRestore();
+        }
+        const original = await winner;
+        expect(original.status).toBe(200);
+        const body = await original.json() as { id: string };
+        expect(body.id).toMatch(/^msg_/);
+        expect(await (await request(envelope())).json()).toEqual({ ...body, idempotent: true });
+        expect(mails()).toHaveLength(1);
+        expect(await store.db.selectFrom('messages').selectAll().execute()).toHaveLength(1);
+      }
+    });
+
     it(`${event} returns the completed result when it becomes readable`, async () => {
       const entered = Promise.withResolvers<void>();
       const resume = Promise.withResolvers<void>();
@@ -159,6 +199,11 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
       await entered.promise;
       try {
         expect(await (await request(envelope())).json()).toEqual({ success: true, idempotent: true });
+        const reading = vi.spyOn(store, 'findByIdempotency')
+          .mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Unavailable'));
+        try {
+          expect(await (await request(envelope())).json()).toEqual({ success: true, idempotent: true });
+        } finally { reading.mockRestore(); }
       } finally { resume.resolve(); await winner; }
       expect(await (await winner).json()).toEqual({ success: true });
       expect(await (await request(envelope())).json()).toEqual({ success: true, idempotent: true });
