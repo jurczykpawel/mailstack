@@ -95,14 +95,22 @@ if (command === 'status') {
   const configJSON = JSON.stringify(cfg), sha = digest(configJSON);
   // The staging composition restricts every enabled provider call to the simulator.
   const fixture = existsSync(`${state}/fixture-jwks.json`) ? JSON.parse(readFileSync(`${state}/fixture-jwks.json`)) : { keys: [] };
-  const provider = delivery === 'ses' ? `async(env,params)=>{
-const allowed=['success','bounce','complaint','suppressionlist'].map(v=>v+'@simulator.amazonses.com');
-if(params.from!=='no-reply@mailstack-test.techskills.academy'||!params.to.length||params.to.some(v=>!allowed.includes(v)))return {ok:false,status:403,response:'staging_recipient_not_allowed'};
-return sendEmail(env,params);}` : "async()=>({ok:false,status:503,response:'staging_delivery_disabled'})";
+  const limits = { day: Number(process.env.MAILSTACK_STAGING_SES_DAY ?? 50), hour: Number(process.env.MAILSTACK_STAGING_SES_HOUR ?? 10) };
+  if (![limits.day,limits.hour].every(n=>Number.isSafeInteger(n)&&n>0)||limits.day>50||limits.hour>10) throw Error('Invalid staging allocation');
   const contents = `import {sendEmail} from './src/ses.ts';
 import {createApp} from './src/index.ts';
-const app=createApp({sendEmail:${provider}});
-export default {scheduled:app.scheduled,async fetch(req,env,ctx){const path=new URL(req.url).pathname;if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});if(${JSON.stringify(delivery)}==='disabled'&&r.status===502){return new Response(JSON.stringify({success:false,message:'staging delivery disabled',code:'delivery_disabled'}),{status:503,headers:h});}return new Response(r.body,{status:r.status,headers:h});}};`;
+import {budgetSender,budgetResponse} from ${JSON.stringify(resolve(root,'scripts/staging/ses-budget.ts'))};
+const disabled=async()=>({ok:false,status:503,response:'staging_delivery_disabled'});
+export default {async scheduled(...args){return createApp({sendEmail:disabled}).scheduled(...args);},async fetch(req,env,ctx){
+const path=new URL(req.url).pathname;
+if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});
+if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});
+let reason;
+const sender=${JSON.stringify(delivery)}==='ses'?budgetSender(async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('budget storage');return r.results;},sendEmail,${JSON.stringify(limits)}):disabled;
+const app=createApp({sendEmail:async(...args)=>{const r=await sender(...args);if(!r.ok&&r.response.startsWith('staging_'))reason=r.response;return r;}});
+const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
+if(${JSON.stringify(delivery)}==='disabled'&&r.status===502)return Response.json({success:false,message:'staging delivery disabled',code:'delivery_disabled'},{status:503,headers:h});
+return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}};`;
   await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
     b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
