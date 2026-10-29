@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function run(command: string, change = false) {
+function run(command: string, change = false, ses = false) {
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-staging-')); dirs.push(dir);
   const preload = join(dir, 'mock.mjs');
   writeFileSync(preload, `let writes=0;
@@ -19,11 +19,16 @@ if(path.endsWith('/workers/scripts')&&(!options.method||options.method==='GET'))
 if(path.endsWith('/account-settings'))return response({default_usage_model:'standard'});
 if(path==='/client/v4/zones')return response([{id:'zone',account:{id:'test-account'}}]);
 if(path.endsWith('/query')&&JSON.parse(options.body).sql.startsWith('SELECT'))return response([{results:[]}]);
+if(path.endsWith('/workers/scripts/mailstack-staging')&&options.method==='PUT'){
+ const m=JSON.parse(await options.body.get('metadata').text());
+ const safe=m.bindings.map(b=>({name:b.name,type:b.type,...(b.type==='plain_text'?{text:b.text}:{})}));
+ const fs=await import('node:fs');fs.writeFileSync(${JSON.stringify(join(dir, 'uploaded-bindings.json'))},JSON.stringify(safe));
+}
 writes++;return response({uuid:'staging-database'});
 };`);
   if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', database: 'staging-database' }));
   const child = spawnSync(process.execPath, ['--import', preload, 'scripts/staging/worker.mjs', command], {
-    encoding: 'utf8', env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, MAILSTACK_STAGING_COMMIT: execFileSync('git', ['merge-base', 'HEAD', 'main'], { encoding: 'utf8' }).trim() },
+    encoding: 'utf8', env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), MAILSTACK_STAGING_COMMIT: execFileSync('git', ['merge-base', 'HEAD', 'main'], { encoding: 'utf8' }).trim() },
   });
   return { child, dir };
 }
@@ -44,4 +49,30 @@ it('deploys isolated resources with a record for each write', () => {
 it('accepts repeated removal when recorded resources are already absent', () => {
   const { child } = run('destroy');
   expect(child.status, child.stderr).toBe(0);
+});
+
+it('limits enabled SES delivery to simulator recipients and keeps credentials out of local artifacts', () => {
+  const { child, dir } = run('deploy', false, true);
+  expect(child.status, child.stderr).toBe(0);
+  const config = JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8'));
+  expect(config.events.ses).toEqual({ topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false });
+  expect(config.clients[0].recipientOverride).toBe(true);
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings).toEqual(expect.arrayContaining([
+    { name: 'SES_ACCESS_KEY_ID', type: 'secret_text' },
+    { name: 'SES_SECRET_ACCESS_KEY', type: 'secret_text' },
+    { name: 'SES_CONFIGURATION_SET', type: 'plain_text', text: 'mailstack-staging' },
+  ]));
+  for (const brand of Object.values(config.brands) as any[]) {
+    expect(brand.from).toBe('no-reply@mailstack-test.techskills.academy');
+    expect(brand.to).toEqual(['success@simulator.amazonses.com']);
+    expect(brand.autoReply).toBe(false);
+  }
+  expect(config.logging.defaults).toMatchObject({level:'masked', requireLog:true});
+  const bundle = readFileSync(join(dir, 'worker.mjs'), 'utf8');
+  expect(bundle).toContain('staging_recipient_not_allowed');
+  for (const file of readdirSync(dir).filter(f => /\.(json|mjs)$/.test(f))) {
+    expect(readFileSync(join(dir, file), 'utf8')).not.toContain('synthetic-ses-secret');
+  }
+  expect(child.stdout + child.stderr).not.toContain('synthetic-ses-secret');
 });

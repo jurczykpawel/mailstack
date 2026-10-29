@@ -76,3 +76,40 @@ Use a unique subject such as `ST1-<timestamp>` for each synthetic send. Load the
 For a data reset, stop only this Compose project. Preserve `.env`, `config`, `secrets`, the license and backups separately. Remove the staging API/panel SQLite files and backups only while stopped, then rerun the installer; this also removes panel users and requires new invitations. Do not run host-wide Docker cleanup or remove the shared Mailpit data. SMTP configuration remains limited to the test Mailpit.
 
 Alerts have a loopback placeholder and send no external notifications. Replace `PANEL_NTFY_URL` only when intentionally testing alerts. Replace the panel's private TLS certificate pair before its one-year expiry. Do not use this fixture installation for production traffic.
+
+### Simulator-only SES delivery
+
+The Worker staging script defaults to disabled delivery. To enable the existing
+SES staging identity and event destination, run:
+
+```sh
+CLOUDFLARE_ACCOUNT_ID=92e7018cfc666807c755836278d19eaf \
+MAILSTACK_STAGING_DELIVERY=ses scripts/staging/worker.sh deploy
+```
+
+The script reads the dedicated `Mailstack staging SES` Vaultwarden item from the
+agent profile. It uploads the credentials as `secret_text` bindings, without
+saving them to staging state or build files. Optional `SES_ACCESS_KEY_ID` and
+`SES_SECRET_ACCESS_KEY` environment inputs support automation; provide only the
+dedicated staging credentials. Never pass credentials as CLI arguments.
+
+This mode sets `SES_CONFIGURATION_SET=mailstack-staging`, exact SNS topic/account
+allowlists, signature v2 only, `masked` logging with `requireLog`, and disables
+brand auto-replies. The send client can override recipients; the staging provider
+adapter checks every send against the exact success, bounce, complaint and
+suppressionlist simulator addresses and the dedicated staging From address.
+All configured brand recipients default to the success simulator. Production
+fingerprint checks still surround each Cloudflare mutation. Repeating the same
+command rebuilds the pinned core commit and reuses the same staging resources.
+
+Subscribe only the staging SNS topic to the staging `/v1/events/ses` endpoint,
+with standard SNS envelopes. Read the confirmed subscription ARN separately.
+Simulator messages incur normal SES sending charges; use three small messages
+with unique idempotency keys and inspect recorded events before retrying.
+
+The ST1 Node/Pro images use SMTP and predate the AWS panel loop test. Running that
+test needs a Pro build containing `src/aws/api.ts` and `src/panel/aws-views.ts`, a
+compatible core with SES status support, and explicit Pro `aws` options and an
+SES-enabled test brand. A Worker message is not present in Node's separate SQLite
+store; forwarding its SNS event to Node does not prove Node delivery or webhook
+correlation. Configure and test that separate path before asserting its result.

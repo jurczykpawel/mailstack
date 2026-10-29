@@ -9,6 +9,8 @@ const state = resolve(process.env.MAILSTACK_STAGING_STATE ?? `${process.env.HOME
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const name = 'mailstack-staging', hostname = 'mailstack-test.techskills.academy';
 const command = process.argv[2] ?? 'status';
+const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
+if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
 if (!account || !['deploy', 'status', 'destroy'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy');
 if (state.startsWith(root + '/')) throw new Error('State must be outside the source directory');
 process.umask(0o077); mkdirSync(state, { recursive: true, mode: 0o700 });
@@ -64,6 +66,13 @@ if (command === 'status') {
   put('resources.json', { account, name, database: database.uuid, hostname, commit });
   const cfg = JSON.parse(readFileSync(`${source}/config/mailstack.example.json`));
   for (const brand of Object.values(cfg.brands)) { brand.captcha = 'altcha'; brand.autoReply = false; brand.allowedOrigins = [`https://${hostname}`]; }
+  if (delivery === 'ses') {
+    for (const brand of Object.values(cfg.brands)) {
+      brand.from = 'no-reply@mailstack-test.techskills.academy';
+      brand.to = ['success@simulator.amazonses.com'];
+    }
+    cfg.events = { ses: { topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false } };
+  }
   cfg.sender = { type: 'ses' }; cfg.legacyApiKey = { enabled: false };
   cfg.logging.defaults = { ...cfg.logging.defaults, level: 'masked', requireLog: true, contentDays: 1, metaDays: 7 };
   const pair = generateKeyPairSync('x25519'), kid = 'staging-content';
@@ -79,16 +88,21 @@ if (command === 'status') {
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
   put('secrets.json', secrets);
   cfg.clients = [
-    { id: 'staging-send', tokenSha256: digest(secrets.SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'], recipientOverride: false },
+    { id: 'staging-send', tokenSha256: digest(secrets.SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'], recipientOverride: delivery === 'ses' },
     { id: 'staging-hook', tokenSha256: digest(secrets.HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'notice', 'welcome'], sellfSignatureSecretEnv: 'SELLF_STAGING_HMAC' },
   ];
   put('mailstack.json', cfg);
   const configJSON = JSON.stringify(cfg), sha = digest(configJSON);
-  // The staging composition uses main's createApp with a provider that never contacts SES.
+  // The staging composition restricts every enabled provider call to the simulator.
   const fixture = existsSync(`${state}/fixture-jwks.json`) ? JSON.parse(readFileSync(`${state}/fixture-jwks.json`)) : { keys: [] };
-  const contents = `import {createApp} from './src/index.ts';
-const app=createApp({sendEmail:async()=>({ok:false,status:503,response:'staging_delivery_disabled'})});
-export default {scheduled:app.scheduled,async fetch(req,env,ctx){const path=new URL(req.url).pathname;if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery','disabled');if(r.status===502){return new Response(JSON.stringify({success:false,message:'staging delivery disabled',code:'delivery_disabled'}),{status:503,headers:h});}return new Response(r.body,{status:r.status,headers:h});}};`;
+  const provider = delivery === 'ses' ? `async(env,params)=>{
+const allowed=['success','bounce','complaint','suppressionlist'].map(v=>v+'@simulator.amazonses.com');
+if(params.from!=='no-reply@mailstack-test.techskills.academy'||!params.to.length||params.to.some(v=>!allowed.includes(v)))return {ok:false,status:403,response:'staging_recipient_not_allowed'};
+return sendEmail(env,params);}` : "async()=>({ok:false,status:503,response:'staging_delivery_disabled'})";
+  const contents = `import {sendEmail} from './src/ses.ts';
+import {createApp} from './src/index.ts';
+const app=createApp({sendEmail:${provider}});
+export default {scheduled:app.scheduled,async fetch(req,env,ctx){const path=new URL(req.url).pathname;if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});if(${JSON.stringify(delivery)}==='disabled'&&r.status===502){return new Response(JSON.stringify({success:false,message:'staging delivery disabled',code:'delivery_disabled'}),{status:503,headers:h});}return new Response(r.body,{status:r.status,headers:h});}};`;
   await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
     b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
@@ -98,10 +112,18 @@ export default {scheduled:app.scheduled,async fetch(req,env,ctx){const path=new 
   const rows = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'" });
   if (!rows[0].results.length) await mutate('migrate-database', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migration });
   const vars = { BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  const providerSecrets = {};
+  if (delivery === 'ses') {
+    const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+    providerSecrets.SES_ACCESS_KEY_ID = process.env.SES_ACCESS_KEY_ID ?? item?.login?.username;
+    providerSecrets.SES_SECRET_ACCESS_KEY = process.env.SES_SECRET_ACCESS_KEY ?? item?.login?.password;
+    if (!providerSecrets.SES_ACCESS_KEY_ID || !providerSecrets.SES_SECRET_ACCESS_KEY) throw new Error('Missing staging SES credentials');
+    vars.SES_CONFIGURATION_SET = 'mailstack-staging';
+  }
   const metadata = { main_module: 'worker.mjs', compatibility_date: '2026-10-26', compatibility_flags: ['nodejs_compat'], bindings: [
     { name: 'DB', type: 'd1', id: database.uuid },
     ...Object.entries(vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
-    ...Object.entries(secrets).filter(([key]) => !['SEND_TOKEN', 'HOOK_TOKEN'].includes(key)).map(([name, text]) => ({ name, text, type: 'secret_text' })),
+    ...Object.entries({ ...secrets, ...providerSecrets }).filter(([key]) => !['SEND_TOKEN', 'HOOK_TOKEN'].includes(key)).map(([name, text]) => ({ name, text, type: 'secret_text' })),
   ], observability: { enabled: false } };
   const form = new FormData(); form.set('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.set('worker.mjs', new Blob([readFileSync(`${state}/worker.mjs`)], { type: 'application/javascript+module' }), 'worker.mjs');
@@ -111,5 +133,5 @@ export default {scheduled:app.scheduled,async fetch(req,env,ctx){const path=new 
   const zone = zones.find(value => value.account.id === account);
   if (!zone) throw new Error('Zone unavailable');
   if (!domain) await mutate('attach-domain', `${base}/workers/domains`, 'PUT', { hostname, service: name, environment: 'production', zone_id: zone.id });
-  console.log(`Staging ready: https://${hostname}; delivery disabled; keys stored outside source`);
+  console.log(`Staging ready: https://${hostname}; delivery ${delivery}; keys stored outside source`);
 }
