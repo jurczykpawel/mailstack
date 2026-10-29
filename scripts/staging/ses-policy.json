@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StagingSimulatorOnly",
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": [
+        "arn:aws:ses:eu-west-1:207570392857:identity/mailstack-test.techskills.academy",
+        "arn:aws:ses:eu-west-1:207570392857:configuration-set/mailstack-staging"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ses:FromAddress": "no-reply@mailstack-test.techskills.academy"
+        },
+        "ForAllValues:StringEquals": {
+          "ses:Recipients": [
+            "success@simulator.amazonses.com",
+            "bounce@simulator.amazonses.com",
+            "complaint@simulator.amazonses.com",
+            "suppressionlist@simulator.amazonses.com"
+          ]
+        },
+        "Null": {"ses:Recipients": "false"}
+      }
+    }
+  ]
+}
