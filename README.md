@@ -643,6 +643,13 @@ Validation precedes mapping, intent recording, deduplication and provider calls.
 | `license.revoked` | `422 unsupported_event`; source recipient is `license.email`, with `license.id`, `order`, `revokedAt` and nullable/optional expiry. No token is included. |
 | Any other event | `200 {success:true,ignored:"<event>"}` after envelope validation; no email or message id. |
 
+For the Sellf webhook endpoint, select **only events supported by Mailstack** in
+Sellf's sender settings (see the table above). For purchase and refund emails,
+select only `purchase.completed` and `refund.issued`; enable other supported events
+only when needed. Leave the known unsupported events unchecked: Mailstack returns
+`422 unsupported_event`, which Sellf treats as a retryable error (observed retries,
+up to five attempts). The hook continues to return 422 for these events.
+
 Known unsupported events return `{success:false,code:"unsupported_event",message:...}`
 with the event name for both complete and incomplete `data` objects. This is a
 permanent configuration error: disable those events in the sender; retry alone

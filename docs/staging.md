@@ -163,6 +163,16 @@ blocking action**. Simulator sends are billed but do not consume the daily SES
 quota or reputation bounce/complaint rates; they still share the maximum send
 rate. Keep test pacing low and record quota headroom before testing.
 
+## Sellf webhook event selection
+
+In Sellf's webhook endpoint settings, select **only events supported by Mailstack**
+according to the [README event table](../README.md#sellf-event-contract). For the
+purchase/refund flow, select only `purchase.completed` and `refund.issued`; enable
+other supported events only when needed. Leave known unsupported events unchecked:
+Mailstack returns `422 unsupported_event`, and Sellf treats 422 as a retryable error
+(observed retries, up to five attempts). This recommendation does not change the
+hook's 422 response.
+
 ## SES i SNS (ST2)
 
 Region: `eu-west-1`, konto `207570392857`. Nadawca:
