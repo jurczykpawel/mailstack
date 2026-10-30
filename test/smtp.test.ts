@@ -61,3 +61,12 @@ it.each([
     expect(Reflect.get(options, 'tls')).toBeUndefined();
   } finally { create.mockRestore(); }
 });
+it.each([false, true])('uses the configured TLS server name with URL mode %s', async url => {
+  const nodemailer = (await import('nodemailer')).default;
+  const create = vi.spyOn(nodemailer, 'createTransport');
+  const { smtpFromEnv } = await import('../src/adapters/sender/smtp');
+  try {
+    smtpFromEnv({ ...(url ? { SMTP_URL: 'smtp://user:pass@172.17.0.1:587' } : { SMTP_HOST: '172.17.0.1', SMTP_USER: 'user', SMTP_PASS: 'pass' }), SMTP_TLS_SERVERNAME: 'smtp.example.com' });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ host: '172.17.0.1', requireTLS: true, tls: { servername: 'smtp.example.com' } }));
+  } finally { create.mockRestore(); }
+});
