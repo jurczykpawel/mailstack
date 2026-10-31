@@ -166,18 +166,18 @@ it('uses only own properties when resolving fields', () => {
   expect(sourceField({ data: Object.create({ value: 'inherited' }) }, 'data.value')).toBe('');
 });
 it.each([
-  [9007199254740990, '90071992547409.90'],
-  [-9007199254740990, '-90071992547409.90'],
+  [9007199254740990, '90071992547409.91'],
+  [-9007199254740990, '-90071992547409.91'],
   [Number.MAX_SAFE_INTEGER, '90071992547409.91'],
   [Number.MIN_SAFE_INTEGER, '-90071992547409.91'],
-  [9007199254740901, '90071992547409.01'],
-  [-9007199254740901, '-90071992547409.01'],
+  [9007199254740901, '90071992547409.02'],
+  [-9007199254740901, '-90071992547409.02'],
   [9007199254740900, '90071992547409.00'],
   [-9007199254740900, '-90071992547409.00'],
   [1, '0.01'], [-1, '-0.01'], [99, '0.99'], [-99, '-0.99'],
   [100, '1.00'], [-100, '-1.00'], [0, '0.00'], [-0, '0.00'],
   [Number.MAX_SAFE_INTEGER + 1, ''], [1.5, ''], [NaN, ''], [Infinity, ''],
-])('formats integer minor units exactly: %s', (value, expected) => {
+])('formats integer minor units with two decimal places: %s', (value, expected) => {
   expect(sourceField({ value }, { path: 'value', as: 'money-minor' })).toBe(expected);
 });
 it.each([

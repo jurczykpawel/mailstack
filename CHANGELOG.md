@@ -8,6 +8,7 @@ All notable changes to mailstack are documented here.
   `docs/sources/sellf.json`, installed by default when `sources` is omitted.
 - Preserve valid email content and purchase licenses with closed `first`, `format`
   and `purchase-licenses` operations; minor units render with a decimal dot.
+- Retain the Sellf adapter's amount rounding and runtime timezone for purchase dates.
 - Limit webhook data validation to recipient and template requirements. Sellf owns
   refund status, cumulative totals, full/partial consistency and currency rules.
   Enable only supported Sellf events; purchase/refund flows need

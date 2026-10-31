@@ -635,7 +635,9 @@ Fields use plain dotted paths (including numeric indices), `{"join":["path"]}`,
 `{"first":["preferred.path","fallback.path"]}` (first nonblank scalar),
 `{"format":"Text {data.product.name}"}` (path placeholders only), or
 `{"path":"data.order.amount","as":"money-minor"}`. Other closed transforms are
-`upper`, `date-pl` (UTC) and `map` with an explicit lookup table. `ref` and
+`upper`, `date-pl` (runtime timezone) and `map` with an explicit lookup table.
+Minor units use division by 100 and `toFixed(2)`, preserving the former Sellf
+adapter's rounding, including near the safe integer limit. `ref` and
 `idempotencyKey` accept a path or `first`. No expressions or executable code are
 accepted. General limits: 64 KiB body, depth 20, 40 mapped fields, 5000 characters
 per value. `transform: "purchase-licenses"` is the single built-in Sellf transform:

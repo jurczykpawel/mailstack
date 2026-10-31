@@ -29,13 +29,12 @@ export function sourceField(body: unknown, field: SourceField): string {
   switch (field.as) {
     case 'money-minor': {
       if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '';
-      const amount = BigInt(Math.abs(value));
-      return `${value < 0 ? '-' : ''}${amount / 100n}.${String(amount % 100n).padStart(2, '0')}`;
+      return (value / 100).toFixed(2);
     }
     case 'upper': return text(value).toUpperCase();
     case 'date-pl': {
       const date = typeof value === 'string' && value.trim() ? new Date(value) : new Date(NaN);
-      return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('pl-PL', { timeZone: 'UTC' });
+      return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('pl-PL');
     }
     case 'map': return Object.hasOwn(field.map, text(value)) ? field.map[text(value)] : '';
   }
