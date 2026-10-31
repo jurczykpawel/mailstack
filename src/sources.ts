@@ -24,7 +24,11 @@ export function sourceField(body: unknown, field: SourceField): string {
   if ('join' in field) return field.join.map(path => text(read(body, path))).filter(Boolean).join(' ');
   const value = read(body, field.path);
   switch (field.as) {
-    case 'money-minor': return typeof value === 'number' && Number.isSafeInteger(value) ? (value / 100).toFixed(2).replace('.', ',') : '';
+    case 'money-minor': {
+      if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '';
+      const amount = BigInt(Math.abs(value));
+      return `${value < 0 ? '-' : ''}${amount / 100n},${String(amount % 100n).padStart(2, '0')}`;
+    }
     case 'upper': return text(value).toUpperCase();
     case 'date-pl': {
       const date = typeof value === 'string' && value.trim() ? new Date(value) : new Date(NaN);
