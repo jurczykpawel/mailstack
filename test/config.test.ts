@@ -91,7 +91,7 @@ it("applies policy validation through the exported zod schema", () => {
 });
 it("accepts a global source policy covered by clients for every registered template", () => {
   const value = config(); value.logging.defaults.resend = "source";
-  const client = { ...clientDefaults, brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice", "license"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
+  const client = { ...clientDefaults, brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice", "license", "refund"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
   expect(() => parseConfig({ ...value, clients: [client] })).not.toThrow();
   client.templates = ["payment"];
   expect(() => parseConfig({ ...value, clients: [client] })).toThrow("$.logging.defaults.resend");

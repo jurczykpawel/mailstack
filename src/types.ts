@@ -117,6 +117,8 @@ export interface LayoutInput {
  * subject + content; the shared layout supplies the brand header/footer chrome.
  */
 export interface TemplateDef {
+  /** Nonempty data keys required by source/hook deliveries, not /v1/send. */
+  requiredFields?: string[];
   secretFields?: string[];
   optionalSecretFields?: string[];
   subjectRoles?: string[];

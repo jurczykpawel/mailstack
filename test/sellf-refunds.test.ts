@@ -290,7 +290,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
   it.each(['meta', 'none'] as const)('isolates two brands and two clients at level %s', async level => {
     deps.logging!.defaults.level = level;
     const tokens = ['msk_app-a_' + 'a'.repeat(43), 'msk_app-b_' + 'b'.repeat(43)];
-    config.clients = await Promise.all(tokens.map(async (token, i) => ({ id: `app-${i ? 'b' : 'a'}`, tokenSha256: await tokenSha256(token), scopes: ['hook:sellf'] as ['hook:sellf'], brands: ['acme', 'demo'], templates: ['notice'], recipientOverride: false, attachments: false })));
+    config.clients = await Promise.all(tokens.map(async (token, i) => ({ id: `app-${i ? 'b' : 'a'}`, tokenSha256: await tokenSha256(token), scopes: ['hook:sellf'] as ['hook:sellf'], brands: ['acme', 'demo'], templates: ['refund'], recipientOverride: false, attachments: false })));
     for (const token of tokens) for (const brand of ['acme', 'demo']) {
       expect((await request(refundEnvelope(), brand, token)).status).toBe(200);
       expect(await (await request(refundEnvelope(), brand, token)).json()).toMatchObject({ success: true, idempotent: true });
@@ -380,7 +380,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
 
   it.each(['brands', 'templates', 'scopes'] as const)('retains client %s restrictions', async field => {
     const token = 'msk_restricted_' + 'a'.repeat(43);
-    config.clients = [{ id: 'restricted', tokenSha256: await tokenSha256(token), scopes: ['hook:sellf'], brands: ['acme'], templates: ['notice'], recipientOverride: false, attachments: false }];
+    config.clients = [{ id: 'restricted', tokenSha256: await tokenSha256(token), scopes: ['hook:sellf'], brands: ['acme'], templates: ['refund'], recipientOverride: false, attachments: false }];
     config.clients[0][field] = [];
     expect((await request(refundEnvelope(), 'acme', token)).status).toBe(403);
     expect(mails()).toEqual([]);

@@ -5,7 +5,7 @@ import type { Brand, Env, SendDeps, TemplateData } from "./types";
 import { config, getBrand } from "./core/config";
 import { deliveryResponse } from "./core/logging/delivery";
 import { authenticate, permits, tokenSha256 } from "./clients.ts";
-import { getTemplate } from "./templates/index";
+import { getTemplate, missingRequiredFields } from "./templates/index";
 import { renderAndSend } from "./send";
 
 // Brand used when the request omits `?brand=`. Override per deployment with the
@@ -154,25 +154,19 @@ const SELLF_EVENT_MAP: Record<string, SellfMapper> = {
     const txId =
       str(payment, "paymentIntentId") || str(payment, "sessionId");
     return {
-      template: "notice",
+      template: "refund",
       to: str(customer, "email"),
-      subject: "Zwrot środków",
       data: {
-        heading: "Zwrot środków",
-        paragraphs: [
-          `Zwróciliśmy ${money(refund.amount)} ${upper(refund.currency)} za: ${str(
-            product,
-            "name",
-          )}.`,
-          `Numer transakcji: ${txId}.`,
-          `Identyfikator płatności: ${str(payment, "id")}.`,
-          `Identyfikator zwrotu: ${str(refund, "stripeRefundId")}.`,
-          "Status zwrotu: zakończony (succeeded).",
-          `Zakres zwrotu: ${refund.isFullRefund ? "pełny" : "częściowy"}.`,
-          `Łącznie zwrócono: ${money(refund.totalRefunded)} ${upper(refund.currency)}.`,
-          `Data zwrotu: ${str(refund, "refundedAt")}.`,
-          ...(typeof refund.reason === "string" && refund.reason.trim() ? [`Powód: ${refund.reason}.`] : []),
-        ].join("\n\n"),
+        amount: money(refund.amount),
+        currency: upper(refund.currency),
+        productName: str(product, "name"),
+        transactionId: txId,
+        paymentId: str(payment, "id"),
+        refundId: str(refund, "stripeRefundId"),
+        isFullRefund: str(refund, "isFullRefund"),
+        totalRefunded: money(refund.totalRefunded),
+        refundedAt: str(refund, "refundedAt"),
+        reason: typeof refund.reason === "string" ? refund.reason : "",
       },
     };
   },
@@ -300,6 +294,11 @@ export async function handleSellfHook(
     // Misconfigured mapping — ack to avoid a retry storm, but make it visible.
     console.error(`sellf hook: unknown template "${mapped.template}" for ${event}`);
     return jsonResponse({ success: true, ignored: "unknown-template" });
+  }
+
+  const fields = missingRequiredFields(template, mapped.data);
+  if (fields.length) {
+    return jsonResponse({ success: false, code: "invalid_event_data", message: "invalid event data", fields }, 422);
   }
 
   const order = obj(envelope.data, "order");

@@ -12,6 +12,7 @@ import { viewAction } from "../../markup/index.ts";
 /** Payment confirmation with an amount summary and optional invoice CTA. */
 export const paymentTemplate: TemplateDef = {
   id: "payment",
+  requiredFields: ["amount", "currency", "item", "orderId"],
   optionalSecretFields: purchaseLicenseSecrets,
 
   subject(_brand: Brand, data: TemplateData): string {

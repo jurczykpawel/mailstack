@@ -12,6 +12,7 @@ import { receivedTemplate } from "./types/received.ts";
 import { paymentTemplate } from "./types/payment.ts";
 import { noticeTemplate } from "./types/notice.ts";
 import { licenseTemplate } from "./types/license.ts";
+import { refundTemplate } from "./types/refund.ts";
 
 /** Registry of all email types, keyed by id. */
 export const TEMPLATES: Record<string, TemplateDef> = {
@@ -21,10 +22,15 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   payment: paymentTemplate,
   notice: noticeTemplate,
   license: licenseTemplate,
+  refund: refundTemplate,
 };
 
 export function getTemplate(id: string): TemplateDef | undefined {
   return Object.hasOwn(TEMPLATES, id) ? TEMPLATES[id] : undefined;
+}
+
+export function missingRequiredFields(template: TemplateDef, data: TemplateData): string[] {
+  return (template.requiredFields ?? []).filter(key => !data[key]?.trim());
 }
 
 /**

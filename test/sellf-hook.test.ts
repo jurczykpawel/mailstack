@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { handleSellfHook } from "../src/sellf";
 import type { Env, SendDeps, SendParams } from "../src/types";
 
@@ -149,7 +150,7 @@ describe("handleSellfHook — purchase.completed", () => {
 });
 
 describe("handleSellfHook — other mapped events", () => {
-  it("refund.issued -> notice with refund text and amount", async () => {
+  it("refund.issued keeps the complete refund email content", async () => {
     const deps = makeDeps();
     const envelope = {
       event: "refund.issued",
@@ -169,6 +170,7 @@ describe("handleSellfHook — other mapped events", () => {
     expect(params.to).toEqual(["buyer@example.com"]);
     expect(params.html).toContain("Zwróciliśmy 49.99 PLN za: Protocol: X.");
     expect(params.html).toContain("Numer transakcji: cs_refund_1.");
+    expect(createHash('sha256').update(JSON.stringify([params.subject, params.html, params.text])).digest('hex')).toMatchInlineSnapshot(`"a95f4433a3ea70ffbdad4a038b8c1cf943a2cfaab30bdf432dd0a54ea26c3fba"`);
   });
 
   it("waitlist.signup -> notice acknowledging the signup", async () => {
