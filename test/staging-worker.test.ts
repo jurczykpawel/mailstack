@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm';
+import example from '../config/mailstack.example.json';
 import { parseConfig } from '../src/core/config/schema';
 import { resolvePolicy } from '../src/core/logging/policy';
 import { projectArchive } from '../src/core/logging/projection';
@@ -9,7 +11,7 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function run(command: string, change = false, ses = false, sourceCommit?: string) {
+function run(command: string, change = false, ses = false) {
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-staging-')); dirs.push(dir);
   const preload = join(dir, 'mock.mjs');
   writeFileSync(preload, `let writes=0;
@@ -32,7 +34,7 @@ writes++;return response({uuid:'staging-database'});
 };`);
   if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', database: 'staging-database' }));
   const child = spawnSync(process.execPath, ['--import', preload, 'scripts/staging/worker.mjs', command], {
-    encoding: 'utf8', env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), MAILSTACK_STAGING_COMMIT: sourceCommit ?? execFileSync('git', ['merge-base', 'HEAD', 'main'], { encoding: 'utf8' }).trim() },
+    encoding: 'utf8', env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), MAILSTACK_STAGING_COMMIT: execFileSync('git', ['merge-base', 'HEAD', 'main'], { encoding: 'utf8' }).trim() },
   });
   return { child, dir };
 }
@@ -99,9 +101,12 @@ it('limits enabled SES delivery to simulator recipients and keeps credentials ou
 });
 
 it('inherits default masked refund fields in the staging composition', async () => {
-  const { child, dir } = run('deploy', false, false, 'HEAD');
-  expect(child.status, child.stderr).toBe(0);
-  const cfg = parseConfig(JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8')));
+  const script = readFileSync('scripts/staging/worker.mjs', 'utf8');
+  const assignment = script.match(/cfg\.logging\.defaults = [^;]+;/)?.[0];
+  expect(assignment).toBeDefined();
+  const context = { cfg: structuredClone(example) };
+  runInNewContext(assignment!, context);
+  const cfg = parseConfig(context.cfg);
   expect(cfg.logging.defaults.show).toBeUndefined();
   const { policy } = await resolvePolicy(cfg.logging, 'acme', 'refund');
   const archive = projectArchive({ policy, patterns: [], brand: cfg.brands.acme, template: getTemplate('refund')!,

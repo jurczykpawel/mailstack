@@ -23,6 +23,7 @@ it.each(names)('returns no brand for unregistered id %s', id => {
 
 it.each(['runtime', 'schema'].flatMap(target => ['brand', 'template'].map(layer => [target, layer])))('resolves %s defaults for absent %s entries', async (target, layer) => {
   const config = parseConfig(example);
+  config.logging.defaults.show = ['name'];
   const inherited = { notice: { requireLog: true } };
   if (layer === 'brand') config.logging.brands = Object.create({ acme: { defaults: { requireLog: true } } });
   else config.logging.brands.acme = { templates: Object.create(inherited) };
