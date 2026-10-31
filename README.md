@@ -644,7 +644,11 @@ Fields use plain dotted paths (including numeric indices), `{"join":["path"]}`,
 Map keys must use `boolean:true`, `boolean:false`, `number:<String(value)>` or
 `string:<exact value>` (including `string:` for an empty string). Thus boolean
 `true`, number `1` and strings `"true"`/`"1"` are distinct; untyped keys must be
-migrated. Missing, null, structured, nonfinite and unmatched values map to empty.
+migrated before startup: replace an old `"true"` key with `"boolean:true"` for a
+boolean input or `"string:true"` for text; replace `"1"` with `"number:1"` for a
+number or `"string:1"` for text. To accept both types, declare both keys explicitly.
+There is no automatic type inference or migration; update custom preset copies too.
+Missing, null, structured, nonfinite and unmatched values map to empty.
 Numbers use JavaScript's canonical string representation; `-0` and `0` share `number:0`.
 Minor units use division by 100 and `toFixed(2)`, preserving the former Sellf
 adapter's rounding, including near the safe integer limit. `ref` and
