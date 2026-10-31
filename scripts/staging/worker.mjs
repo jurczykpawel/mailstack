@@ -59,7 +59,7 @@ if (command === 'status') {
   execFileSync('git', ['merge-base', '--is-ancestor', commit, 'main'], { cwd: root });
   const source = `${state}/source/${commit}`;
   mkdirSync(source, { recursive: true, mode: 0o700 });
-  execFileSync('tar', ['-xf', '-', '-C', source], { input: execFileSync('git', ['archive', commit, 'src', 'package.json', 'config/mailstack.example.json'], { cwd: root, maxBuffer: 16 * 1024 * 1024 }) });
+  execFileSync('tar', ['-xf', '-', '-C', source], { input: execFileSync('git', ['archive', commit, 'src', 'package.json', 'config/mailstack.example.json', ':(glob)docs/sources/*.json'], { cwd: root, maxBuffer: 16 * 1024 * 1024 }) });
   put('account-settings.json', await api(`${base}/workers/account-settings`));
   // No plan upgrades or subscription writes are performed by this script.
   if (!database) database = await mutate('create-database', `${base}/d1/database`, 'POST', { name });
@@ -89,7 +89,7 @@ if (command === 'status') {
   put('secrets.json', secrets);
   cfg.clients = [
     { id: 'staging-send', tokenSha256: digest(secrets.SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'], recipientOverride: delivery === 'ses' },
-    { id: 'staging-hook', tokenSha256: digest(secrets.HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'notice', 'welcome'], sellfSignatureSecretEnv: 'SELLF_STAGING_HMAC' },
+    { id: 'staging-hook', tokenSha256: digest(secrets.HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], sellfSignatureSecretEnv: 'SELLF_STAGING_HMAC' },
   ];
   put('mailstack.json', cfg);
   const configJSON = JSON.stringify(cfg), sha = digest(configJSON);

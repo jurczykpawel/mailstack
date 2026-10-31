@@ -559,6 +559,10 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
 - `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
   `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
 
+When upgrading an existing configuration, add `refund` alongside `payment`,
+`notice` and `welcome` in the Sellf hook client's `templates` list. Otherwise
+`refund.issued` returns `403` with code `scope`. A `"*"` selection already includes it.
+
 ### Purchase licenses and activation
 
 The first `purchase.completed` payment email includes every supplied `licenses[]`
@@ -973,8 +977,8 @@ Duplicate, pending, conflict and uncertain outcomes follow the table above.
 Comparison covers mapped delivery intent; level `none` compares only the key.
 
 Keys expire after 24 hours. The new `source:` namespace does not look up older
-`sellf:` keys. Retrying any event sent by the former adapter may send it again;
-reconcile outstanding deliveries when changing versions.
+`sellf:` keys. Retrying any event sent by the former adapter within that 24-hour
+window may send it again; reconcile outstanding deliveries when changing versions.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
 Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends

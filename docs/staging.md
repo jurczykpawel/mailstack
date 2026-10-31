@@ -37,6 +37,20 @@ Trusted synthetic send: read `SEND_TOKEN` from the protected state into a local 
 
 In SES mode the staging SNS topic fans out to both installations. The disabled-send response intentionally contains no message ID; administrators can inspect the staging D1 message rows. A provider event timeline remains empty until a provider event exists.
 
+### Sellf source upgrade (Worker and Node)
+
+Existing Sellf hook clients need `refund` alongside `payment`, `notice` and
+`welcome` in their `templates` list; otherwise `refund.issued` returns `403` with
+code `scope`. Worker staging generates this list automatically. Node staging
+loads its existing external API configuration: update that client's list there
+and recreate the API container. A `"*"` selection already includes `refund`.
+The Node staging composition does not create or replace clients.
+
+Idempotency keys changed from `sellf:` to `source:`. The new engine does not
+look up old keys, so retrying an event sent by the former adapter within 24 hours
+can send another email. Reconcile outstanding deliveries before upgrading either
+installation; do not use pending old events as fresh staging fixtures.
+
 ## Node operations
 
 The original SMTP deployment instructions below document the ST1 baseline. The current ST5 installation uses core `07d301d`, Pro `acf356c`, SES, and locally built `mailstack-staging-{api,panel}:st5-final` images. Prepare a new staging context as documented below for subsequent builds.

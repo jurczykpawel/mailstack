@@ -45,6 +45,23 @@ it('deploys isolated resources with a record for each write', () => {
   expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-database', 'upload-worker', 'set-cron', 'attach-domain']);
   expect(records.every(value => value.identical)).toBe(true);
   expect(child.stdout).not.toContain('synthetic');
+  const [commit] = readdirSync(join(dir, 'source'));
+  const docs = join(dir, 'source', commit, 'docs');
+  expect(readdirSync(docs)).toEqual(['sources']);
+  const presets = readdirSync(join(docs, 'sources'));
+  expect(presets).toContain('sellf.json');
+  expect(presets.every(file => file.endsWith('.json'))).toBe(true);
+  for (const file of presets) {
+    expect(readFileSync(join(docs, 'sources', file), 'utf8')).toBe(
+      execFileSync('git', ['show', `${commit}:docs/sources/${file}`], { encoding: 'utf8' }),
+    );
+  }
+});
+it('permits every template used by the Sellf preset for the staging hook', () => {
+  const { dir } = run('deploy');
+  const config = JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8'));
+  const hook = config.clients.find((client: { id: string }) => client.id === 'staging-hook');
+  expect(hook.templates).toEqual(['payment', 'refund', 'notice', 'welcome']);
 });
 it('accepts repeated removal when recorded resources are already absent', () => {
   const { child } = run('destroy');
