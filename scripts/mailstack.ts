@@ -17,9 +17,9 @@ async function createClient(args: string[]) {
     options.set(flag, value);
   }
   const requestedScopes = options.get("--scopes")?.split(",");
-  if (requestedScopes?.some((scope) => scope === "send" || scope === "hook:sellf")) {
+  if (requestedScopes?.some((scope) => scope === "send" || scope.startsWith("hook:"))) {
     for (const flag of ["--brands", "--templates"]) {
-      if (!options.has(flag)) throw new Error(`${flag} is required for send or hook:sellf`);
+      if (!options.has(flag)) throw new Error(`${flag} is required for send or hook scope`);
     }
   }
   const token = `msk_${options.get("--id")}_${randomBytes(32).toString("base64url")}`;

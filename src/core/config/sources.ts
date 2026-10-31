@@ -1,0 +1,34 @@
+import { z } from 'zod';
+
+export const SOURCE_LIMITS = { bodyBytes: 64 * 1024, depth: 20, fields: 40, valueChars: 5000 } as const;
+const safeKey = z.string().min(1).max(128).refine(value => !['__proto__', 'constructor', 'prototype'].includes(value));
+export const sourceId = z.string().max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const path = z.string().min(1).max(512).refine(value =>
+  value.split('.').length <= SOURCE_LIMITS.depth && value.split('.').every(part =>
+    /^(?:[A-Za-z_][A-Za-z0-9_-]*|0|[1-9][0-9]*)$/.test(part) && safeKey.safeParse(part).success));
+const field = z.union([
+  path,
+  z.strictObject({ path, as: z.enum(['money-minor', 'upper', 'date-pl']) }),
+  z.strictObject({ path, as: z.literal('map'), map: z.record(safeKey, z.string().max(SOURCE_LIMITS.valueChars))
+    .refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields) }),
+  z.strictObject({ join: z.array(path).min(1).max(SOURCE_LIMITS.fields) }),
+]);
+const action = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('send'), template: safeKey, to: path,
+    fields: z.record(safeKey, field).refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields),
+    ref: path.optional(), idempotencyKey: path.optional() }),
+  z.strictObject({ action: z.literal('ignore') }),
+  z.strictObject({ action: z.literal('reject') }),
+]);
+export const sourceSchema = z.strictObject({
+  signature: z.discriminatedUnion('scheme', [
+    z.strictObject({ scheme: z.literal('bearer-only') }),
+    z.strictObject({ scheme: z.literal('t-v1'), header: z.string().regex(/^[A-Za-z0-9-]{1,128}$/),
+      toleranceSeconds: z.number().int().min(0).max(300).default(300) }),
+    z.strictObject({ scheme: z.literal('sha256-prefix'), header: z.string().regex(/^[A-Za-z0-9-]{1,128}$/) }),
+  ]),
+  envelope: z.strictObject({ event: path, timestamp: path, data: path }),
+  events: z.record(safeKey, action).refine(value => Object.keys(value).length <= 100),
+});
+export type Source = z.infer<typeof sourceSchema>;
+export type SourceField = z.infer<typeof field>;
