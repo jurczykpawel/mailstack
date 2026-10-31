@@ -885,8 +885,27 @@ Policies resolve from `logging.defaults` through `logging.brands.<id>.defaults` 
 |---|---|
 | `none` | No message row, recipients, content or delivery events; short-lived guards only |
 | `meta` | Message metadata, sealed recipients/Reply-To, subject, ref and provider response; events and sealed evidence |
-| `masked` | `meta` plus a sealed archive projection keeping only content fields listed in `show`; other fields become `[ukryte]` |
+| `masked` | `meta` plus a sealed archive projection keeping template defaults or content fields explicitly listed in `show`; other fields become `[ukryte]` |
 | `full` | `meta` plus the archive rendering; declared secret fields and configured patterns remain masked |
+
+Templates declare `maskedFields` as the default visible content keys when `show`
+is omitted at every policy layer. An explicit `show` at the most specific configured
+layer replaces the entire list (including `show: []` to hide all content fields).
+To extend a default list, copy its keys and add your own; to narrow it, list only the
+keys you want. Existing configurations with explicit `show` keep their behavior.
+The example configuration omits `show` so staging compositions inherit these defaults:
+
+| Template | Default visible fields |
+|---|---|
+| `payment` | `amount`, `currency`, `item`, `description`, `orderId`, `date` |
+| `refund` | `amount`, `currency`, `productName`, `transactionId`, `paymentId`, `refundId`, `isFullRefund`, `totalRefunded`, `refundedAt` |
+| `license` | `productName`, `tier` |
+| `notice`, `welcome` | None; arbitrary message text may contain personal data or tokens |
+
+Recipient names/addresses, license keys, activation links, other URLs and tokens
+are never included in these defaults. Declared secret fields remain masked even
+when listed in `show`. A hidden or unrecognized refund scope omits the scope line;
+only boolean `true`/`false` and strings `"true"`/`"false"` select full/partial refunds.
 
 `secretFields` is declared by templates in code; the `license` template declares
 `licenseKey` and `activationUrl`. Secret values in archive projections show only their

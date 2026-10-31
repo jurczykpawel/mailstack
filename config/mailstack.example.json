@@ -60,7 +60,6 @@
       "requireLog": false,
       "resend": "off",
       "alertOn": [],
-      "show": [],
       "includeSecrets": false
     },
     "ceilings": {

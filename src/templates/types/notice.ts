@@ -4,6 +4,7 @@ import { codeBox, ctaButton, ctaText, escapeHtml, paragraph } from "../layout.ts
 /** Generic catch-all notice: heading + paragraphs + optional CTA. */
 export const noticeTemplate: TemplateDef = {
   id: "notice",
+  maskedFields: [],
   requiredFields: ["heading", "paragraphs"],
 
   subject(brand: Brand, data: TemplateData): string {

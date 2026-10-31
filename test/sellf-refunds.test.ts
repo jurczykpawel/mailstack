@@ -265,6 +265,28 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
     }
   });
 
+  it.each([true, false])('archives the known refund scope with default masked fields: %s', async isFullRefund => {
+    deps.logging!.defaults.level = 'masked';
+    delete deps.logging!.defaults.show;
+    const body = refundEnvelope('re_scope', 12300, 12300, isFullRefund);
+    body.data.refund.reason = 'PRIVATE-REASON';
+    expect((await request(body)).status).toBe(200);
+    for (const output of [mails()[0].html, mails()[0].text]) {
+      expect(output).toContain(`Zakres zwrotu: ${isFullRefund ? 'pełny' : 'częściowy'}.`);
+      expect(output).toContain('Powód: PRIVATE-REASON');
+    }
+    const [row] = await store.db.selectFrom('messages').selectAll().execute();
+    const content = await store.db.selectFrom('contents').selectAll().where('message_id', '=', row.id).executeTakeFirstOrThrow();
+    const saved = await open(content.sealed, { brand: 'acme', messageId: row.id, purpose: 'content' }, [privateKey]) as { html: string; text: string };
+    for (const output of [saved.html, saved.text]) {
+      expect(output).toContain(`Zakres zwrotu: ${isFullRefund ? 'pełny' : 'częściowy'}.`);
+      expect(output).toContain('123.00 PLN');
+      expect(output).toContain('Powód: [ukryte]');
+      expect(output).not.toContain('PRIVATE-REASON');
+      expect(output).not.toContain(body.data.customer.email);
+    }
+  });
+
   it.each(['meta', 'masked', 'full'] as const)('compares changed refund content at level %s', async level => {
     deps.logging!.defaults.level = level;
     const body = refundEnvelope('re_2', 2000, 5000);

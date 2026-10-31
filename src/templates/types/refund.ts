@@ -3,10 +3,14 @@ import { noticeTemplate } from "./notice.ts";
 
 export const refundTemplate: TemplateDef = {
   id: "refund",
+  maskedFields: ["amount", "currency", "productName", "transactionId", "paymentId", "refundId", "isFullRefund", "totalRefunded", "refundedAt"],
   requiredFields: ["amount", "currency", "productName", "transactionId", "paymentId",
     "refundId", "isFullRefund", "totalRefunded", "refundedAt"],
   subject() { return "Zwrot środków"; },
   render(brand, data) {
+    const value: unknown = data.isFullRefund;
+    const scope = value === true || value === "true" ? "pełny"
+      : value === false || value === "false" ? "częściowy" : undefined;
     return noticeTemplate.render(brand, {
       heading: "Zwrot środków",
       paragraphs: [
@@ -15,7 +19,7 @@ export const refundTemplate: TemplateDef = {
         `Identyfikator płatności: ${data.paymentId}.`,
         `Identyfikator zwrotu: ${data.refundId}.`,
         "Status zwrotu: zakończony (succeeded).",
-        `Zakres zwrotu: ${data.isFullRefund === "true" ? "pełny" : "częściowy"}.`,
+        ...(scope ? [`Zakres zwrotu: ${scope}.`] : []),
         `Łącznie zwrócono: ${data.totalRefunded} ${data.currency}.`,
         `Data zwrotu: ${data.refundedAt}.`,
         ...(data.reason?.trim() ? [`Powód: ${data.reason}.`] : []),

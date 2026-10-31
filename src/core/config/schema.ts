@@ -9,7 +9,7 @@ const policy = z.strictObject({
   level: z.enum(["none", "meta", "masked", "full"]), contentDays: days, metaDays: days,
   requireLog: z.boolean(), resend: z.enum(["off", "replay", "source"]),
   alertOn: z.array(z.enum(["bounce_permanent", "complaint", "reject", "send_failed", "unknown", "render_failure"])),
-  show: strings, includeSecrets: z.boolean(),
+  show: strings.optional(), includeSecrets: z.boolean(),
 });
 const brand = z.strictObject({
   id: z.string(), name: z.string(), from: z.string(), to: strings, allowedOrigins: strings,

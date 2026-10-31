@@ -46,7 +46,7 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   if (policy.level === "meta") return { level: "meta", metadata };
   const includeSecrets = policy.level === "full" && policy.includeSecrets;
   const secretFields = new Set([...template.secretFields ?? [], ...template.optionalSecretFields ?? []]);
-  const show = new Set(policy.show);
+  const show = new Set(policy.show ?? template.maskedFields ?? []);
   const secretValues = [...secretFields].flatMap(field => data[field]
     ? [...new Set([data[field], escapeHtml(data[field])])] : []);
   const partial = (value: string): string => {

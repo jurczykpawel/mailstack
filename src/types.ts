@@ -119,6 +119,8 @@ export interface LayoutInput {
 export interface TemplateDef {
   /** Nonempty data keys required by source/hook deliveries, not /v1/send. */
   requiredFields?: string[];
+  /** Default visible archive fields when the logging policy omits show. */
+  maskedFields?: string[];
   secretFields?: string[];
   optionalSecretFields?: string[];
   subjectRoles?: string[];

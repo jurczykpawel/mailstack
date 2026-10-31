@@ -3,6 +3,7 @@ import { codeBox, ctaButton, ctaText, paragraph, summaryTable } from "../layout.
 
 export const licenseTemplate: TemplateDef = {
   id: "license",
+  maskedFields: ["productName", "tier"],
   requiredFields: ["productName", "licenseKey"],
   secretFields: ["licenseKey", "activationUrl"],
   subject(_brand, data) {

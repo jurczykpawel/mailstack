@@ -4,6 +4,7 @@ import { ctaButton, ctaText, paragraph } from "../layout.ts";
 /** Welcome / onboarding email with an optional CTA button. */
 export const welcomeTemplate: TemplateDef = {
   id: "welcome",
+  maskedFields: [],
 
   subject(brand: Brand, _data: TemplateData): string {
     return `Witaj w ${brand.name}`;
