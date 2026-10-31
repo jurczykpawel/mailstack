@@ -234,6 +234,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
   });
 
   it('renders every refund detail in HTML and text for partial and full refunds', async () => {
+    deps.logging!.defaults.level = 'full';
     const partial = refundEnvelope();
     const full = refundEnvelope('re_full', 12300, 12300, true);
     full.data.payment.id = 'payment-full';
@@ -252,6 +253,16 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
     expect(mails()[0].text).not.toContain('Powód:');
     expect(mails()[1].text).toContain('Powód: requested_by_customer');
     expect(mails()[1].text).toContain('Zwróciliśmy 123.00 PLN');
+    const rows = await store.db.selectFrom('messages').selectAll().execute();
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      const content = await store.db.selectFrom('contents').selectAll().where('message_id', '=', row.id).executeTakeFirstOrThrow();
+      const archive = await open(content.sealed, { brand: 'acme', messageId: row.id, purpose: 'content' }, [privateKey]);
+      const saved = archive as { html: string; text: string };
+      const mail = mails().find(mail => mail.text === saved.text);
+      expect(mail).toBeDefined();
+      expect(saved.html).toBe(mail!.html);
+    }
   });
 
   it.each(['meta', 'masked', 'full'] as const)('compares changed refund content at level %s', async level => {

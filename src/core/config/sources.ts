@@ -16,7 +16,7 @@ const field = z.union([
   first, z.strictObject({ format }),
   path,
   z.strictObject({ path, as: z.enum(['money-minor', 'upper', 'date-pl']) }),
-  z.strictObject({ path, as: z.literal('map'), map: z.record(safeKey, z.string().max(SOURCE_LIMITS.valueChars))
+  z.strictObject({ path, as: z.literal('map'), map: z.record(safeKey.regex(/^(?:boolean:(?:true|false)|number:.+|string:.*)$/s), z.string().max(SOURCE_LIMITS.valueChars))
     .refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields) }),
   z.strictObject({ join: z.array(path).min(1).max(SOURCE_LIMITS.fields) }),
 ]);

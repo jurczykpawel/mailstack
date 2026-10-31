@@ -639,7 +639,13 @@ Fields use plain dotted paths (including numeric indices), `{"join":["path"]}`,
 `{"first":["preferred.path","fallback.path"]}` (first nonblank scalar),
 `{"format":"Text {data.product.name}"}` (path placeholders only), or
 `{"path":"data.order.amount","as":"money-minor"}`. Other closed transforms are
-`upper`, `date-pl` (runtime timezone) and `map` with an explicit lookup table.
+`upper`, `date-pl` (runtime timezone) and `map` with typed lookup keys:
+`{"path":"data.refund.isFullRefund","as":"map","map":{"boolean:true":"true","boolean:false":"false"}}`.
+Map keys must use `boolean:true`, `boolean:false`, `number:<String(value)>` or
+`string:<exact value>` (including `string:` for an empty string). Thus boolean
+`true`, number `1` and strings `"true"`/`"1"` are distinct; untyped keys must be
+migrated. Missing, null, structured, nonfinite and unmatched values map to empty.
+Numbers use JavaScript's canonical string representation; `-0` and `0` share `number:0`.
 Minor units use division by 100 and `toFixed(2)`, preserving the former Sellf
 adapter's rounding, including near the safe integer limit. `ref` and
 `idempotencyKey` accept a path or `first`. No expressions or executable code are
@@ -671,7 +677,7 @@ Validation follows mapping and precedes storage, deduplication and provider call
 | Event | Outcome and template requirements beyond a valid customer email |
 |---|---|
 | `purchase.completed` | `payment`: nonblank amount, currency, item and orderId. PI preferred, CS fallback. Optional `licenses` retain the existing 32-entry/48 KiB validation and configured activation URLs. |
-| `refund.issued` | `refund`: amount, currency, productName, transactionId (PI preferred, CS fallback), paymentId, refundId, isFullRefund, totalRefunded and refundedAt. Status is not inspected; the template describes a completed refund. Send only completed refunds. |
+| `refund.issued` | `refund`: amount, currency, productName, transactionId (PI preferred, CS fallback), paymentId, refundId, isFullRefund, totalRefunded and refundedAt. Only boolean isFullRefund maps to a scope: true means pełny, false means częściowy. Missing/null/text (including "true") maps to empty and returns 422 invalid_event_data with field isFullRefund before recording or sending; no scope is guessed. Status is not inspected; the template describes a completed refund. Send only completed refunds. |
 | `waitlist.signup` | Signup notice with configured heading and paragraphs; product name is optional interpolation. |
 | `lead.captured` | Welcome email with access intro; no required template fields. |
 | `access.expired` | Expiry notice with configured heading and paragraphs; product name is optional interpolation. |

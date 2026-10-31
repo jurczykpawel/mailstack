@@ -153,8 +153,8 @@ it.each([
   [{ path: 'data.value', as: 'upper' }, { value: 'pln' }, 'PLN'],
   [{ path: 'data.value', as: 'date-pl' }, { value: '2026-10-31T23:00:00-02:00' }, '1.11.2026'],
   [{ path: 'data.value', as: 'date-pl' }, { value: 'invalid' }, ''],
-  [{ path: 'data.value', as: 'map', map: { true: 'pełny' } }, { value: true }, 'pełny'],
-  [{ path: 'data.value', as: 'map', map: { true: 'pełny' } }, { value: false }, ''],
+  [{ path: 'data.value', as: 'map', map: { 'boolean:true': 'pełny' } }, { value: true }, 'pełny'],
+  [{ path: 'data.value', as: 'map', map: { 'boolean:true': 'pełny' } }, { value: false }, ''],
   [{ join: ['data.first', 'data.missing', 'data.values.0'] }, { first: 'Jan', values: ['Nowak'] }, 'Jan Nowak'],
 ] as const)('maps the closed field operation %j', (field, data, expected) => {
   const parsed = sourceSchema.parse({ ...source(), events: { created: { ...source().events.created, fields: { value: field } } } });
@@ -357,4 +357,27 @@ it('loads the Sellf preset by default and respects an explicit replacement regis
 });
 it('keeps named source transforms closed', () => {
   expect(() => sourceSchema.parse({ ...source(), events: { created: { ...source().events.created, transform: 'custom-code' } } })).toThrow();
+});
+
+it.each([
+  [true, 'boolean true'], [false, 'boolean false'], ['true', 'string true'],
+  [1, 'number one'], ['1', 'string one'], [0, 'zero'], [-0, 'zero'],
+  [-1, 'negative'], [1.25, 'decimal'], ['line\nbreak', 'multiline'],
+  ['', 'empty string'], [null, ''], [undefined, ''], [{}, ''], [[], ''],
+  [NaN, ''], [Infinity, ''], [1n, ''], [Symbol('true'), ''],
+])('maps input types independently: %s', (value, expected) => {
+  const map = { 'boolean:true': 'boolean true', 'boolean:false': 'boolean false',
+    'string:true': 'string true', 'number:1': 'number one', 'string:1': 'string one',
+    'number:0': 'zero', 'number:-1': 'negative', 'number:1.25': 'decimal',
+    'string:line\nbreak': 'multiline', 'string:': 'empty string', 'number:NaN': 'invalid', 'number:Infinity': 'invalid' };
+  const parsed = sourceSchema.parse({ ...source(), events: { created: { ...source().events.created,
+    fields: { value: { path: 'value', as: 'map', map } } } } });
+  const action = parsed.events.created;
+  if (action.action !== 'send') throw new Error('Expected send');
+  expect(sourceField({ value }, action.fields.value)).toBe(expected);
+});
+
+it.each(['true', '1', 'null:', 'object:value', 'boolean:1'])('requires typed scalar map keys: %s', key => {
+  expect(() => sourceSchema.parse({ ...source(), events: { created: { ...source().events.created,
+    fields: { value: { path: 'data.value', as: 'map', map: { [key]: 'mapped' } } } } } })).toThrow();
 });

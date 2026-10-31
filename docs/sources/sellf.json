@@ -77,7 +77,11 @@
         },
         "paymentId": "data.payment.id",
         "refundId": "data.refund.stripeRefundId",
-        "isFullRefund": "data.refund.isFullRefund",
+        "isFullRefund": {
+          "path": "data.refund.isFullRefund",
+          "as": "map",
+          "map": { "boolean:true": "true", "boolean:false": "false" }
+        },
         "totalRefunded": {
           "path": "data.refund.totalRefunded",
           "as": "money-minor"

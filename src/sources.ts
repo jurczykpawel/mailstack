@@ -36,7 +36,12 @@ export function sourceField(body: unknown, field: SourceField): string {
       const date = typeof value === 'string' && value.trim() ? new Date(value) : new Date(NaN);
       return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('pl-PL');
     }
-    case 'map': return Object.hasOwn(field.map, text(value)) ? field.map[text(value)] : '';
+    case 'map': {
+      if (!['string', 'boolean', 'number'].includes(typeof value) ||
+        (typeof value === 'number' && !Number.isFinite(value))) return '';
+      const key = `${typeof value}:${String(value)}`;
+      return Object.hasOwn(field.map, key) ? field.map[key] : '';
+    }
   }
 }
 function bounded(value: unknown, depth = 0): boolean {

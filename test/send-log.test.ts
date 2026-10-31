@@ -481,7 +481,7 @@ for (const event of ['waitlist.signup', 'lead.captured', 'access.expired']) {
 invalidEvents.push(['data.customer.email', { ...hookBody, data: {} }]);
 
 // These historical invalid cases now exercise the narrower template contract.
-// Sender business rules (status, totals, currency consistency and boolean types) are intentionally absent.
+// Sender business rules (status, totals and currency consistency) are intentionally absent.
 function templateContractStatus(path: string, payload: Record<string, unknown>): number {
   const event = payload.event;
   const data = payload.data as Record<string, Record<string, unknown>>;
@@ -495,6 +495,7 @@ function templateContractStatus(path: string, payload: Record<string, unknown>):
     if (path === 'data.order.amount') return typeof value === 'number' && Number.isSafeInteger(value) ? 200 : 422;
     return nonempty(value) ? 200 : 422;
   }
+  if (path === 'data.refund.isFullRefund') return typeof value === 'boolean' ? 200 : 422;
   if (['data.refund.status', 'data.payment.currency', 'data.payment.amount'].includes(path)) return 200;
   if (['data.refund.amount', 'data.refund.totalRefunded'].includes(path))
     return typeof value === 'number' && Number.isSafeInteger(value) ? 200 : 422;
