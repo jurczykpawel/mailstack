@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "event": "subscription.created",
+    "event": "custom.event",
     "timestamp": "2026-06-15T09:00:00.000Z",
     "data": {
       "customer": { "email": "buyer@example.com" },
@@ -28,16 +28,16 @@ body:json {
 assert {
   res.status: eq 200
   res.body.success: eq true
-  res.body.ignored: eq subscription.created
+  res.body.ignored: eq custom.event
 }
 
 docs {
   # Sellf webhook: unmapped event
 
-  Events with no entry in `SELLF_EVENT_MAP` (e.g. `subscription.*`, `invoice.*`)
+  Events with no entry in the Sellf source preset (e.g. `custom.event`)
   are intentionally **acked** with `200 {success:true, ignored:"<event>"}` so
   Sellf does not retry something we will never email. No mail is sent.
 
-  Missing/invalid recipients on a *mapped* event are acked the same way with
-  `ignored: "no-email"`.
+  Missing/invalid recipients on a mapped send event return
+  `422 invalid_event_data` before delivery.
 }

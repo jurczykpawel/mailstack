@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN apk add --no-cache python3 make g++ && npm ci --ignore-scripts && npm rebuild better-sqlite3 esbuild
 COPY src ./src
+COPY docs/sources ./docs/sources
 COPY scripts/build-node.mjs ./scripts/build-node.mjs
 RUN npm run build:node && npm prune --omit=dev --ignore-scripts
 

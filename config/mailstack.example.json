@@ -70,5 +70,215 @@
     },
     "patterns": [],
     "brands": {}
+  },
+  "sources": {
+    "sellf": {
+      "signature": {
+        "scheme": "t-v1",
+        "header": "X-Sellf-Signature",
+        "toleranceSeconds": 300
+      },
+      "envelope": {
+        "event": "event",
+        "timestamp": "timestamp",
+        "data": "data"
+      },
+      "events": {
+        "purchase.completed": {
+          "action": "send",
+          "template": "payment",
+          "to": "data.customer.email",
+          "fields": {
+            "name": {
+              "join": [
+                "data.customer.firstName",
+                "data.customer.lastName"
+              ]
+            },
+            "amount": {
+              "path": "data.order.amount",
+              "as": "money-minor"
+            },
+            "currency": {
+              "path": "data.order.currency",
+              "as": "upper"
+            },
+            "item": "data.product.name",
+            "orderId": {
+              "first": [
+                "data.order.paymentIntentId",
+                "data.order.sessionId"
+              ]
+            },
+            "date": {
+              "path": "timestamp",
+              "as": "date-pl"
+            }
+          },
+          "ref": {
+            "first": [
+              "data.order.paymentIntentId",
+              "data.order.sessionId"
+            ]
+          },
+          "idempotencyKey": {
+            "first": [
+              "data.order.paymentIntentId",
+              "data.order.sessionId"
+            ]
+          },
+          "transform": "purchase-licenses"
+        },
+        "refund.issued": {
+          "action": "send",
+          "template": "refund",
+          "to": "data.customer.email",
+          "fields": {
+            "amount": {
+              "path": "data.refund.amount",
+              "as": "money-minor"
+            },
+            "currency": {
+              "path": "data.refund.currency",
+              "as": "upper"
+            },
+            "productName": "data.product.name",
+            "transactionId": {
+              "first": [
+                "data.payment.paymentIntentId",
+                "data.payment.sessionId"
+              ]
+            },
+            "paymentId": "data.payment.id",
+            "refundId": "data.refund.stripeRefundId",
+            "isFullRefund": "data.refund.isFullRefund",
+            "totalRefunded": {
+              "path": "data.refund.totalRefunded",
+              "as": "money-minor"
+            },
+            "refundedAt": "data.refund.refundedAt",
+            "reason": "data.refund.reason"
+          },
+          "ref": {
+            "first": [
+              "data.payment.paymentIntentId",
+              "data.payment.sessionId"
+            ]
+          },
+          "idempotencyKey": "data.refund.stripeRefundId"
+        },
+        "waitlist.signup": {
+          "action": "send",
+          "template": "notice",
+          "to": "data.customer.email",
+          "fields": {
+            "heading": {
+              "format": "Jesteś na liście oczekujących"
+            },
+            "paragraphs": {
+              "format": "Dziękujemy za zapis na: {data.product.name}.\n\nDamy znać, gdy produkt będzie dostępny."
+            }
+          },
+          "ref": {
+            "first": [
+              "data.order.sessionId",
+              "data.order.paymentIntentId",
+              "data.payment.sessionId",
+              "data.payment.paymentIntentId"
+            ]
+          },
+          "idempotencyKey": {
+            "first": [
+              "data.order.sessionId",
+              "data.order.paymentIntentId",
+              "data.payment.sessionId",
+              "data.payment.paymentIntentId"
+            ]
+          }
+        },
+        "lead.captured": {
+          "action": "send",
+          "template": "welcome",
+          "to": "data.customer.email",
+          "fields": {
+            "name": {
+              "format": ""
+            },
+            "intro": {
+              "format": "Twój dostęp do {data.product.name} jest gotowy."
+            }
+          },
+          "ref": {
+            "first": [
+              "data.order.sessionId",
+              "data.order.paymentIntentId",
+              "data.payment.sessionId",
+              "data.payment.paymentIntentId"
+            ]
+          },
+          "idempotencyKey": {
+            "first": [
+              "data.order.sessionId",
+              "data.order.paymentIntentId",
+              "data.payment.sessionId",
+              "data.payment.paymentIntentId"
+            ]
+          }
+        },
+        "access.expired": {
+          "action": "send",
+          "template": "notice",
+          "to": "data.customer.email",
+          "fields": {
+            "heading": {
+              "format": "Dostęp wygasł"
+            },
+            "paragraphs": {
+              "format": "Twój dostęp do {data.product.name} wygasł.\n\nJeśli chcesz go odnowić, odpowiedz na tę wiadomość."
+            }
+          },
+          "ref": {
+            "first": [
+              "data.order.sessionId",
+              "data.order.paymentIntentId",
+              "data.payment.sessionId",
+              "data.payment.paymentIntentId"
+            ]
+          },
+          "idempotencyKey": {
+            "first": [
+              "data.order.sessionId",
+              "data.order.paymentIntentId",
+              "data.payment.sessionId",
+              "data.payment.paymentIntentId"
+            ]
+          }
+        },
+        "subscription.created": {
+          "action": "reject"
+        },
+        "subscription.updated": {
+          "action": "reject"
+        },
+        "subscription.canceled": {
+          "action": "reject"
+        },
+        "subscription.trial_ending": {
+          "action": "reject"
+        },
+        "subscription.renewal_upcoming": {
+          "action": "reject"
+        },
+        "invoice.paid": {
+          "action": "reject"
+        },
+        "invoice.payment_failed": {
+          "action": "reject"
+        },
+        "license.revoked": {
+          "action": "reject"
+        }
+      }
+    }
   }
 }

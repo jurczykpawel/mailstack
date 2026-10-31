@@ -33,6 +33,7 @@ it.each(['runtime', 'schema'].flatMap(target => ['brand', 'template'].map(layer 
 
 it('validates declared template metadata only', () => {
   const config = parseConfig(example);
+  config.sources = {};
   config.logging.defaults.level = 'full';
   config.logging.defaults.resend = 'replay';
   config.logging.brands.acme = { templates: { notice: {} } };

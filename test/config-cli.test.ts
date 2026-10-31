@@ -90,6 +90,7 @@ it("builds external config and verifies subsequent input changes", async () => {
   for (const file of ["urls.ts", "purchase-licenses.ts"]) cpSync(`src/${file}`, join(root, "src", file));
   cpSync("src/templates", join(root, "src/templates"), { recursive: true });
   cpSync("src/markup", join(root, "src/markup"), { recursive: true });
+  cpSync("docs/sources", join(root, "docs/sources"), { recursive: true });
   const file = join(dir, "external.json");
   const json = readFileSync("config/mailstack.example.json", "utf8"); writeFileSync(file, json);
   const run = (mode?: string) => spawnSync(process.execPath, [join(root, "scripts/bundle-config.ts"), ...(mode ? [mode] : [])], { encoding: "utf8", env: { ...process.env, MAILSTACK_CONFIG: file } });

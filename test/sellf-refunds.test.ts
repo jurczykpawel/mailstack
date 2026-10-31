@@ -8,7 +8,7 @@ import type { KyselyStore } from '../src/core/store';
 import { open } from '../src/core/crypto';
 import { idempotencyHash } from '../src/core/logging/writer';
 import { tokenSha256 } from '../src/clients';
-import { handleSellfHook } from '../src/sellf';
+import { handleSellfHook } from './sellf-source-helper';
 import { bundlePurchase } from './purchase-license-fixture';
 import type { Env, SendDeps } from '../src/types';
 
@@ -318,23 +318,29 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
     expect(await store.db.selectFrom('messages').selectAll().execute()).toEqual([]);
   });
 
-  it.each([undefined, null, '', ' ', 123])('declines invalid refund identifiers before any storage or send: %j', async id => {
+  it.each([undefined, null, '', ' '])('declines invalid refund identifiers before any storage or send: %j', async id => {
     const body = refundEnvelope();
     const response = await request({ ...body, data: { ...body.data, refund: { ...body.data.refund, stripeRefundId: id } } });
     expect(response.status).toBe(422);
-    expect(await response.json()).toMatchObject({ code: 'invalid_event_data', fields: ['data.refund.stripeRefundId'] });
+    expect(await response.json()).toMatchObject({ code: 'invalid_event_data', fields: ['refundId'] });
     expect(mails()).toEqual([]);
     expect(await store.db.selectFrom('messages').selectAll().execute()).toEqual([]);
     expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
   });
 
-  it.each([undefined, null, '', 'pending', 'failed'])('declines an incomplete or unfinished status: %j', async status => {
+  it.each([undefined, null, '', 'pending', 'failed'])('leaves refund status validation to the sender: %j', async status => {
     const body = refundEnvelope();
-    expect((await request({ ...body, data: { ...body.data, refund: { ...body.data.refund, status } } })).status).toBe(422);
-    expect(mails()).toEqual([]);
-    expect(deps.emitEvent).not.toHaveBeenCalled();
-    expect(await store.db.selectFrom('messages').selectAll().execute()).toEqual([]);
-    expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+    expect((await request({ ...body, data: { ...body.data, refund: { ...body.data.refund, status } } })).status).toBe(200);
+    expect(mails()).toHaveLength(1);
+    expect(await store.db.selectFrom('messages').selectAll().execute()).toHaveLength(1);
+  });
+
+  it.each(['payment', 'refund'])('accepts numeric %s identifiers as template content', async kind => {
+    const body = refundEnvelope();
+    if (kind === 'payment') body.data.payment.id = 123 as unknown as string;
+    else body.data.refund.stripeRefundId = 123 as unknown as string;
+    expect((await request(body)).status).toBe(200);
+    expect(mails()[0].text).toContain('123');
   });
 
   it.each(['meta', 'none'] as const)('retains the 24-hour lifetime at level %s', async level => {
@@ -370,7 +376,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
     expect(mails()).toHaveLength(2);
   });
 
-  it.each([undefined, null, '', ' ', 123])('declines invalid payment identifiers without recording: %j', async id => {
+  it.each([undefined, null, '', ' '])('declines invalid payment identifiers without recording: %j', async id => {
     const body = refundEnvelope();
     expect((await request({ ...body, data: { ...body.data, payment: { ...body.data.payment, id } } })).status).toBe(422);
     expect(mails()).toEqual([]);

@@ -345,12 +345,12 @@ reusing the existing templates (no new template types).
 - **Brand:** `?brand=<id>`, defaults to `SELLF_DEFAULT_BRAND` env var or the first brand in the registry. Unknown brand → `400 {success:false,message:"unknown brand"}`.
 - **Body and response:** see the [Sellf event contract](README.md#sellf-event-contract).
   Malformed JSON is 400; invalid envelopes are 400 `invalid_envelope`. Mapped events
-  with incomplete data return 422 `invalid_event_data` with field paths only, before
-  mapping, recording, deduplication or sending. Customer email and product name are
-  required; purchase/refund amounts must be safe integers in minor units and currency
-  must have three letters. Purchase needs CS or PI, not both. Refund additionally
-  requires payment/refund IDs, succeeded status, consistent cumulative/full amounts
-  and currencies, boolean full flag and valid refundedAt.
+  with missing template-required output return 422 `invalid_event_data` (template
+  keys only; recipient errors use their input path) before recording or sending.
+  Mailstack validates authentication, recipient and template completion; Sellf owns
+  refund status, totals, full/partial consistency, currency and amount business rules.
+  Amount transforms accept safe integer minor units and render with a decimal dot.
+  Notice/welcome product interpolation is optional; payment/refund require product.
 - **Unsupported:** `subscription.created/updated/canceled/trial_ending/renewal_upcoming`,
   `invoice.paid/payment_failed` and `license.revoked` return 422 `unsupported_event`
   with the event name, for complete and incomplete data alike. Disable these events
@@ -364,12 +364,14 @@ reusing the existing templates (no new template types).
 
 ### Event → template mapping
 
-Defined in `SELLF_EVENT_MAP` (`src/sellf.ts`), following event-data validation:
+Defined in `docs/sources/sellf.json`, consumed by `src/sources.ts`. Omitting
+`sources` installs this preset; an explicit source registry replaces it. See
+[configurable sources](README.md#configurable-webhook-sources) for closed operations.
 
 | Sellf event | Template | Key mapping |
 |---|---|---|
 | `purchase.completed` | `payment` | customer.email, product.name, order.amount (minor), currency, CS or PI, envelope timestamp |
-| `refund.issued` | `notice` | customer.email, product.name, refund.amount (minor), refund.currency, payment CS or PI |
+| `refund.issued` | `refund` | customer.email, product.name, refund.amount (minor), refund.currency, payment CS or PI |
 | `waitlist.signup` | `notice` | customer.email, product.name |
 | `lead.captured` | `welcome` | customer.email, product.name; no CTA |
 | `access.expired` | `notice` | customer.email, product.name |
@@ -381,10 +383,13 @@ revoked license rows; no rows means no notification. Renewal/revocation support 
 not implemented. The README table lists every explicitly unsupported event.
 
 ### Add a new event mapping
-Add its input schema and `SELLF_EVENT_MAP` entry in `src/sellf.ts`, choosing an existing
-template. Remove an explicit unsupported entry only when a complete consumer contract
-is implemented. Add handler regressions including invalid input and zero side effects,
-then run `npm run typecheck && npm run test`.
+Edit `docs/sources/sellf.json` and the example configuration, selecting an existing
+template and covering its `requiredFields`. Use only the closed transforms; the
+built-in `purchase-licenses` preserves the existing license limits and brand URLs.
+Remove a reject action only after implementing a complete consumer contract.
+Recommend only `purchase.completed` and `refund.issued` for purchase/refund emails;
+enable other supported events only when needed, and disable all rejected events.
+Add handler regressions and run typecheck/tests.
 
 ### Example
 
@@ -485,7 +490,7 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
 src/
   index.ts             router (health, /v1/send + CORS preflight, /v1/hooks/sellf, brand logo asset)
   send.ts              POST /v1/send handler: modes, validation, template select, anti-relay, auto-reply; shared renderAndSend + bearer helpers
-  sellf.ts             POST /v1/hooks/sellf handler: Sellf event -> template mapping (SELLF_EVENT_MAP)
+  sources.ts           generic POST /v1/hooks/<id> engine; Sellf preset in docs/sources/sellf.json
   turnstile.ts         Turnstile siteverify (injectable)
   ses.ts               Amazon SES v2 send via aws4fetch (injectable)
   core/config/         strict schema, Node/Worker loaders, brand lookups, generated bundle
@@ -586,33 +591,25 @@ adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request
 identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
-Sellf requires a Bearer client with `hook:sellf` scope. If that client configures
-`sellfSignatureSecretEnv`, the corresponding runtime secret and a valid
-`X-Sellf-Signature: t=<unix>,v1=<hex>` are additionally required. The signature is
-HMAC-SHA256 over `${t}.${rawBody}` with a 300-second tolerance. Missing or invalid
-signatures return `401 unauthorized`. Configure the secret in the runtime, never in
-the JSON file. Refunds use automatic idempotency key
-`"sellf:refund.issued:" + JSON.stringify([brandId, refund.stripeRefundId])`, scoped
-further to the authenticated client by the delivery pipeline. A missing, null or
-blank refund ID is rejected with `422 invalid_event_data`; there is no payment/body
-fallback. Different refund IDs for one payment create separate sends. The refund
-`ref` remains the payment identifier (PI preferred, CS fallback), separate from the
-refund ID shown in the notice. The notice includes the product, payment identifiers,
-refund ID, succeeded status, explicit full/partial flag, this refund's amount,
-cumulative total and currency, refundedAt, and reason only when supplied.
+Sellf uses the generic source engine and requires a Bearer client with `hook:sellf`
+scope. `signatureSecretEnv` names the optional runtime signing secret;
+`sellfSignatureSecretEnv` remains an alias. When configured, the runtime secret and
+`X-Sellf-Signature: t=<unix>,v1=<hex>` are required (HMAC-SHA256 over `${t}.${rawBody}`,
+300-second tolerance); invalid credentials return `401 unauthorized`.
 
-Other events retain their existing keys: purchases use
-`sellf:purchase.completed:<order.paymentIntentId|order.sessionId>`; remaining mapped
-events use `sellf:<event>:<order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]>`.
-Duplicate delivery sends once; conflicts, pending attempts and unknown outcomes
-follow the table above. Conflict comparison covers the mapped delivery intent,
-not unused source fields; level `none` compares only the key.
+Source keys are `source:<id>:<event>:` followed by
+`JSON.stringify([brandId, selectedIdentityOrBodyDigest])`, then scoped to the client
+by the pipeline. The body fallback is the first 32 hex characters of SHA-256.
+The Sellf preset selects PI then CS for purchases, refund ID for refunds, and
+order CS/PI then payment CS/PI for other events. Purchase and refund `ref` select
+PI then CS; other events use the same selection as their key. Different refund IDs
+produce separate deliveries. Missing refund IDs fail the refund template requirement.
+Duplicate, pending, conflict and uncertain outcomes follow the table above.
+Comparison covers mapped delivery intent; level `none` compares only the key.
 
-Automatic keys retain the existing 24-hour lifetime. Previously stored refund keys
-used the payment identifier and are not converted or looked up by the new formula.
-A retry of a refund processed before this change can therefore send again, even
-while its old key is still within 24 hours. There is no cross-version deduplication
-guarantee; reconcile earlier refunds before retrying them.
+Keys expire after 24 hours. The new `source:` namespace does not look up older
+`sellf:` keys. Retrying any event sent by the former adapter may send it again;
+reconcile outstanding deliveries when changing versions.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
 Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends

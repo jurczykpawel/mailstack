@@ -10,7 +10,6 @@ import type { Env, SendDeps } from "./types";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
-import { handleSellfHook } from "./sellf";
 import { handleSourceHook } from "./sources";
 import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
@@ -134,9 +133,6 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       const sourceId = /^\/v1\/hooks\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(pathname)?.[1];
       if (sourceId && req.method === "POST" && config.sources && Object.hasOwn(config.sources, sourceId)) {
         return handleSourceHook(req, env, deps, sourceId);
-      }
-      if (pathname === "/v1/hooks/sellf" && req.method === "POST") {
-        return handleSellfHook(req, env, deps);
       }
 
       if (pathname === "/v1/events/ses" && req.method === "POST") {

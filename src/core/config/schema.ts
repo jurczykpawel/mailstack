@@ -1,3 +1,4 @@
+import sellfPreset from "../../../docs/sources/sellf.json" with { type: "json" };
 import { z } from "zod";
 import { sourceSchema, sourceId } from "./sources.ts";
 import { TEMPLATES } from "../../templates/index.ts";
@@ -70,7 +71,7 @@ const shape = z.strictObject({
     options: z.record(z.string(), z.unknown()).optional(),
   })).default([]),
   sender: z.strictObject({ type: z.enum(["ses", "smtp"]) }).optional(),
-  sources: z.record(sourceId, sourceSchema).optional(),
+  sources: z.record(sourceId, sourceSchema).default(() => ({ sellf: sourceSchema.parse(sellfPreset) })),
   version: z.literal(1), brands: z.record(z.string(), brand),
   logging: z.strictObject({
     defaults: policy, ceilings: z.strictObject({ contentDays: days, metaDays: days, auditDays: days }),

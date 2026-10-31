@@ -2,6 +2,19 @@
 
 All notable changes to mailstack are documented here.
 
+## [Unreleased]
+
+- Replace the Sellf adapter with the configurable source preset in
+  `docs/sources/sellf.json`, installed by default when `sources` is omitted.
+- Preserve valid email content and purchase licenses with closed `first`, `format`
+  and `purchase-licenses` operations; minor units render with a decimal dot.
+- Limit webhook data validation to recipient and template requirements. Sellf owns
+  refund status, cumulative totals, full/partial consistency and currency rules.
+  Enable only supported Sellf events; purchase/refund flows need
+  `purchase.completed` and `refund.issued`.
+- Source idempotency keys use a new `source:` namespace with brand/client scope;
+  older adapter keys are not matched. Reconcile outstanding deliveries on upgrade.
+
 ## [1.0.0] - 2026-06-10
 
 ### Added

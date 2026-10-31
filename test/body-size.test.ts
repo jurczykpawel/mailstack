@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleSend } from '../src/send';
-import { handleSellfHook } from '../src/sellf';
+import { handleSellfHook } from './sellf-source-helper';
 import type { Env, SendDeps } from '../src/types';
 import { memoryStore } from './store-fixture';
 

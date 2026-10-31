@@ -6,7 +6,14 @@ export const sourceId = z.string().max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const path = z.string().min(1).max(512).refine(value =>
   value.split('.').length <= SOURCE_LIMITS.depth && value.split('.').every(part =>
     /^(?:[A-Za-z_][A-Za-z0-9_-]*|0|[1-9][0-9]*)$/.test(part) && safeKey.safeParse(part).success));
+const first = z.strictObject({ first: z.array(path).min(1).max(SOURCE_LIMITS.fields) });
+const selection = z.union([path, first]);
+const format = z.string().max(SOURCE_LIMITS.valueChars).refine(value => {
+  const placeholders = [...value.matchAll(/\{([^{}]+)\}/g)];
+  return !/[{}]/.test(value.replace(/\{[^{}]+\}/g, "")) && placeholders.every(match => path.safeParse(match[1]).success);
+});
 const field = z.union([
+  first, z.strictObject({ format }),
   path,
   z.strictObject({ path, as: z.enum(['money-minor', 'upper', 'date-pl']) }),
   z.strictObject({ path, as: z.literal('map'), map: z.record(safeKey, z.string().max(SOURCE_LIMITS.valueChars))
@@ -16,7 +23,8 @@ const field = z.union([
 const action = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('send'), template: safeKey, to: path,
     fields: z.record(safeKey, field).refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields),
-    ref: path.optional(), idempotencyKey: path.optional() }),
+    ref: selection.optional(), idempotencyKey: selection.optional(),
+    transform: z.literal('purchase-licenses').optional() }),
   z.strictObject({ action: z.literal('ignore') }),
   z.strictObject({ action: z.literal('reject') }),
 ]);

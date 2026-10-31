@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/core/config";
 import { parseConfig } from "../src/core/config/schema";
 import { handleSend } from "../src/send";
-import { handleSellfHook } from "../src/sellf";
+import { handleSellfHook } from "./sellf-source-helper";
 import type { Env, SendDeps } from "../src/types";
 
 const token = `msk_acme-app_${randomBytes(32).toString("base64url")}`;

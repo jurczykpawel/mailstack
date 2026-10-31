@@ -7,7 +7,7 @@ import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
 import type { KyselyStore } from '../src/core/store';
 import { handleSend, renderAndSend } from '../src/send';
-import { handleSellfHook } from '../src/sellf';
+import { handleSellfHook } from './sellf-source-helper';
 import { getTemplate } from '../src/templates';
 import type { Env, SendDeps } from '../src/types';
 

@@ -148,7 +148,7 @@ it.each(['', 'data..email', 'data[0]', 'data.email()', '__proto__.email', 'data.
 it.each([
   ['data.value', { value: 'text' }, 'text'],
   ['data.value', {}, ''],
-  [{ path: 'data.value', as: 'money-minor' }, { value: 12300 }, '123,00'],
+  [{ path: 'data.value', as: 'money-minor' }, { value: 12300 }, '123.00'],
   [{ path: 'data.value', as: 'money-minor' }, { value: '12300' }, ''],
   [{ path: 'data.value', as: 'upper' }, { value: 'pln' }, 'PLN'],
   [{ path: 'data.value', as: 'date-pl' }, { value: '2026-10-31T23:00:00-02:00' }, '1.11.2026'],
@@ -166,16 +166,16 @@ it('uses only own properties when resolving fields', () => {
   expect(sourceField({ data: Object.create({ value: 'inherited' }) }, 'data.value')).toBe('');
 });
 it.each([
-  [9007199254740990, '90071992547409,90'],
-  [-9007199254740990, '-90071992547409,90'],
-  [Number.MAX_SAFE_INTEGER, '90071992547409,91'],
-  [Number.MIN_SAFE_INTEGER, '-90071992547409,91'],
-  [9007199254740901, '90071992547409,01'],
-  [-9007199254740901, '-90071992547409,01'],
-  [9007199254740900, '90071992547409,00'],
-  [-9007199254740900, '-90071992547409,00'],
-  [1, '0,01'], [-1, '-0,01'], [99, '0,99'], [-99, '-0,99'],
-  [100, '1,00'], [-100, '-1,00'], [0, '0,00'], [-0, '0,00'],
+  [9007199254740990, '90071992547409.90'],
+  [-9007199254740990, '-90071992547409.90'],
+  [Number.MAX_SAFE_INTEGER, '90071992547409.91'],
+  [Number.MIN_SAFE_INTEGER, '-90071992547409.91'],
+  [9007199254740901, '90071992547409.01'],
+  [-9007199254740901, '-90071992547409.01'],
+  [9007199254740900, '90071992547409.00'],
+  [-9007199254740900, '-90071992547409.00'],
+  [1, '0.01'], [-1, '-0.01'], [99, '0.99'], [-99, '-0.99'],
+  [100, '1.00'], [-100, '-1.00'], [0, '0.00'], [-0, '0.00'],
   [Number.MAX_SAFE_INTEGER + 1, ''], [1.5, ''], [NaN, ''], [Infinity, ''],
 ])('formats integer minor units exactly: %s', (value, expected) => {
   expect(sourceField({ value }, { path: 'value', as: 'money-minor' })).toBe(expected);
@@ -265,10 +265,10 @@ it('creates hook clients with explicit selections through the CLI', () => {
   expect(result.status, result.stderr).toBe(0);
   expect(JSON.parse(result.stdout).client).toMatchObject({ scopes: ['hook:github'], brands: ['acme'], templates: ['notice'] });
 });
-it('uses the general signature reference on the existing Sellf route', async () => {
+it('disables the Sellf route when the explicit source registry is empty', async () => {
   configure({ sources: {}, clients: [{ ...client(), scopes: ['hook:sellf'] }] });
   const { response, sendEmail } = await run(payload(), {}, 'sellf');
-  expect(response.status).toBe(401); expect(sendEmail).not.toHaveBeenCalled();
+  expect(response.status).toBe(404); expect(sendEmail).not.toHaveBeenCalled();
 });
 it.each(['hook:', 'hook:UPPER', 'hook:a/b', `hook:${'a'.repeat(65)}`, 'hook:*'])('refuses invalid source scopes %s', scope => {
   expect(() => configure({ clients: [{ ...client(), scopes: [scope] }] })).toThrow('clients.0.scopes');
@@ -329,4 +329,32 @@ it.each((['t-v1', 'sha256-prefix'] as const).flatMap(scheme =>
     .fetch(request, env, {} as ExecutionContext);
   expect(response.status, `${scheme}, chunked=${chunked}, expected=${status}`).toBe(status);
   expect(sendEmail).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+});
+
+it.each([
+  [{ first: ['data.empty', 'data.pi', 'data.cs'] }, { empty: '', pi: 'pi_1', cs: 'cs_1' }, 'pi_1'],
+  [{ first: ['data.empty', 'data.cs'] }, { empty: null, cs: 'cs_1' }, 'cs_1'],
+  [{ first: ['data.empty'] }, {}, ''],
+  [{ first: ['data.zero', 'data.other'] }, { zero: 0, other: 'fallback' }, '0'],
+  [{ first: ['data.flag', 'data.other'] }, { flag: false, other: 'fallback' }, 'false'],
+  [{ format: 'Access to {data.product.name}: {data.missing}' }, { product: { name: 'Pro' } }, 'Access to Pro: '],
+] as const)('maps the additional closed operation %j', (field, data, expected) => {
+  const parsed = sourceSchema.parse({ ...source(), events: { created: { ...source().events.created, fields: { value: field } } } });
+  const action = parsed.events.created;
+  if (action.action !== 'send') throw new Error('Expected send');
+  expect(sourceField({ data }, action.fields.value)).toBe(expected);
+});
+it.each(['{data.name + 1}', '{data.constructor}', '{data.name', 'data.name}', '{{data.name}}'])('refuses invalid format placeholders %s', format => {
+  expect(() => sourceSchema.parse({ ...source(), events: { created: { ...source().events.created, fields: { heading: { format } } } } })).toThrow();
+});
+
+it('loads the Sellf preset by default and respects an explicit replacement registry', () => {
+  const defaults = parseConfig({ ...original, sources: undefined });
+  expect(defaults.sources).toEqual(original.sources);
+  expect(defaults.sources.sellf.events['purchase.completed']).toMatchObject({ action: 'send', transform: 'purchase-licenses' });
+  expect(parseConfig({ ...original, sources: {} }).sources).toEqual({});
+  expect(Object.keys(parseConfig({ ...original, sources: { github: source() } }).sources)).toEqual(['github']);
+});
+it('keeps named source transforms closed', () => {
+  expect(() => sourceSchema.parse({ ...source(), events: { created: { ...source().events.created, transform: 'custom-code' } } })).toThrow();
 });

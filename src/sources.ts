@@ -1,3 +1,4 @@
+import { purchaseLicenseData, purchaseLicensesSchema } from './purchase-licenses';
 import { z } from 'zod';
 import { config, getBrand } from './core/config';
 import { SOURCE_LIMITS } from './core/config/sources';
@@ -21,13 +22,15 @@ function text(value: unknown): string {
 }
 export function sourceField(body: unknown, field: SourceField): string {
   if (typeof field === 'string') return text(read(body, field));
+  if ('first' in field) return field.first.map(path => text(read(body, path))).find(value => value.trim()) ?? '';
+  if ('format' in field) return field.format.replace(/\{([^{}]+)\}/g, (_, path: string) => text(read(body, path)));
   if ('join' in field) return field.join.map(path => text(read(body, path))).filter(Boolean).join(' ');
   const value = read(body, field.path);
   switch (field.as) {
     case 'money-minor': {
       if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '';
       const amount = BigInt(Math.abs(value));
-      return `${value < 0 ? '-' : ''}${amount / 100n},${String(amount % 100n).padStart(2, '0')}`;
+      return `${value < 0 ? '-' : ''}${amount / 100n}.${String(amount % 100n).padStart(2, '0')}`;
     }
     case 'upper': return text(value).toUpperCase();
     case 'date-pl': {
@@ -99,10 +102,16 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   const fields = missingRequiredFields(template, mapped);
   if (!z.email().safeParse(to).success) fields.push(action.to);
   for (const [key, value] of Object.entries(mapped)) if (value.length > SOURCE_LIMITS.valueChars) fields.push(key);
-  const ref = action.ref ? text(read(body, action.ref)).trim() : '';
+  const ref = action.ref ? sourceField(body, action.ref).trim() : '';
   if (ref.length > 128) fields.push('ref');
+  if (action.transform === 'purchase-licenses') {
+    const input = data as Record<string, unknown>;
+    const licenses = purchaseLicensesSchema.optional().safeParse(input.licenses);
+    if (!licenses.success) fields.push(...licenses.error.issues.map(issue => [source.envelope.data, 'licenses', ...issue.path].join('.')));
+    else Object.assign(mapped, purchaseLicenseData(input, brand));
+  }
   if (fields.length) return invalid([...new Set(fields)]);
-  const identity = action.idempotencyKey ? text(read(body, action.idempotencyKey)).trim() : '';
+  const identity = action.idempotencyKey ? sourceField(body, action.idempotencyKey).trim() : '';
   const idempotencyKey = `source:${id}:${event}:${JSON.stringify([brandId, identity || (await tokenSha256(raw)).slice(0, 32)])}`;
   const result = await renderAndSend(deps, env, brand, template, mapped, {
     to: [to], replyTo: brand.to[0], clientId: client.id, ref: ref || undefined, idempotencyKey,

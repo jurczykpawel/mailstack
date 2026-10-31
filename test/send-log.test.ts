@@ -6,7 +6,7 @@ import { open } from '../src/core/crypto';
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { createSmtpSender } from '../src/adapters/sender/smtp';
 import { handleSend } from '../src/send';
-import { handleSellfHook } from '../src/sellf';
+import { handleSellfHook } from './sellf-source-helper';
 import { tokenSha256 } from '../src/clients';
 import type { Env, SendDeps } from '../src/types';
 
@@ -480,20 +480,45 @@ for (const event of ['waitlist.signup', 'lead.captured', 'access.expired']) {
 }
 invalidEvents.push(['data.customer.email', { ...hookBody, data: {} }]);
 
-it.each(invalidEvents)('rejects incomplete event at %s before recording or sending (%#)', async (_path, payload) => {
+// These historical invalid cases now exercise the narrower template contract.
+// Sender business rules (status, totals, currency consistency and boolean types) are intentionally absent.
+function templateContractStatus(path: string, payload: Record<string, unknown>): number {
+  const event = payload.event;
+  const data = payload.data as Record<string, Record<string, unknown>>;
+  const [_, parent, key] = path.split('.');
+  const value = data[parent]?.[key];
+  const nonempty = (v: unknown) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') && String(v).trim() !== '';
+  if (path === 'data.customer.email' || path === 'data.customer') return 422;
+  if (event !== 'purchase.completed' && event !== 'refund.issued') return 200;
+  if (event === 'purchase.completed') {
+    if (path === 'data.order' || path === 'data.product') return 422;
+    if (path === 'data.order.amount') return typeof value === 'number' && Number.isSafeInteger(value) ? 200 : 422;
+    return nonempty(value) ? 200 : 422;
+  }
+  if (['data.refund.status', 'data.payment.currency', 'data.payment.amount'].includes(path)) return 200;
+  if (['data.refund.amount', 'data.refund.totalRefunded'].includes(path))
+    return typeof value === 'number' && Number.isSafeInteger(value) ? 200 : 422;
+  return nonempty(value) ? 200 : 422;
+}
+it.each(invalidEvents)('applies template requirements instead of sender business rules at %s (%#)', async (path, payload) => {
+  const expected = templateContractStatus(path, payload);
   const response = await hook(JSON.stringify(payload));
-  expect(response.status).toBe(422);
-  const output = await response.json() as { fields: string[] };
-  expect(output).toMatchObject({ success: false, code: 'invalid_event_data', fields: expect.any(Array) });
-  expect(output.fields.length).toBeGreaterThan(0);
-  expect(output.fields.every(path => /^data\.[A-Za-z.]+$/.test(path))).toBe(true);
-  expect(JSON.stringify(output)).not.toContain('buyer@example.com');
-  expect(deps.sendEmail).not.toHaveBeenCalled();
-  expect(await rows()).toEqual([]);
-  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
-  const corrected = payload.event === 'refund.issued' ? refundBody() : { ...hookBody, event: payload.event };
-  expect((await hook(JSON.stringify(corrected))).status).toBe(200);
-  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  expect(response.status).toBe(expected);
+  if (expected === 200) {
+    expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+    expect(await rows()).toHaveLength(1);
+  } else {
+    const output = await response.json() as { fields: string[] };
+    expect(output).toMatchObject({ success: false, code: 'invalid_event_data', fields: expect.any(Array) });
+    expect(output.fields.length).toBeGreaterThan(0);
+    expect(JSON.stringify(output)).not.toContain('buyer@example.com');
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+    expect(await rows()).toEqual([]);
+    expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+    const corrected = payload.event === 'refund.issued' ? refundBody() : { ...hookBody, event: payload.event };
+    expect((await hook(JSON.stringify(corrected))).status).toBe(200);
+    expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  }
 });
 
 const invalidEnvelopes = [null, [], 12, {}, ...['event', 'timestamp', 'data'].flatMap(path =>
@@ -624,7 +649,7 @@ it('rejects a numeric overflow before recording an intent', async () => {
   const raw = JSON.stringify(hookBody).replace('"amount":100', '"amount":1e309');
   const response = await hook(raw);
   expect(response.status).toBe(422);
-  expect(await response.json()).toMatchObject({ code: 'invalid_event_data', fields: ['data.order.amount'] });
+  expect(await response.json()).toMatchObject({ code: 'invalid_event_data', fields: ['amount'] });
   expect(deps.sendEmail).not.toHaveBeenCalled();
   expect(await rows()).toEqual([]);
   expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);

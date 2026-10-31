@@ -68,10 +68,10 @@ mocked in tests — no real AWS or Cloudflare calls are made.
 
 ## Adding a Sellf event mapping
 
-1. Add an entry to `SELLF_EVENT_MAP` in `src/sellf.ts`: a function
-   `(envelope) => { template, to, data, subject? } | null`.
-2. Add a test case in `test/sellf-hook.test.ts`.
-3. No other wiring needed.
+1. Add a declarative event mapping to `docs/sources/sellf.json` and the example
+   configuration, covering the selected template requirements with closed operations.
+2. Add a regression in `test/sellf-hook.test.ts`.
+3. Use an operator-installed runtime extension for behavior outside the closed list.
 
 ## PR expectations
 

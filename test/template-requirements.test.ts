@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getBrand } from '../src/core/config';
 import { getTemplate, missingRequiredFields } from '../src/templates/index';
-import { handleSellfHook } from '../src/sellf';
+import { handleSellfHook } from './sellf-source-helper';
 import { handleSend } from '../src/send';
 import { bundlePurchase } from './purchase-license-fixture';
 import { memoryStore } from './store-fixture';

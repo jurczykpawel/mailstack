@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
-import { handleSellfHook } from '../src/sellf';
+import { handleSellfHook } from './sellf-source-helper';
 import { config, getBrand } from '../src/core/config';
 import { parseConfig } from '../src/core/config/schema';
 import { createSqliteStore } from '../src/core/store/sqlite';

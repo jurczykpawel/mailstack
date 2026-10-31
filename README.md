@@ -420,7 +420,7 @@ the guarded Worker deploy from a clean release checkout. Keep runtime images and
 - **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`, `license`; one branded layout.
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
 - **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
-- **Sellf webhook adapter** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
+- **Sellf webhook source** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
 - **D1 storage** — atomic rate limits and ALTCHA usage records. **Secret scanning** in pre-commit + CI.
 
 ### Config files
@@ -554,7 +554,7 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
   `template` (trusted only), `autoreply` (public contact), plus the reserved fields documented below.
   Empty or omitted body `brand` falls back to `?brand=<id>`; different nonempty values return `400 brand mismatch`.
   Public requests may use ALTCHA instead of Turnstile; opted-in brands also require a nonce.
-- `POST /v1/hooks/sellf` — Sellf webhook adapter (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
+- `POST /v1/hooks/sellf` — Sellf webhook source (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).
 
 - `POST /v1/events/ses` — SNS subscription and SES delivery events. Returns
   `{ ok: true, result: "processed" | "duplicate" | "ignored" | "confirmed" }`.
@@ -610,6 +610,39 @@ buyer can paste the complete synthetic key and confirm the matching product.
 These pages are explicitly demonstrations, with no provider activation. Browser
 review and real provider integration are separate checks.
 
+### Configurable webhook sources
+
+`POST /v1/hooks/<id>` selects `sources.<id>` from `mailstack.json`. Omitting
+`sources` installs the built-in Sellf preset; an explicit object replaces the source
+registry (`{}` disables all sources). The example configuration includes Sellf.
+Copy [docs/sources/sellf.json](docs/sources/sellf.json) under `sources.sellf` to
+customize it, for example:
+
+```json
+{"sources":{"sellf":{"signature":{"scheme":"t-v1","header":"X-Sellf-Signature","toleranceSeconds":300},"envelope":{"event":"event","timestamp":"timestamp","data":"data"},"events":{"waitlist.signup":{"action":"send","template":"notice","to":"data.customer.email","fields":{"heading":{"format":"Waitlist"},"paragraphs":{"format":"Thanks for joining {data.product.name}."}}}}}}}
+```
+
+Each send map declares a template, recipient path, fields, optional `ref` and
+`idempotencyKey` selections. Startup rejects unknown templates, invalid paths and
+maps missing required template fields. `ignore` acknowledges without sending;
+`reject` returns `422 unsupported_event`; unlisted events are ignored.
+Bearer plus `hook:<id>` scope and brand/template permissions are always required.
+Signatures support `t-v1`, `sha256-prefix` and `bearer-only`; signing is additional
+when the client names a runtime secret. Configure no signing reference for
+`bearer-only`. Source definitions contain secret references only through clients.
+
+Fields use plain dotted paths (including numeric indices), `{"join":["path"]}`,
+`{"first":["preferred.path","fallback.path"]}` (first nonblank scalar),
+`{"format":"Text {data.product.name}"}` (path placeholders only), or
+`{"path":"data.order.amount","as":"money-minor"}`. Other closed transforms are
+`upper`, `date-pl` (UTC) and `map` with an explicit lookup table. `ref` and
+`idempotencyKey` accept a path or `first`. No expressions or executable code are
+accepted. General limits: 64 KiB body, depth 20, 40 mapped fields, 5000 characters
+per value. `transform: "purchase-licenses"` is the single built-in Sellf transform:
+it calls the existing license formatter on envelope data after validation. Its
+output uses the existing license limits rather than general field/count limits.
+Other custom behavior belongs in an operator-installed runtime extension.
+
 ### Sellf event contract
 
 The hook requires an object envelope with a nonblank string `event`, a valid ISO
@@ -618,21 +651,24 @@ Malformed JSON returns `400 invalid JSON`; a malformed envelope returns
 `400` with `code: "invalid_envelope"`. Authentication, configured HMAC, scope and
 64 KiB body limits apply before delivery. Extra custom fields are allowed.
 
-Mapped events require `data.customer.email` to be valid and `data.product.name`
-to be a nonblank string. A product containing only `{id}` cannot produce a complete
-email. Field selection must retain the required nested data; an empty selection
-is rejected. Missing, null, blank, wrong-type or inconsistent required data returns
-`422 {success:false,code:"invalid_event_data",message:"invalid event data",fields:[...]}`.
-`fields` contains paths such as `data.order.amount`, never submitted values.
-Validation precedes mapping, intent recording, deduplication and provider calls.
+Mailstack checks sender authentication, the recipient address and nonblank mapped
+`requiredFields` declared by the selected template. It does **not** validate the
+sender's business rules: refund status, cumulative totals, full/partial consistency,
+nonnegative amounts, three-letter currencies or matching currencies. Sellf must
+validate those before sending. Scalar field values become strings; objects and
+missing values become empty. Amount transforms require safe integer minor units
+and produce two decimal places with a dot (`4999` -> `49.99`).
+Missing required output returns `422 invalid_event_data`, with template keys such
+as `amount` (recipient errors use `data.customer.email`), never submitted values.
+Validation follows mapping and precedes storage, deduplication and provider calls.
 
-| Event | Outcome and required data beyond customer email and product name |
+| Event | Outcome and template requirements beyond a valid customer email |
 |---|---|
-| `purchase.completed` | Payment email: `order.amount` is a safe integer >= 0 in minor units; `order.currency` is three letters; at least one nonblank string `order.sessionId` or `order.paymentIntentId`. CS alone or PI alone is enough; the other may be absent/null. PI takes precedence when both exist, matching Sellf license issuance. |
-| `refund.issued` | Notice: `payment.id`, at least one CS/PI, `payment.amount` in minor units, three-letter `payment.currency`; `refund.stripeRefundId`, positive safe integer `refund.amount` in minor units, matching three-letter `refund.currency`, `status: "succeeded"`, boolean `isFullRefund`, safe integer `totalRefunded` in minor units, valid ISO `refundedAt`. Cumulative total must be >= this refund and <= payment amount; full must equal whether cumulative total reaches payment amount. Pending/failed refunds are rejected. |
-| `waitlist.signup` | Signup notice; no order identifier required. |
-| `lead.captured` | Welcome email; no order identifier required. |
-| `access.expired` | Expiry notice; no order identifier required. |
+| `purchase.completed` | `payment`: nonblank amount, currency, item and orderId. PI preferred, CS fallback. Optional `licenses` retain the existing 32-entry/48 KiB validation and configured activation URLs. |
+| `refund.issued` | `refund`: amount, currency, productName, transactionId (PI preferred, CS fallback), paymentId, refundId, isFullRefund, totalRefunded and refundedAt. Status is not inspected; the template describes a completed refund. Send only completed refunds. |
+| `waitlist.signup` | Signup notice with configured heading and paragraphs; product name is optional interpolation. |
+| `lead.captured` | Welcome email with access intro; no required template fields. |
+| `access.expired` | Expiry notice with configured heading and paragraphs; product name is optional interpolation. |
 | `subscription.created` | `422 unsupported_event` |
 | `subscription.updated` | `422 unsupported_event` |
 | `subscription.canceled` | `422 unsupported_event` |
@@ -918,33 +954,25 @@ The operator panel is supplied by an extension. The SES adapter makes one reques
 means no deduplication. Generated contact receipt timestamps do not change request
 identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
-Sellf requires a Bearer client with `hook:sellf` scope. If that client configures
-`sellfSignatureSecretEnv`, the corresponding runtime secret and a valid
-`X-Sellf-Signature: t=<unix>,v1=<hex>` are additionally required. The signature is
-HMAC-SHA256 over `${t}.${rawBody}` with a 300-second tolerance. Missing or invalid
-signatures return `401 unauthorized`. Configure the secret in the runtime, never in
-the JSON file. Refunds use automatic idempotency key
-`"sellf:refund.issued:" + JSON.stringify([brandId, refund.stripeRefundId])`, scoped
-further to the authenticated client by the delivery pipeline. A missing, null or
-blank refund ID is rejected with `422 invalid_event_data`; there is no payment/body
-fallback. Different refund IDs for one payment create separate sends. The refund
-`ref` remains the payment identifier (PI preferred, CS fallback), separate from the
-refund ID shown in the notice. The notice includes the product, payment identifiers,
-refund ID, succeeded status, explicit full/partial flag, this refund's amount,
-cumulative total and currency, refundedAt, and reason only when supplied.
+Sellf uses the generic source engine and requires a Bearer client with `hook:sellf`
+scope. `signatureSecretEnv` names the optional runtime signing secret;
+`sellfSignatureSecretEnv` remains an alias. When configured, the runtime secret and
+`X-Sellf-Signature: t=<unix>,v1=<hex>` are required (HMAC-SHA256 over `${t}.${rawBody}`,
+300-second tolerance); invalid credentials return `401 unauthorized`.
 
-Other events retain their existing keys: purchases use
-`sellf:purchase.completed:<order.paymentIntentId|order.sessionId>`; remaining mapped
-events use `sellf:<event>:<order.sessionId|order.paymentIntentId|payment.sessionId|payment.paymentIntentId|sha256(rawBody)[0:32]>`.
-Duplicate delivery sends once; conflicts, pending attempts and unknown outcomes
-follow the table above. Conflict comparison covers the mapped delivery intent,
-not unused source fields; level `none` compares only the key.
+Source keys are `source:<id>:<event>:` followed by
+`JSON.stringify([brandId, selectedIdentityOrBodyDigest])`, then scoped to the client
+by the pipeline. The body fallback is the first 32 hex characters of SHA-256.
+The Sellf preset selects PI then CS for purchases, refund ID for refunds, and
+order CS/PI then payment CS/PI for other events. Purchase and refund `ref` select
+PI then CS; other events use the same selection as their key. Different refund IDs
+produce separate deliveries. Missing refund IDs fail the refund template requirement.
+Duplicate, pending, conflict and uncertain outcomes follow the table above.
+Comparison covers mapped delivery intent; level `none` compares only the key.
 
-Automatic keys retain the existing 24-hour lifetime. Previously stored refund keys
-used the payment identifier and are not converted or looked up by the new formula.
-A retry of a refund processed before this change can therefore send again, even
-while its old key is still within 24 hours. There is no cross-version deduplication
-guarantee; reconcile earlier refunds before retrying them.
+Keys expire after 24 hours. The new `source:` namespace does not look up older
+`sellf:` keys. Retrying any event sent by the former adapter may send it again;
+reconcile outstanding deliveries when changing versions.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
 Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends

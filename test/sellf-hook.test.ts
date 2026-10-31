@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { handleSellfHook } from "../src/sellf";
+import { handleSellfHook } from "./sellf-source-helper";
 import type { Env, SendDeps, SendParams } from "../src/types";
 
 import { bundlePurchase } from "./purchase-license-fixture";
