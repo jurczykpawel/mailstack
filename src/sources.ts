@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { config, getBrand } from './core/config';
 import { SOURCE_LIMITS } from './core/config/sources';
 import type { Source, SourceField } from './core/config/sources';
-import { boundedText } from './core/http';
+import { boundedBytes } from './core/http';
 import { authenticate, permits, tokenSha256 } from './clients';
 import { getTemplate, missingRequiredFields } from './templates/index';
 import { renderAndSend } from './send';
@@ -37,7 +37,7 @@ function bounded(value: unknown, depth = 0): boolean {
   if (depth > SOURCE_LIMITS.depth) return false;
   return !value || typeof value !== 'object' || Object.values(value).every(item => bounded(item, depth + 1));
 }
-async function signatureValid(req: Request, raw: string, signature: Source['signature'], secret: unknown, now: Date) {
+async function signatureValid(req: Request, raw: Uint8Array<ArrayBuffer>, signature: Source['signature'], secret: unknown, now: Date) {
   if (signature.scheme === 'bearer-only' || typeof secret !== 'string' || !secret) return false;
   const header = req.headers.get(signature.header) ?? '';
   const match = signature.scheme === 't-v1' ? /^t=(\d{1,12}),v1=([a-f0-9]{64})$/i.exec(header)
@@ -48,8 +48,11 @@ async function signatureValid(req: Request, raw: string, signature: Source['sign
   try {
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+    const prefix = encoder.encode(signature.scheme === 't-v1' ? `${match[1]}.` : '');
+    const message = new Uint8Array(prefix.length + raw.length);
+    message.set(prefix); message.set(raw, prefix.length);
     return await crypto.subtle.verify('HMAC', key, Uint8Array.from(hex.match(/../g)!, pair => parseInt(pair, 16)),
-      encoder.encode(signature.scheme === 't-v1' ? `${match[1]}.${raw}` : raw));
+      message);
   } catch { return false; }
 }
 const json = (body: object, status = 200) => Response.json(body, { status });
@@ -64,17 +67,17 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (!permits(client, `hook:${id}`, brandId)) return forbidden();
   const brand = getBrand(brandId);
   if (!brand) return json({ success: false, message: 'unknown brand' }, 400);
-  let raw: string;
-  try { raw = await boundedText(req, SOURCE_LIMITS.bodyBytes); }
+  let bytes: Uint8Array<ArrayBuffer>;
+  try { bytes = await boundedBytes(req, SOURCE_LIMITS.bodyBytes); }
   catch (error) {
     if (!(error instanceof RangeError)) throw error;
     return json({ success: false, message: 'payload too large' }, 413);
   }
   const secretEnv = client.signatureSecretEnv ?? (id === 'sellf' ? client.sellfSignatureSecretEnv : undefined);
-  if (secretEnv && !await signatureValid(req, raw, source.signature, Reflect.get(env, secretEnv), deps.now()))
+  if (secretEnv && !await signatureValid(req, bytes, source.signature, Reflect.get(env, secretEnv), deps.now()))
     return json({ success: false, message: 'unauthorized' }, 401);
-  let body: unknown;
-  try { body = JSON.parse(raw); } catch { return json({ success: false, message: 'invalid JSON' }, 400); }
+  let body: unknown, raw: string;
+  try { raw = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes); body = JSON.parse(raw); } catch { return json({ success: false, message: 'invalid JSON' }, 400); }
   const event = read(body, source.envelope.event);
   const timestamp = read(body, source.envelope.timestamp);
   const data = read(body, source.envelope.data);

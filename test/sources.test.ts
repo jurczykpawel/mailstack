@@ -277,3 +277,41 @@ it('uses a body digest when the selected idempotency value is absent', async () 
     expect(sendEmail).toHaveBeenCalledTimes(2);
   } finally { await store.db.destroy(); }
 });
+
+it.each((['t-v1', 'sha256-prefix'] as const).flatMap(scheme =>
+  [false, true].flatMap(chunked => [0, 1, 2, 3, 4].map(index => ({ scheme, chunked, index }))),
+))('handles encoded request body $scheme, chunked=$chunked, case=$index', async ({ scheme, chunked, index }) => {
+  configure({ sources: { github: { ...source(), signature: { scheme, header: 'X-Example-Signature' } } } });
+  const body = payload(); body.issue.title = 'Zażółć 😀';
+  const plain = Buffer.from(JSON.stringify(body));
+  const marked = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), plain]);
+  const malformed = Buffer.from(JSON.stringify({ ...body, issue: { ...body.issue, title: 'MARKER' } }).replace('MARKER', '\uFFFD('));
+  const marker = malformed.indexOf(Buffer.from('\uFFFD'));
+  const originalBytes = Buffer.concat([malformed.subarray(0, marker), Buffer.from([0xc3]), malformed.subarray(marker + 3)]);
+  const cases = [
+    { bytes: plain, signed: plain, status: 200 },
+    { bytes: marked, signed: marked, status: 200 },
+    { bytes: marked, signed: plain, status: 401 },
+    { bytes: originalBytes, signed: originalBytes, status: 400 },
+    { bytes: originalBytes, signed: malformed, status: 401 },
+  ];
+  const { bytes, signed, status } = cases[index];
+  const timestamp = '1793448000';
+  const hmac = createHmac('sha256', Reflect.get(env, 'SOURCE_SECRET'));
+  if (scheme === 't-v1') hmac.update(`${timestamp}.`);
+  const digest = hmac.update(signed).digest('hex');
+  const sendEmail = vi.fn(async (_env: Env, _params: SendParams) => ({ ok: true, status: 200 }));
+  const stream = new ReadableStream<Uint8Array>({ start(controller) {
+    for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+    controller.close();
+  } });
+  const request = new Request('https://local.example/v1/hooks/github?brand=acme', {
+    method: 'POST', body: chunked ? stream : bytes,
+    headers: { authorization: `Bearer ${token}`, 'X-Example-Signature': scheme === 't-v1' ? `t=${timestamp},v1=${digest}` : `sha256=${digest}` },
+    ...(chunked ? { duplex: 'half' } : {}),
+  });
+  const response = await createApp({ sendEmail, now: () => new Date('2026-10-31T12:00:00Z'), logging: config.logging })
+    .fetch(request, env, {} as ExecutionContext);
+  expect(response.status, `${scheme}, chunked=${chunked}, expected=${status}`).toBe(status);
+  expect(sendEmail).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+});
