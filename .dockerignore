@@ -2,6 +2,9 @@
 !Dockerfile
 !package.json
 !package-lock.json
+!docs/
+!docs/sources/
+!docs/sources/*.json
 !src/
 !src/**
 src/core/config/bundled.ts
