@@ -12,7 +12,9 @@ The Node URL serves the panel at `/` and the API at `/v1/*`, `/altcha/*`, `/bran
 
 ## Worker operations
 
-Use the `staging/st5` core worktree with dependencies installed. Select the account explicitly. Load the Cloudflare token from your secret manager into `CLOUDFLARE_API_TOKEN`, or use the unlocked agent Vaultwarden CLI. Do not put tokens in command arguments.
+Use a clean core checkout containing the staging scripts, with dependencies installed.
+After merging the script changes, the coordinator selects the immutable `main`
+commit for the application build. Select the account explicitly. Load the Cloudflare token from your secret manager into `CLOUDFLARE_API_TOKEN`, or use the unlocked agent Vaultwarden CLI. Do not put tokens in command arguments.
 
 ```sh
 export CLOUDFLARE_ACCOUNT_ID='<account-id>'
@@ -340,6 +342,14 @@ bez automatycznych płatnych akcji. ST2 nie tworzy budżetu ani alarmu CloudWatc
 
 The coordinator must complete this list before assigning a browser slot. A local
 record or an old ST report is not evidence of current deployment readiness.
+
+Script preparation and local checks are separate from operational readiness.
+The preparation task ends with committed code and documentation, without a
+staging deployment or new RC briefs. After merge, the separate coordinator task
+deploys the composition, measures the receiver and HMAC swap/restore on both
+installations, records production fingerprints, freezes versions, and writes
+the new RC briefs. Until those measurements exist, the affected manual tests
+remain blocked; passing local tests does not establish staging readiness.
 
 | Condition | Required evidence and recovery |
 | --- | --- |
