@@ -1,4 +1,5 @@
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
+import { selfwareContact, selfwareContactSubject } from "./selfware.ts";
 import { escapeHtml, humanizeLabel, summaryTable } from "../layout.ts";
 
 /**
@@ -30,12 +31,14 @@ export const contactTemplate: TemplateDef = {
   publicAllowed: true,
 
   subject(brand: Brand, data: TemplateData): string {
+    if (brand.id === "selfware") return selfwareContactSubject(brand, data);
     const type = (data.type || "").trim();
     const typePart = type ? ` — ${type}` : "";
     return `${brand.subjectPrefix}${typePart} — ${brand.name}`;
   },
 
   render(_brand: Brand, data: TemplateData): RenderedBody {
+    if (_brand.id === "selfware") return selfwareContact(_brand, data);
     const rows = Object.entries(data)
       .filter(([key, value]) => !RESERVED_CONTENT.has(key) && value.trim() !== "")
       .map(([key, value]) => ({ label: humanizeLabel(key), value }));

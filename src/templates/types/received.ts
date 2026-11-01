@@ -1,4 +1,5 @@
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
+import { selfwareReceived } from "./selfware.ts";
 import { escapeHtml, paragraph } from "../layout.ts";
 
 /** Acknowledgement that a submission was received. */
@@ -6,10 +7,12 @@ export const receivedTemplate: TemplateDef = {
   id: "received",
 
   subject(_brand: Brand, _data: TemplateData): string {
+    if (_brand.id === "selfware") return "Selfware — dostaliśmy Twoje zgłoszenie";
     return "Potwierdzenie: otrzymaliśmy Twoje zgłoszenie";
   },
 
   render(_brand: Brand, data: TemplateData): RenderedBody {
+    if (_brand.id === "selfware") return selfwareReceived(data);
     const name = (data.name || "").trim();
     const refId = (data.refId || "").trim();
     const summary = (data.summary || "").trim();
