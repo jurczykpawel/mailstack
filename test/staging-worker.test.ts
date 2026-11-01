@@ -94,6 +94,12 @@ it('limits enabled SES delivery to simulator recipients and keeps credentials ou
   expect(config.logging.defaults).toMatchObject({level:'masked', requireLog:true});
   const bundle = readFileSync(join(dir, 'worker.mjs'), 'utf8');
   expect(bundle).toContain('staging_recipient_not_allowed');
+  expect(bundle).toContain('staging_receiver');
+  expect(bundle).toContain('receiverCleanup');
+  expect(bindings).toEqual(expect.arrayContaining([
+    {name:'STAGING_RECEIVER_TOKEN',type:'secret_text'},
+    {name:'STAGING_RECEIVER_KEY',type:'secret_text'},
+  ]));
   for (const file of readdirSync(dir).filter(f => /\.(json|mjs)$/.test(f))) {
     expect(readFileSync(join(dir, file), 'utf8')).not.toContain('synthetic-ses-secret');
   }

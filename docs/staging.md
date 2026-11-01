@@ -335,3 +335,127 @@ bez automatycznych płatnych akcji. ST2 nie tworzy budżetu ani alarmu CloudWatc
 [symulator i rozliczanie](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html),
 [cennik SES](https://aws.amazon.com/ses/pricing/),
 [cennik SNS](https://aws.amazon.com/sns/pricing/).
+
+## Manual test entry conditions (single checklist)
+
+The coordinator must complete this list before assigning a browser slot. A local
+record or an old ST report is not evidence of current deployment readiness.
+
+| Condition | Required evidence and recovery |
+| --- | --- |
+| Version freeze | One immutable core SHA and Pro SHA, API/panel image IDs and bundle hashes, configuration digests, health from both staging URLs above, and matching LOCAL/W manifests. Freeze these for the whole cycle; repeat affected tests if they change. |
+| TEST-WORKER | Run `scripts/test-worker.sh status`. This is a local, read-only operation, without Vaultwarden or Cloudflare access. Default record: `/private/tmp/mailstack-test-worker/status.json` (0600). `MAILSTACK_TEST_WORKER_STATUS` selects a delivered copy. Missing/incomplete record exits 3 with the exact path; existing record says `RECORDED_NOT_LIVE_VERIFIED`. Coordinator supplies current health/SHA/config/delivery evidence separately. The disposable `mailstack-test` + `mailstack-preview` environment is distinct from permanent SES staging. Testers do not deploy it to unblock themselves. |
+| Receiver | Deploy the staging composition containing `receiver.ts`, then verify the POST/GET/DELETE operations below with a unique run ID. Preserve raw evidence locally before cleanup/retention. A historical 404 endpoint is insufficient. |
+| Hook HMAC | Dedicated `staging-hook`, acme, payment/refund/notice/welcome; bearer plus configured HMAC. Ensure original-secret probes succeed before swapping. Complete swap/restore with the commands below in an exclusive coordinator-assigned slot. |
+| Delivery budget | Current independent Node SQLite and Worker D1 ledgers, 50/day and 10/hour each, dedicated simulator-only IAM evidence, SES From/configuration set and confirmed SNS subscriptions. Reserve every possible provider call, including refusal/unknown, before sending. Never reset a ledger or transfer a rejected send to the other installation. |
+| Critical journey | Node Pro, step-up and permitted resend strategy must be ready before the purchase. Node messages live in SQLite, Worker messages in D1. SNS fan-out does not merge them. Use only synthetic simulator recipients; SES offers no readable MIME inbox. Compare MIME separately on LOCAL with the same versions. |
+| Recovery | Keep original configuration/keys and HMAC recovery files outside repositories. On failure stop dependent tests, restore HMAC, verify both signatures and health, then remove only the run's receiver rows and owned resources. Leave staging, shared inbox, audit and budgets running/intact. |
+
+After a coordinator deploy and an IDENTICAL production fingerprint measurement,
+write new RC-6/RC-7 briefs with fresh seeds and the normal reporting/cleanup
+contract. RC-6 repeats RC-5 E1-E7, including real Sellf → Node → SES/SNS → Pro →
+resend → receiver and separately Sellf → Worker → SES/SNS/D1, with a total ceiling
+of 40 sends and the actual shared allocation reserved first. Do not run these
+journeys as part of preparing scripts.
+
+RC-7 must explicitly carry forward RC-1's missing W controls S017, S018, S019,
+S022, S024, S058, S063-S071, and S059/S152 exact
+HMAC boundaries, S162/INTEGRATOR-001 activation, S178 provider/store faults, S029
+audit-read failure and S128 native zoom. From RC-4 carry D9.5 live D1/config
+verification, real limiter/SES evidence, D6.4 natural guard expiry, D7.5 HTTPS
+response cap, S165/S178 runtime send_failed emission, and S145-S158 complete
+historical envelopes/rejects (INTEGRATOR-004/008), plus the common freeze and
+active-time accounting gaps. Keep the reports' qualified results distinct from
+PASS. Each brief ends `TASK-DONE RC-n`, with findings numbered `RC-n-001` in
+`| FINDING | RC-n-001 | ... |` rows. Do not rewrite historical briefs or reports.
+
+### Persistent staging receiver
+
+Deployment generates and retains `STAGING_RECEIVER_TOKEN` and
+`STAGING_RECEIVER_KEY` in protected Worker `secrets.json`, and binds both as
+secret text. Do not print them, put them in argv/history, or copy them to reports.
+Endpoint: `https://mailstack-test.techskills.academy/_staging/receiver/<token>/<run>`.
+Use a fresh 1-64 character alphanumeric/underscore/hyphen run ID per tester.
+
+POST captures the exact body as base64, headers as JSON, receipt time (epoch ms),
+run, optional JSON `id`, mode and ledger decision. It responds 204 by default;
+`?mode=500` responds 500, `?mode=timeout` waits 15 seconds then responds 204
+(the caller must have a shorter timeout). Select modes only for your own endpoint.
+Each physical attempt is stored; the first run+event.id has decision `accepted`,
+repeats `duplicate`. This ledger records receipt, not business processing or HMAC
+validity. Independently verify the outgoing webhook signature over decoded bytes.
+Malformed/non-JSON bodies are still captured with an empty eventId.
+
+GET the same URL with `Authorization: Bearer <STAGING_RECEIVER_KEY>` to read only
+that run, ordered by receipt ID. DELETE with the same key removes only that run.
+Do not send the read key to the POST receiver or include live/customer credentials
+in captured headers. Reads use `Cache-Control: no-store`. No CORS is enabled.
+
+The separate `staging_receiver` table exists only in staging D1; no product
+migration is added. Bodies are limited to 64 KiB including streaming input,
+headers to 16 KiB and all retained attempts to 1000. A full store returns 507,
+storage failure 503, oversized input 413; no capture success is claimed then.
+Rows expire after 24 hours, removed on receiver access and hourly staging cron.
+The maximum stored request data is roughly 100 MiB including base64 overhead.
+Export evidence before expiry; cleanup never touches SES budgets or product rows.
+
+### Temporary hook HMAC operations
+
+These operations change one staging secret, never product code. They do not
+provision the Node HMAC binding. Before first use, the coordinator must configure
+only dedicated `staging-hook` with `signatureSecretEnv` (or its Sellf alias)
+pointing to an existing plain environment value. On Node the corresponding
+`.env` entry must be a single unquoted `NAME=value` line, and Compose must pass
+it into API. The operation rejects an absent binding or a mismatch with the live
+container. Do not change scopes, policies or recipients as part of a swap.
+
+Supply the temporary Sellf endpoint secret on stdin from a protected file, never
+as an argument. Worker uses its existing protected state and `HOOK_TOKEN`:
+
+```sh
+scripts/staging/worker.sh hmac-swap < /secure/temporary-sellf-secret
+# Always, including after a failed swap:
+scripts/staging/worker.sh hmac-restore
+```
+
+Node commands run on **piotr293**, with the scripts installed by the coordinator,
+against only `/opt/stacks/mailstack-staging`. Load
+`MAILSTACK_STAGING_HOOK_TOKEN` and `CLOUDFLARE_API_TOKEN` into the process environment
+from the approved secret store. The latter needs only production deployment
+metadata read access. Default HMAC environment name is `SELLF_STAGING_HMAC`;
+`MAILSTACK_STAGING_HMAC_ENV` may select the already configured hook binding.
+
+```sh
+node scripts/staging/node.mjs hmac-swap < /secure/temporary-sellf-secret
+node scripts/staging/node.mjs hmac-restore
+```
+
+Node atomically replaces just that `.env` line and runs
+`docker compose up -d --no-deps --force-recreate api` in the fixed staging stack;
+panel/gateway are not recreated. An ordinary restart does not reload environment.
+Other `.env` lines stay byte-identical. Temporary Node values must contain 16-256
+letters, digits, underscores or hyphens. Restore works with a stopped API container.
+
+Before mutation each operation creates `hmac-backup.json` exclusively (0600),
+containing original/temporary values, installation identity and production
+fingerprint. Worker recovery is in its protected state directory; Node recovery
+is `/opt/stacks/mailstack-staging/hmac-recovery/`. A lock excludes concurrent
+operators and a second swap cannot overwrite recovery material. Both adapters
+read the production deployment fingerprint before/after applying; mismatch stops
+work and retains the backup. Worker also uses its per-mutation fingerprint guard.
+No production D1, secret or application traffic is read.
+
+Swap first probes original→200 ignored and temporary→401, then reverses these
+expectations after applying. Restore requires original→200 ignored and
+temporary→401, then removes the backup only after success. Probes use a signed
+unknown event and send no mail. Propagation checks are bounded to 12 attempts.
+Worker updates only the staging HMAC secret binding and its local secret copy;
+it does not redeploy a product build. Node verifies the recreated container value.
+
+If interrupted, run restore with the same identity/directory; failed verification
+retains recovery material. After an ungraceful process death a lock can remain:
+coordinator must verify that no operator process is alive before removing only
+`hmac.lock`. Do not remove the backup. A changed production fingerprint requires
+coordinator reconciliation before another operation. Restore both installations
+separately, remove temporary secret files, and confirm health and configuration
+before releasing the slot. Never claim IDENTICAL without the recorded measurement.

@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes, generateKeyPairSync, createHash } from 'node:crypto';
 import { build } from 'esbuild';
+import { changeHmac, verifyHmac } from './hmac.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const state = resolve(process.env.MAILSTACK_STAGING_STATE ?? `${process.env.HOME}/.config/mailstack-staging/worker`);
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -11,7 +12,7 @@ const name = 'mailstack-staging', hostname = 'mailstack-test.techskills.academy'
 const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
 if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
-if (!account || !['deploy', 'status', 'destroy'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy');
+if (!account || !['deploy', 'status', 'destroy', 'hmac-swap', 'hmac-restore'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy|hmac-swap|hmac-restore');
 if (state.startsWith(root + '/')) throw new Error('State must be outside the source directory');
 process.umask(0o077); mkdirSync(state, { recursive: true, mode: 0o700 });
 const put = (file, value) => writeFileSync(`${state}/${file}`, typeof value === 'string' ? value : JSON.stringify(value, null, 2), { mode: 0o600 });
@@ -45,7 +46,22 @@ let database = databases.find(value => value.name === name);
 const domains = await api(`${base}/workers/domains`);
 const domain = domains.find(value => value.hostname === hostname);
 if (domain && domain.service !== name) throw new Error('Staging hostname is already assigned to another service');
-if (command === 'status') {
+if (command.startsWith('hmac-')) {
+  const record = JSON.parse(readFileSync(`${state}/resources.json`));
+  if (record.account !== account || record.name !== name || record.database !== database?.uuid || domain?.service !== name) throw Error('Staging resource identity differs');
+  const secrets = JSON.parse(readFileSync(`${state}/secrets.json`));
+  await changeHmac(command, command === 'hmac-swap' ? readFileSync(0, 'utf8').trim() : undefined, {
+    dir: state, identity: `${account}:${name}:${database.uuid}`, fingerprint,
+    read: async () => secrets.SELLF_STAGING_HMAC,
+    apply: async value => {
+      secrets.SELLF_STAGING_HMAC = value;
+      put('secrets.json', secrets);
+      await mutate('hmac-secret', `${script}/secrets`, 'PUT', { name: 'SELLF_STAGING_HMAC', text: value, type: 'secret_text' });
+    },
+    verify: (active, inactive) => verifyHmac(`https://${hostname}`, secrets.HOOK_TOKEN, active, inactive),
+  });
+  console.log(`${command}: verified; production IDENTICAL`);
+} else if (command === 'status') {
   console.log(JSON.stringify({ name, hostname, database: database?.uuid, domain: domain?.service, production: await fingerprint() }, null, 2));
 } else if (command === 'destroy') {
   const record = JSON.parse(readFileSync(`${state}/resources.json`));
@@ -86,6 +102,8 @@ if (command === 'status') {
     if (!secrets[key].startsWith(`msk_${id}_`)) secrets[key] = `msk_${id}_${secrets[key]}`;
   }
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
+  secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
+  secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
   put('secrets.json', secrets);
   cfg.clients = [
     { id: 'staging-send', tokenSha256: digest(secrets.SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'], recipientOverride: delivery === 'ses' },
@@ -99,10 +117,13 @@ if (command === 'status') {
   if (![limits.day,limits.hour].every(n=>Number.isSafeInteger(n)&&n>0)||limits.day>50||limits.hour>10) throw Error('Invalid staging allocation');
   const contents = `import {sendEmail} from './src/ses.ts';
 import {createApp} from './src/index.ts';
+import {receiver,receiverCleanup} from ${JSON.stringify(resolve(root,'scripts/staging/receiver.ts'))};
+const query=env=>async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('staging storage');return r.results;};
 import {budgetSender,budgetResponse} from ${JSON.stringify(resolve(root,'scripts/staging/ses-budget.ts'))};
 const disabled=async()=>({ok:false,status:503,response:'staging_delivery_disabled'});
-export default {async scheduled(...args){return createApp({sendEmail:disabled}).scheduled(...args);},async fetch(req,env,ctx){
+export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(query(env)));return createApp({sendEmail:disabled}).scheduled(event,env,ctx);},async fetch(req,env,ctx){
 const path=new URL(req.url).pathname;
+const captured=await receiver(query(env),{token:env.STAGING_RECEIVER_TOKEN,key:env.STAGING_RECEIVER_KEY})(req);if(captured)return captured;
 if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});
 if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});
 let reason;
