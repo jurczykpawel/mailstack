@@ -21,8 +21,8 @@ body:json {
     "data": {
       "customer": { "email": "buyer@example.com", "firstName": "Jane", "lastName": "Smith" },
       "product": { "name": "Pro Plan" },
-      "refund": { "amount": 4999, "currency": "usd" },
-      "payment": { "sessionId": "cs_test_123" }
+      "refund": { "amount": 4999, "currency": "usd", "stripeRefundId": "re_test_123", "isFullRefund": true, "totalRefunded": 4999, "refundedAt": "2026-06-11T10:00:00.000Z" },
+      "payment": { "id": "pay_test_123", "sessionId": "cs_test_123" }
     }
   }
 }
@@ -33,10 +33,11 @@ assert {
 }
 
 docs {
-  # Sellf webhook: refund.issued -> notice
+  # Sellf webhook: refund.issued -> refund
 
-  Maps to the `notice` template with subject "Zwrot środków". Body states the
-  refunded amount (`refund.amount / 100` + upper-cased `refund.currency`) for
-  `product.name`, plus the transaction id
-  (`payment.sessionId ?? payment.paymentIntentId`).
+  Maps to the `refund` template with subject "Zwrot środków". The body contains
+  49.99 USD, product name, payment and refund IDs, full refund scope, cumulative
+  49.99 USD and the refund timestamp. transactionId selects paymentIntentId
+  before sessionId. Each distinct stripeRefundId identifies a separate delivery.
+  Missing required mapped fields return 422 invalid_event_data, without sending.
 }

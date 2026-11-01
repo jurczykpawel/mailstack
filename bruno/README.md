@@ -28,6 +28,16 @@ cp environments/production.bru.example environments/production.bru
 | `baseUrl` | `http://localhost:8787`  | Where the Worker is reachable                       |
 | `apiKey`  | `your-api-key-here`      | Trusted-mode bearer — must match the `API_KEY` secret |
 
+Sellf examples require a `hook:sellf` client with brand `acme` and templates
+`payment,refund,notice,welcome`, or an explicitly enabled legacy API key.
+The examples assume no configured signing secret. With `signatureSecretEnv`
+(or `sellfSignatureSecretEnv`), add `X-Sellf-Signature` computed over the exact
+serialized request bytes as documented in the main README. Bearer remains required.
+Known unsupported events return `422 unsupported_event`; only unknown events are
+acknowledged with `200 ignored`. A missing required refund field returns
+`422 invalid_event_data`. Successful delivery assertions assume an available
+provider and logging configuration; they are not gate-only checks.
+
 Then pick the environment from Bruno's top-right selector before sending.
 
 ### Pointing at a local `wrangler dev`
@@ -59,7 +69,8 @@ documentation values, not secrets.
 > send). The gate-only requests (honeypot, blocked origin, 401, 400, 413,
 > unmapped webhook) don't touch SES at all and pass regardless.
 >
-> The whole collection (all 34 requests) was verified green against a real local
+> Historical verification (before the source-engine migration): the then-current
+> collection was green against a real local
 > `wrangler dev` + real SES credentials + a verified sender domain: `bru run
 > --env local` → 34/34 requests, 79/79 assertions passed, including the Altcha
 > proof-of-work solve script and the full `trackAction`/ParcelDelivery directive.
@@ -79,12 +90,12 @@ Turnstile brands, a genuine widget token instead of `test-token`.
 | `public-contact-altcha/`| Two-step Altcha flow: fetch challenge → solve proof-of-work → submit  |
 | `trusted-send/`         | Transactional templates: welcome, received, payment, notice, overrides |
 | `markup/`               | All schema.org markup directives + the merge rule (auto vs explicit vs empty) |
-| `sellf-webhook/`        | Every Sellf event mapping + unmapped-event ack + missing-auth 401     |
+| `sellf-webhook/`        | Supported Sellf send mappings + unknown-event ack + missing-auth 401     |
 | `errors/`               | Unknown brand (400), invalid JSON (400), payload too large (413)      |
 
 ## The two brands
 
-The collection uses only the two committed example brands (`src/brands.example.ts`):
+The collection uses only the two committed example brands (`config/mailstack.example.json`):
 
 - **`acme`** — Turnstile captcha, `autoReply: true`, allowlists `https://acme.example`.
 - **`demo`** — Altcha (self-hosted proof-of-work) captcha, allowlists `https://demo.example`.

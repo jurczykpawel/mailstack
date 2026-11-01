@@ -34,11 +34,13 @@ assert {
 docs {
   # Sellf webhook: purchase.completed -> payment
 
-  The Sellf webhook is bearer-only (no HMAC) and reuses the existing templates.
+  The Sellf webhook requires a bearer token and reuses the existing templates.
+  A client with a configured signing secret also requires X-Sellf-Signature over
+  the exact body bytes; this example assumes a client without that option.
   `purchase.completed` maps to the `payment` template: recipient is
   `data.customer.email`, name is firstName + lastName, amount is
   `order.amount / 100` ("49.99"), currency is upper-cased, item is
-  `product.name`, orderId is `order.sessionId ?? order.paymentIntentId`, and the
+  `product.name`, orderId is `order.paymentIntentId ?? order.sessionId`, and the
   date comes from the envelope `timestamp` (pl-PL). Subject:
   "Potwierdzenie płatności - cs_test_123".
 

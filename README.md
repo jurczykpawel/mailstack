@@ -388,7 +388,7 @@ curl -X POST https://mailstack.<your-name>.workers.dev/v1/send \
     "amount": "49.99", "currency": "USD", "item": "Pro Plan", "orderId": "ORD-1001"
   }'
 ```
-Built-in templates: `payment`, `welcome`, `received`, `notice`, `license` (and `contact` for forms).
+Built-in templates: `payment`, `refund`, `welcome`, `received`, `notice`, `license` (and `contact` for forms).
 `license` accepts `name`, `productName`, `tier`, `domain`, `licenseKey`, `activationUrl`
 and `instructions`; `licenseKey` and `activationUrl` are declared secret fields.
 

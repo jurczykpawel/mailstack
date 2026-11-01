@@ -31,9 +31,7 @@ assert {
 docs {
   # Sellf webhook: missing / invalid auth
 
-  The webhook is bearer-only. With `auth: none` (no `Authorization: Bearer
-  <API_KEY>`), the handler rejects with `401 {success:false,
-  message:"unauthorized"}` before parsing the body — proving the endpoint cannot
-  be driven by an unauthenticated caller. Any `X-Sellf-*` headers are ignored;
-  the bearer is the only credential.
+  Without Authorization: Bearer, the handler returns 401 unauthorized before
+  parsing the body. Clients with a configured signing secret additionally
+  require a valid X-Sellf-Signature; a signature does not replace the bearer.
 }
