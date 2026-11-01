@@ -456,7 +456,11 @@ Node atomically replaces just that `.env` line and runs
 `docker compose up -d --no-deps --force-recreate api` in the fixed staging stack;
 panel/gateway are not recreated. An ordinary restart does not reload environment.
 Other `.env` lines stay byte-identical. Temporary Node values must contain 16-256
-letters, digits, underscores or hyphens. Restore works with a stopped API container.
+letters, digits, underscores or hyphens. Restore works with a stopped API
+container, no API container, or both old and replacement API containers after an interrupted recreation. Every existing API
+container must match the staging working directory and API service. Swap requires
+exactly one container; restore recreates API from the saved secret and requires
+exactly one matching container afterward before checking both signatures.
 
 Before mutation each operation creates `hmac-backup.json` exclusively (0600),
 containing original/temporary values, installation identity and production

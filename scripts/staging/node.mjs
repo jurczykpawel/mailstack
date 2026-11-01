@@ -10,9 +10,20 @@ const token=process.env.MAILSTACK_STAGING_HOOK_TOKEN, cfToken=process.env.CLOUDF
 if(!token||!cfToken) throw Error('Staging hook token and Cloudflare read token required in environment');
 process.umask(0o077);
 const docker=args=>execFileSync('docker',args,{cwd:stack,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
-const inspect=()=>JSON.parse(docker(['inspect',docker(['compose','ps','-a','-q','api'])]))[0];
-const container=inspect();
-if(container.Config.Labels['com.docker.compose.project.working_dir']!==stack) throw Error('Staging Compose identity differs');
+const inspect=()=>{
+  const ids=docker(['compose','ps','-a','-q','api']).split(/\s+/).filter(Boolean);
+  const containers=ids.map(id=>JSON.parse(docker(['inspect',id]))[0]);
+  for(const container of containers) {
+    const labels=container.Config.Labels;
+    if(labels['com.docker.compose.project.working_dir']!==stack||labels['com.docker.compose.service']!=='api') throw Error('Staging Compose identity differs');
+  }
+  return containers;
+};
+const requireOne=containers=>{
+  if(containers.length!==1) throw Error('Expected exactly one staging API container');
+  return containers[0];
+};
+const containers=inspect(), container=command==='hmac-swap'?requireOne(containers):undefined;
 if(command==='hmac-swap') {
   const config=JSON.parse(docker(['exec',container.Id,'node','-e',"process.stdout.write(require('node:fs').readFileSync(process.env.MAILSTACK_CONFIG,'utf8'))"]));
   const client=config.clients?.find(c=>c.id==='staging-hook');
@@ -36,7 +47,7 @@ await changeHmac(command,temporary,{
     writeFileSync(path+'.hmac-next',text.replace(pattern,`${envName}=${value}`),{mode:statSync(path).mode&0o777});
     renameSync(path+'.hmac-next',path);
     docker(['compose','up','-d','--no-deps','--force-recreate','api']);
-    if(!inspect().Config.Env.includes(`${envName}=${value}`)) throw Error('Compose must reference the staging HMAC environment entry');
+    if(!requireOne(inspect()).Config.Env.includes(`${envName}=${value}`)) throw Error('Compose must reference the staging HMAC environment entry');
   },
   verify:(active,inactive)=>verifyHmac('https://mailstack-test.tojest.dev',token,active,inactive),
 });
