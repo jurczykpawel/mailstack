@@ -397,7 +397,19 @@ validity. Independently verify the outgoing webhook signature over decoded bytes
 Malformed/non-JSON bodies are still captured with an empty eventId.
 
 GET the same URL with `Authorization: Bearer <STAGING_RECEIVER_KEY>` to read only
-that run, ordered by receipt ID. DELETE with the same key removes only that run.
+that run, ordered by receipt ID. Each response is an object
+`{ "requests": [...], "nextCursor": "10" }` containing at most 10 complete records.
+Start without query parameters (equivalent to `?after=0`). Save each page, then
+GET `?after=<nextCursor>` with the same key and run until `nextCursor` is `null`.
+The cursor is the last returned ID, not an offset; gaps and other runs do not
+change the continuation. Invalid cursors return 400. The page size is fixed:
+SQL loads at most 11 records (one lookahead), including at maximum input size.
+Decode each record's `bodyBase64` to recover its original bytes; `headers` remains
+a JSON string and all ledger fields accompany every record. Export one page at a
+time rather than collecting all pages in Worker memory. New arrivals with higher
+IDs can appear on later pages; this is not a frozen snapshot. Export after the
+sender stops and before retention, without deleting the run during retrieval.
+DELETE with the same key removes only that run.
 Do not send the read key to the POST receiver or include live/customer credentials
 in captured headers. Reads use `Cache-Control: no-store`. No CORS is enabled.
 

@@ -17,7 +17,14 @@ export function receiver(query: Query, config: { token: string; key: string }, c
     if (req.method !== 'POST' && req.headers.get('authorization') !== `Bearer ${config.key}`) return new Response(null, { status: 401 });
     try {
       await receiverCleanup(query, clock());
-      if (req.method === 'GET') return Response.json(await query('SELECT * FROM staging_receiver WHERE run=? ORDER BY id LIMIT 1000', [run]), {headers: {'Cache-Control': 'no-store'}});
+      if (req.method === 'GET') {
+        const after = url.searchParams.get('after') ?? '0';
+        if (!/^(0|[1-9][0-9]{0,15})$/.test(after) || !Number.isSafeInteger(Number(after))) return new Response(null, { status: 400 });
+        const rows = await query('SELECT * FROM staging_receiver WHERE run=? AND id>? ORDER BY id LIMIT ?', [run, Number(after), 11]);
+        const requests = rows.slice(0, 10);
+        const nextCursor = rows.length > 10 ? String((requests[9] as { id: number }).id) : null;
+        return Response.json({ requests, nextCursor }, { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (req.method === 'DELETE') { await query('DELETE FROM staging_receiver WHERE run=?', [run]); return new Response(null, { status: 204 }); }
       if (req.method !== 'POST') return new Response(null, { status: 405 });
       const headers = JSON.stringify(Object.fromEntries(req.headers));
