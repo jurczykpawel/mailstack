@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes, generateKeyPairSync, createHash } from 'node:crypto';
@@ -15,7 +15,15 @@ if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be d
 if (!account || !['deploy', 'status', 'destroy', 'hmac-swap', 'hmac-restore'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy|hmac-swap|hmac-restore');
 if (state.startsWith(root + '/')) throw new Error('State must be outside the source directory');
 process.umask(0o077); mkdirSync(state, { recursive: true, mode: 0o700 });
-const put = (file, value) => writeFileSync(`${state}/${file}`, typeof value === 'string' ? value : JSON.stringify(value, null, 2), { mode: 0o600 });
+const put = (file, value) => {
+  const path = `${state}/${file}`, data = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  if (file !== 'secrets.json') return writeFileSync(path, data, { mode: 0o600 });
+  const next = `${path}.${randomBytes(16).toString('hex')}.tmp`;
+  try {
+    writeFileSync(next, data, { flag: 'wx', mode: 0o600, flush: true });
+    renameSync(next, path);
+  } finally { rmSync(next, { force: true }); }
+};
 const digest = value => createHash('sha256').update(value).digest('hex');
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
 const token = process.env.CLOUDFLARE_API_TOKEN ?? execFileSync('bw', ['get', 'password', 'CF Deploy - General API token'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
