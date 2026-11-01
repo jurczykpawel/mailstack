@@ -33,15 +33,19 @@ export async function changeHmac(command, temporary, {dir, identity, read, apply
 export async function verifyHmac(url, token, active, inactive) {
   const body=JSON.stringify({event:'staging.hmac.probe',timestamp:new Date().toISOString(),data:{}});
   for(let attempt=0;attempt<12;attempt++) {
-    const statuses=[];
-    for(const secret of [active,inactive]) {
-      const t=Math.floor(Date.now()/1000), signature=createHmac('sha256',secret).update(`${t}.${body}`).digest('hex');
-      const r=await fetch(url+'/v1/hooks/sellf?brand=acme',{method:'POST',body,
-        headers:{authorization:`Bearer ${token}`,'content-type':'application/json','X-Sellf-Signature':`t=${t},v1=${signature}`},signal:AbortSignal.timeout(10000),redirect:'error'});
-      const json=await r.json();
-      statuses.push(r.status===200&&json.success===true&&json.ignored==='staging.hmac.probe'?200:r.status===401?401:0);
+    try {
+      const statuses=[];
+      for(const secret of [active,inactive]) {
+        const t=Math.floor(Date.now()/1000), signature=createHmac('sha256',secret).update(`${t}.${body}`).digest('hex');
+        const r=await fetch(url+'/v1/hooks/sellf?brand=acme',{method:'POST',body,
+          headers:{authorization:`Bearer ${token}`,'content-type':'application/json','X-Sellf-Signature':`t=${t},v1=${signature}`},signal:AbortSignal.timeout(10000),redirect:'error'});
+        const json=await r.json();
+        statuses.push(r.status===200&&json.success===true&&json.ignored==='staging.hmac.probe'?200:r.status===401?401:0);
+      }
+      if(statuses[0]===200&&statuses[1]===401) return;
+    } catch {
+      // The endpoint may still be starting or propagating the updated binding.
     }
-    if(statuses[0]===200&&statuses[1]===401) return;
     if(attempt<11) await new Promise(done=>setTimeout(done,1000));
   }
   throw Error('HMAC verification failed; recovery backup retained');

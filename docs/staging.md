@@ -459,3 +459,13 @@ coordinator must verify that no operator process is alive before removing only
 coordinator reconciliation before another operation. Restore both installations
 separately, remove temporary secret files, and confirm health and configuration
 before releasing the slot. Never claim IDENTICAL without the recorded measurement.
+
+Both adapters verify the active signature returns `200 ignored` and the previous
+signature returns `401` in the same successful attempt. Verification retries
+transport failures, timeouts, non-JSON responses and unexpected results for up to
+12 attempts, with a one-second pause between attempts and a ten-second timeout
+per request. The entire signature pair is checked again after any failed attempt.
+If verification is exhausted, the command fails and retains recovery material;
+run `hmac-restore` after recovering endpoint availability. A restore removes the
+backup only after successful verification. These retries never reapply a secret
+or send mail: the probe uses an ignored event.
