@@ -71,7 +71,7 @@ const invalid = (fields: string[]) => json({ success: false, code: 'invalid_even
 export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, id: string): Promise<Response> {
   const source = config.sources && Object.hasOwn(config.sources, id) ? config.sources[id] : undefined;
   if (!source) return json({ success: false, message: 'not found' }, 404);
-  const client = await authenticate(req, env, config, deps.keys);
+  const client = await authenticate(req, env, config, deps.keys, deps.waitUntil);
   if (!client) return json({ success: false, message: 'unauthorized' }, 401);
   const brandId = new URL(req.url).searchParams.get('brand') || (id === 'sellf' ? env.SELLF_DEFAULT_BRAND : undefined) || Object.keys(config.brands)[0];
   const forbidden = () => json({ success: false, message: 'forbidden', code: 'scope' }, 403);

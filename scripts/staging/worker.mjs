@@ -11,6 +11,8 @@ const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const name = 'mailstack-staging', hostname = 'mailstack-test.techskills.academy';
 const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
+// Optional Mailstack Pro checkout (clean tree); its commit is extracted like the core one.
+const pro = process.env.MAILSTACK_STAGING_PRO, branch = process.env.MAILSTACK_STAGING_BRANCH ?? 'main';
 if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
 if (!account || !['deploy', 'status', 'destroy', 'hmac-swap', 'hmac-restore'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy|hmac-swap|hmac-restore');
 if (state.startsWith(root + '/')) throw new Error('State must be outside the source directory');
@@ -79,8 +81,12 @@ if (command.startsWith('hmac-')) {
   if (scripts.some(value => value.id === name)) await mutate('remove-worker', script, 'DELETE');
   if (database) await mutate('remove-database', `${base}/d1/database/${database.uuid}`, 'DELETE');
 } else {
-  const commit = process.env.MAILSTACK_STAGING_COMMIT ?? (existsSync(`${state}/resources.json`) ? JSON.parse(readFileSync(`${state}/resources.json`)).commit : execFileSync('git', ['rev-parse', 'main'], { cwd: root, encoding: 'utf8' }).trim());
-  execFileSync('git', ['merge-base', '--is-ancestor', commit, 'main'], { cwd: root });
+  const commit = process.env.MAILSTACK_STAGING_COMMIT ?? (existsSync(`${state}/resources.json`) ? JSON.parse(readFileSync(`${state}/resources.json`)).commit : execFileSync('git', ['rev-parse', branch], { cwd: root, encoding: 'utf8' }).trim());
+  execFileSync('git', ['merge-base', '--is-ancestor', commit, branch], { cwd: root });
+  const proCommit = pro && execFileSync('git', ['rev-parse', 'HEAD'], { cwd: pro, encoding: 'utf8' }).trim();
+  if (pro && execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: pro, encoding: 'utf8' })) throw new Error('Pro checkout must be clean');
+  const proSource = pro && `${state}/source-pro/${proCommit}`;
+  if (pro) { mkdirSync(proSource, { recursive: true, mode: 0o700 }); execFileSync('tar', ['-xf', '-', '-C', proSource], { input: execFileSync('git', ['archive', proCommit, 'src'], { cwd: pro, maxBuffer: 16 * 1024 * 1024 }) }); }
   const source = `${state}/source/${commit}`;
   mkdirSync(source, { recursive: true, mode: 0o700 });
   execFileSync('tar', ['-xf', '-', '-C', source], { input: execFileSync('git', ['archive', commit, 'src', 'package.json', 'config/mailstack.example.json', ':(glob)docs/sources/*.json'], { cwd: root, maxBuffer: 16 * 1024 * 1024 }) });
@@ -98,7 +104,7 @@ if (command.startsWith('hmac-')) {
     cfg.events = { ses: { topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false } };
   }
   cfg.sender = { type: 'ses' }; delete cfg.clients;
-  // The Worker has no Pro key provider: one full key, with the Sellf hook signature on it.
+  // The full key carries the Sellf hook signature; Pro adds scoped clients with tokens in secrets.json.
   cfg.legacyApiKey = { enabled: true, env: 'API_KEY', signatureSecretEnv: 'SELLF_STAGING_HMAC' };
   cfg.logging.defaults = { ...cfg.logging.defaults, level: 'masked', requireLog: true, contentDays: 1, metaDays: 7 };
   const pair = generateKeyPairSync('x25519'), kid = 'staging-content';
@@ -110,6 +116,18 @@ if (command.startsWith('hmac-')) {
   secrets.API_KEY ??= randomBytes(32).toString('base64url');
   delete secrets.SEND_TOKEN; delete secrets.HOOK_TOKEN;
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
+  if (pro) {
+    if (process.env.MAILSTACK_STAGING_LICENSE) secrets.MAILSTACK_LICENSE = process.env.MAILSTACK_STAGING_LICENSE;
+    if (!secrets.MAILSTACK_LICENSE) throw new Error('Set MAILSTACK_STAGING_LICENSE for the first Pro deploy');
+    secrets.STAGING_SEND_TOKEN ??= `msk_st-send_${randomBytes(32).toString('base64url')}`;
+    secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
+    cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
+      jwksUrl: `https://${hostname}/_staging/jwks`, revocationUrl: `https://${hostname}/_staging/revoked` } }];
+    cfg.clients = [
+      { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'] },
+      { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
+    ];
+  }
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
   secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
   put('secrets.json', secrets);
@@ -136,15 +154,22 @@ const app=createApp({sendEmail:async(...args)=>{const r=await sender(...args);if
 const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
 if(${JSON.stringify(delivery)}==='disabled'&&r.status===502)return Response.json({success:false,message:'staging delivery disabled',code:'delivery_disabled'},{status:503,headers:h});
 return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}};`;
-  await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
+  await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], alias: { mailstack: source, zod: `${root}/node_modules/zod` }, conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
     b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
     b.onResolve({ filter: /\/assets\/logo$/ }, () => ({ path: `${source}/src/assets/logo.example.ts` }));
+    b.onResolve({ filter: /\/pro\.generated$/ }, () => ({ path: 'pro', namespace: 'staging-pro' }));
+    b.onLoad({ filter: /.*/, namespace: 'staging-pro' }, () => ({ resolveDir: source, loader: 'ts', contents: pro ? `export { workerKeys as proKeys } from ${JSON.stringify(`${proSource}/src/worker.ts`)};` : 'export const proKeys = undefined;' }));
   } }] });
   const { INITIAL_SCHEMA: migration } = await import(pathToFileURL(`${source}/src/core/store/migration.ts`).href);
   const rows = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'" });
   if (!rows[0].results.length) await mutate('migrate-database', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migration });
-  const vars = { BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  if (pro) {
+    const { CACHE_SCHEMA } = await import(pathToFileURL(`${pro}/src/worker.ts`).href);
+    const found = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='pro_license_cache'" });
+    if (!found[0].results.length) await mutate('migrate-pro-cache', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: CACHE_SCHEMA });
+  }
+  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));

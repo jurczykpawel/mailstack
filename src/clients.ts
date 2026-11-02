@@ -8,11 +8,15 @@ export interface Client {
   signatureSecretEnv?: string; sellfSignatureSecretEnv?: string;
   resendCallback?: { url: string; secretEnv: string };
 }
-/** Extension hook for keys beyond the single full key (Mailstack Pro, Node runtime only). */
+/** Keeps a background task alive past the response (Worker `ctx.waitUntil`). */
+export type Defer = (task: Promise<unknown>) => void;
+/** Extension hook for keys beyond the single full key (Mailstack Pro). */
 export interface KeyProvider {
-  authenticate(token: string, env: object): Promise<Client | null>;
+  authenticate(token: string, env: object, defer?: Defer): Promise<Client | null>;
   client(id: string): Client | undefined;
 }
+/** Worker build of Mailstack Pro, generated into `src/core/pro.generated.ts` by `npm run setup`. */
+export type ProKeys = (config: Config, env: object) => KeyProvider;
 export const PRO_KEYS = "additional or restricted API keys require Mailstack Pro";
 
 const encoder = new TextEncoder();
@@ -29,7 +33,7 @@ export async function tokenMatches(token: string, expected: string): Promise<boo
   return crypto.subtle.verify("HMAC", key, signature, encoder.encode(expected.toLowerCase()));
 }
 export async function authenticate(
-  req: Request, env: object, config: Pick<Config, "legacyApiKey">, keys?: KeyProvider,
+  req: Request, env: object, config: Pick<Config, "legacyApiKey">, keys?: KeyProvider, defer?: Defer,
 ): Promise<Client | null> {
   const token = /^Bearer\s+(.+)$/i.exec(req.headers.get("authorization") ?? "")?.[1].trim();
   if (!token) return null;
@@ -39,7 +43,7 @@ export async function authenticate(
     return { id: "legacy", scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: true,
       attachments: legacy?.attachments ?? false, signatureSecretEnv: legacy?.signatureSecretEnv };
   }
-  return keys ? keys.authenticate(token, env) : null;
+  return keys ? keys.authenticate(token, env, defer) : null;
 }
 /** Fails startup when the configuration declares clients without a key provider. */
 export function requireKeyProvider(config: Pick<Config, "clients">, keys?: KeyProvider): void {

@@ -522,14 +522,22 @@ see [Sellf webhook](#sellf-event-contract)). `scopes`, `brands`, `templates` and
 `recipientOverride` may only restate the full values; any restriction fails validation with
 `additional or restricted API keys require Mailstack Pro`.
 
-Everything beyond that single key is Mailstack Pro (Node only, valid license):
+Everything beyond that single key is Mailstack Pro (valid license):
 additional `clients` with their own tokens, brand/template/scope restrictions,
 `recipientOverride: false`, `rate`, `resendCallback`, and the `panel` client. Pro registers
 a key provider through the extension `keys` hook; the core asks it only about tokens other
 than the full key. Without a license Pro rejects those tokens with 401 while the full key
 keeps sending. A configuration containing `clients` stops startup when no loaded extension
 provides keys (`$.clients: additional or restricted API keys require Mailstack Pro`).
-The Worker loads no extensions, so `npm run setup` rejects `clients` and only the full key works there.
+The Worker loads no extensions: without `MAILSTACK_PRO_PATH`, `npm run setup` rejects `clients`
+and only the full key works there. With `MAILSTACK_PRO_PATH=/abs/path/mailstack-pro` in `.env`,
+setup validates `clients` and the `mailstack-pro` extension options through Pro, generates the
+gitignored `src/core/pro.generated.ts` and migration `0003_pro_license_cache.sql` (license cache in
+D1). Set the license with `wrangler secret put MAILSTACK_LICENSE`; options are `product`, `host`,
+`seller`, `jwksUrl` and `revocationUrl` (no `cachePath`, `webhooks` or `aws`). A stale cache is
+refreshed after the response; scoped keys keep working for seven days without the issuer.
+`npm run deploy` then also requires a clean Pro checkout at its `origin/main` (or a reachable tag)
+and reports it as `proCommit` in `/health`.
 
 ### Migrating a legacy brand registry
 

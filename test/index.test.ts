@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import worker from "../src/index";
+import { describe, it, expect, vi } from "vitest";
+import worker, { createApp } from "../src/index";
 import { version } from "../package.json";
 import type { Env } from "../src/types";
 
@@ -72,5 +72,36 @@ describe("router", () => {
     });
     expect(res.status).toBe(403);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+});
+
+describe("Mailstack Pro Worker keys", () => {
+  const scoped = { id: "acme-app", scopes: ["send"], brands: ["acme"], templates: ["notice"], recipientOverride: false, attachments: false } as const;
+  const send = (app: ReturnType<typeof createApp>, token: string, template: string, waitUntil = vi.fn()) => app.fetch(new Request("https://mail.example.com/v1/send", {
+    method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ brand: "acme", template, heading: "Hi", paragraphs: "Body" }),
+  }), env, { waitUntil } as unknown as ExecutionContext);
+  const sendEmail = () => vi.fn(async () => ({ ok: true, status: 200, response: "{}" }));
+
+  it("builds the provider once per isolate and passes the background hook", async () => {
+    const authenticate = vi.fn(async (token: string, _env?: object, _defer?: (task: Promise<unknown>) => void) => token === "msk_acme-app_x" ? { ...scoped, scopes: [...scoped.scopes], brands: [...scoped.brands], templates: [...scoped.templates] } : null);
+    const pro = vi.fn(() => ({ authenticate, client: () => undefined }));
+    const app = createApp({ sendEmail: sendEmail() }, pro), waitUntil = vi.fn();
+    expect((await send(app, "msk_acme-app_x", "notice", waitUntil)).status).toBe(200);
+    const denied = await send(app, "msk_acme-app_x", "welcome");
+    expect([denied.status, (await denied.json() as { code?: string }).code]).toEqual([403, "scope"]);
+    expect(pro).toHaveBeenCalledOnce();
+    expect(pro).toHaveBeenCalledWith(expect.objectContaining({ brands: expect.any(Object) }), env);
+    expect(authenticate.mock.calls[0][2]).toBeTypeOf("function");
+    authenticate.mock.calls[0][2]!(Promise.resolve());
+    expect(waitUntil).toHaveBeenCalledOnce();
+  });
+  it("keeps the full key working when the Pro provider fails", async () => {
+    const app = createApp({ sendEmail: sendEmail() }, () => { throw new Error("license issuer unavailable"); });
+    expect((await send(app, env.API_KEY!, "notice")).status).toBe(200);
+  });
+  it("reports the Pro commit in health only when built with Pro", async () => {
+    const res = await worker.fetch(new Request("https://mail.example.com/health"), { ...env, BUILD_COMMIT: "abc", BUILD_PRO_COMMIT: "def" }, ctx);
+    expect(await res.json()).toMatchObject({ commit: "abc", proCommit: "def" });
   });
 });
