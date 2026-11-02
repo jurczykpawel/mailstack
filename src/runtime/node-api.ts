@@ -96,7 +96,7 @@ async function main() {
   try {
     await store.migrate();
     const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider });
-    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource });
+    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource, keys: extensions.keys });
     const stop = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
     const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
       .catch(async error => { await stop(); throw error; });
@@ -111,5 +111,5 @@ async function main() {
   } catch (error) { await store.db.destroy(); throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(error => { console.error(error instanceof Error && /^\$\.extensions\.\d+\.module:/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
+  main().catch(error => { console.error(error instanceof Error && /^\$\.(?:extensions\b|clients:)/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
 }

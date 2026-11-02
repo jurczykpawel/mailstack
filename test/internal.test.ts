@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { keysOnly } from './fixtures/keys';
 
 vi.setConfig({ testTimeout: 30000 });
 import { generateKeyPairSync } from 'node:crypto';
@@ -56,7 +57,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   beforeEach(async () => {
     for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages']) await sql`delete from ${sql.table(table)}`.execute(store.db);
     cfg = parseConfig({ ...example, clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
-    runtime = await loadExtensions(cfg, store);
+    const [keyed, importer] = keysOnly(cfg);
+    runtime = await loadExtensions(keyed, store, importer);
   });
   afterEach(() => vi.restoreAllMocks());
   afterAll(async () => { await store.db.destroy(); await mf?.dispose(); });

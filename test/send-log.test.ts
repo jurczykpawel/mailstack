@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { testKeys } from './fixtures/keys';
 import { Aes256Gcm, CipherSuite, HkdfSha256 } from '@hpke/core';
 import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
 import { config } from '../src/core/config';
@@ -36,7 +37,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   store = createSqliteStore(':memory:'); await store.migrate();
-  deps = { store, logging: structuredClone(config.logging), now: () => now, verifyAltcha: vi.fn().mockResolvedValue(true), verifyTurnstile: vi.fn().mockResolvedValue(true),
+  deps = { store, keys: testKeys(config), logging: structuredClone(config.logging), now: () => now, verifyAltcha: vi.fn().mockResolvedValue(true), verifyTurnstile: vi.fn().mockResolvedValue(true),
     sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200, messageId: 'ses-1', response: { MessageId: 'ses-1' } }) };
 });
 afterEach(async () => { vi.restoreAllMocks(); await store.db.destroy(); });

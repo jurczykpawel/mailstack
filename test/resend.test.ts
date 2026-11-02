@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { testKeys } from './fixtures/keys';
 import { generateKeyPairSync } from 'node:crypto';
 import { sql } from 'kysely';
 import { createSqliteStore } from '../src/core/store/sqlite';
@@ -31,7 +32,7 @@ beforeEach(async () => {
   cfg.logging.brands.acme = { templates: { notice: { resend: 'replay' }, license: { resend: 'source' } } };
   cfg.clients = [{ id: 'sender', tokenSha256: 'a'.repeat(64), scopes: ['send'], brands: ['acme'], templates: ['notice', 'license'], recipientOverride: true, attachments: false, resendCallback: { url: 'https://source.example/resend', secretEnv: 'SOURCE_SECRET' } }];
   store = createSqliteStore(':memory:'); await store.migrate();
-  deps = { store, logging: cfg.logging, now: () => new Date(now), verifyTurnstile: vi.fn(), verifyAltcha: vi.fn(), sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200, messageId: 'provider-1' }) };
+  deps = { store, keys: testKeys(cfg), logging: cfg.logging, now: () => new Date(now), verifyTurnstile: vi.fn(), verifyAltcha: vi.fn(), sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200, messageId: 'provider-1' }) };
   service = createResendService(cfg, store, env, deps);
   id = await original();
   const row = await store.db.selectFrom('replays').selectAll().where('message_id', '=', id).executeTakeFirstOrThrow();
@@ -225,11 +226,6 @@ it('returns a denial audit record for a disabled source', async () => {
   expect(await request()).toMatchObject({ code: 'resend_disabled' });
   expect((await sql<{ action: string }>`select action from audit`.execute(store.db)).rows).toContainEqual({ action: 'resend.denied' });
 });
-it('requires a current source client with send scope at configuration time', async () => {
-  const { parseConfig } = await import('../src/core/config/schema');
-  cfg.clients![0].scopes = ['hook:sellf'];
-  expect(() => parseConfig(cfg)).toThrow('source requires');
-});
 it('rejects a changed source payload after a successful request', async () => {
   id = await original('license'); await request('source-key', undefined);
   const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'fresh-key' } };
@@ -311,7 +307,7 @@ it('returns source descriptors independently of configuration objects', async ()
   const result = await service.forPanel(principal()).source(id);
   expect(result).toHaveProperty('owner');
   if ('owner' in result && result.owner) result.owner.callback.url = 'https://other.example/callback';
-  expect(cfg.clients![0].resendCallback!.url).toBe('https://source.example/resend');
+  expect((cfg.clients![0].resendCallback as { url: string }).url).toBe('https://source.example/resend');
 });
 
 it('continues an approved stored-payload job that has not started delivery', async () => {

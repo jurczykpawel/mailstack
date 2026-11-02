@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { testKeys, withKeys } from './fixtures/keys';
 import { sql } from 'kysely';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -84,7 +85,7 @@ it('rejects raw migration statements and cross-table references', async () => {
 it('mounts routes on the internal handler with panel credentials and actor', async () => {
   const token = 'msk_panel_' + 'a'.repeat(43);
   const cfg = configured(); cfg.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: [], templates: [], attachments: false, recipientOverride: false }];
-  const runtime = await loadExtensions(cfg, store, async () => ({ default: { name: 'demo', routes(app: Parameters<NonNullable<Extension['routes']>>[0]) { app.route('GET', '/ping', () => Response.json({ ok: true })); } } }));
+  const runtime = await loadExtensions(cfg, store, async () => ({ default: { name: 'demo', keys: testKeys, routes(app: Parameters<NonNullable<Extension['routes']>>[0]) { app.route('GET', '/ping', () => Response.json({ ok: true })); } } }));
   const url = 'http://localhost/internal/ext/demo/ping';
   for (const headers of [{}, { authorization: 'Bearer test-key', 'x-panel-actor': 'user-1' }, { authorization: `Bearer ${token}` }] as Record<string, string>[]) {
     expect((await runtime.fetch(new Request(url, { headers }), env)).status).toBeGreaterThanOrEqual(400);
@@ -167,8 +168,10 @@ it('loads an absolute module file and serves it only on the internal listener', 
   const directory = await mkdtemp(join(process.cwd(), 'dist/extension-'));
   const file = join(directory, 'demo.mjs');
   const token = 'msk_panel_' + 'a'.repeat(43);
-  await writeFile(file, `export default options => ({ name: 'demo', routes(app) { app.route('GET', '/ping', () => Response.json(options)); } });`);
-  const cfg = parseConfig({ ...example, extensions: [{ module: file, options: { active: true } }], clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'] }] });
+  const panel = JSON.stringify({ id: 'panel', scopes: ['panel'], brands: [], templates: [], recipientOverride: false, attachments: false });
+  await writeFile(file, `export default options => ({ name: 'demo', routes(app) { app.route('GET', '/ping', () => Response.json(options)); },
+    keys: () => ({ client: () => undefined, authenticate: async token => token === '${token}' ? ${panel} : null }) });`);
+  const cfg = parseConfig({ ...example, extensions: [{ module: file, options: { active: true } }] });
   const runtime = await loadExtensions(cfg, store);
   const app = createApp({ store });
   const publicServer = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env, 0);
@@ -194,7 +197,7 @@ it('provides an opted-in route with a scoped resend capability', async () => {
   cfg.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', attachments: false, recipientOverride: false }];
   let context: import('../src/core/extensions').ExtensionContext | undefined;
   const runtime = await loadExtensions(cfg, store, async () => ({ default: {
-    name: 'demo', capabilities: ['resend'], routes(app: import('../src/core/extensions').ExtensionApp) {
+    name: 'demo', keys: testKeys, capabilities: ['resend'], routes(app: import('../src/core/extensions').ExtensionApp) {
       app.route('GET', '/source', async (_req, ctx) => {
         context = ctx;
         return Response.json(await ctx.resend!.source('msg_missing'));
@@ -333,7 +336,7 @@ it('provides SES status only to globally selected panel routes', async () => {
     app.route('GET', '/ses', async (_req, ctx) => ctx.sesStatus ? Response.json(await ctx.sesStatus()) : new Response(null, { status: 403 }));
   } };
   const call = async (brands: '*' | string[], templates: '*' | string[]) => {
-    const runtime = await loadExtensions({ ...cfg, clients: [{ ...cfg.clients![0], brands, templates }] }, store, async () => ({ default: extension }));
+    const runtime = await loadExtensions({ ...cfg, clients: [{ ...cfg.clients![0], brands, templates }] }, store, async () => ({ default: withKeys(extension) }));
     const url = 'http://localhost/internal/ext/status/ses';
     expect((await runtime.fetch(new Request(url), env)).status).toBe(401);
     const server = await startServer((req, runtimeEnv) => runtime.fetch(req, runtimeEnv), { ...env, SES_REGION: 'eu-west-1' }, 0);

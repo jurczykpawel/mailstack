@@ -11,7 +11,7 @@ import type { CompiledQuery, DatabaseConnection, OperationNode, TableNode } from
 import { runRetention } from '../core/retention';
 import { internalFetch } from '../core/internal';
 import { verifyPanelAssertion } from '../core/panel';
-import { authenticate } from '../clients';
+import { authenticate, requireKeyProvider, type KeyProvider } from '../clients';
 import { appendAudit } from '../core/audit';
 import { eventId } from '../core/store/events';
 import type { KyselyStore } from '../core/store';
@@ -104,10 +104,16 @@ export async function loadExtensions(config: Config, store: KyselyStore,
       if (!extension || typeof extension.name !== 'string' || !/^[a-z][a-z0-9_]{0,39}$/.test(extension.name) ||
         extensions.some(e => e.name === extension.name || e.name.startsWith(extension.name + '_') || extension.name.startsWith(e.name + '_'))) throw new Error('Invalid extension');
       if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
-      for (const key of ['migrate', 'routes', 'onEvent', 'onBeforeDelete'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
+      for (const key of ['migrate', 'routes', 'onEvent', 'onBeforeDelete', 'keys'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
       extensions.push(extension);
     } catch { throw new Error(`$.extensions.${index}.module: extension initialization failed`); }
   }
+  const providers = extensions.filter(e => e.keys);
+  if (providers.length > 1) throw new Error('$.extensions: only one extension may provide keys');
+  let keys: KeyProvider | undefined;
+  try { keys = await providers[0]?.keys!(config); }
+  catch (error) { throw new Error(error instanceof Error && error.message.startsWith('$.') ? error.message : '$.clients: key provider initialization failed'); }
+  requireKeyProvider(config, keys);
   for (const [index, extension] of extensions.entries()) {
     try {
       const prefix = `ext_${extension.name}_`;
@@ -152,11 +158,11 @@ export async function loadExtensions(config: Config, store: KyselyStore,
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
   };
-  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, verifyTurnstile, verifyAltcha });
+  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
-  return { emitEvent, resendSource, runRetention: (now: number) => runRetention(store, now, config, beforeDelete), async fetch(req: Request, env: object): Promise<Response> {
-    const client = await authenticate(req, env, config);
+  return { emitEvent, resendSource, keys, runRetention: (now: number) => runRetention(store, now, config, beforeDelete), async fetch(req: Request, env: object): Promise<Response> {
+    const client = await authenticate(req, env, config, keys);
     if (!client) return Response.json({ success: false }, { status: 401 });
     if (!client.scopes.includes('panel')) return Response.json({ success: false }, { status: 403 });
     const claims = await verifyPanelAssertion(req, env);

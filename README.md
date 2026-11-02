@@ -415,7 +415,8 @@ the guarded Worker deploy from a clean release checkout. Keep runtime images and
 
 ### Highlights
 - **Multi-brand** — many tenants in one Worker; send requests select `brand` from the body or query; preflight resolves `?brand=` or `Origin`.
-- **Public recipient** — public mail goes to `brand.to`; trusted clients need `recipientOverride: true` to set `to`.
+- **Public recipient** — public mail goes to `brand.to`; the full API key may set `to` (scoped Pro clients need `recipientOverride: true`).
+- **One full API key, free** — additional and restricted keys are a Mailstack Pro feature; see [API keys: free and Pro](#api-keys-free-and-pro).
 - **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
 - **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`, `license`; one branded layout.
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
@@ -442,15 +443,10 @@ deployment notes and architecture: see [AGENTS.md](AGENTS.md).
 ```bash
 export MAILSTACK_CONFIG="$PWD/mailstack.json"
 npm run mailstack -- config check "$MAILSTACK_CONFIG"
-node scripts/mailstack.ts client create --id acme-app --scopes send --brands acme --templates notice,payment
-node scripts/mailstack.ts client create --id panel --scopes panel --brands '*' --templates '*'
 ```
 
-`client create` prints the token once alongside its configuration entry containing `tokenSha256`.
-Clients with `send` or `hook:sellf` require explicit `brands` and `templates` selections:
-pass comma-separated lists or quote `'*'` for all values. The CLI requires both `--brands`
-and `--templates` for these scopes. Panel-only clients may omit both; omitted selections
-become empty lists and grant no message access. Legacy key defaults remain `brands: "*"` and `templates: "*"`.
+Scoped clients are created with the Mailstack Pro CLI (`node scripts/client.ts create` in
+`mailstack-pro`); see [API keys: free and Pro](#api-keys-free-and-pro).
 
 The importer executes a trusted local TypeScript registry and writes JSON only to stdout.
 Move its output outside the repository and set `MAILSTACK_CONFIG` before `npm run setup`.
@@ -515,11 +511,25 @@ allowlist below is illustrative; replace both values before subscribing a real t
 ```
 
 The legacy key has attachment permission here solely for the local attachment example.
-For an application, generate a dedicated client and add the printed `client` object to
-`clients`. Use `--recipient-override` if it must set `to`; enable `attachments: true`
-in its config entry when needed (the CLI has no attachment flag). Client brand/template
-selections and scope are checked before sending. Keep a `panel` client separate from
-`send` and `hook:sellf` clients. Panel scope is reserved for the later panel service.
+
+### API keys: free and Pro
+
+The free core authenticates exactly one **full key**: the secret in `API_KEY` (or the
+variable named by `legacyApiKey.env`). It has scopes `send` and `hook:sellf`, every brand
+and template, and may override `to`. Free `legacyApiKey` options are `enabled`, `env`,
+`attachments` and `signatureSecretEnv` (required `X-Sellf-Signature` on `/v1/hooks/sellf`,
+see [Sellf webhook](#sellf-event-contract)). `scopes`, `brands`, `templates` and
+`recipientOverride` may only restate the full values; any restriction fails validation with
+`additional or restricted API keys require Mailstack Pro`.
+
+Everything beyond that single key is Mailstack Pro (Node only, valid license):
+additional `clients` with their own tokens, brand/template/scope restrictions,
+`recipientOverride: false`, `rate`, `resendCallback`, and the `panel` client. Pro registers
+a key provider through the extension `keys` hook; the core asks it only about tokens other
+than the full key. Without a license Pro rejects those tokens with 401 while the full key
+keeps sending. A configuration containing `clients` stops startup when no loaded extension
+provides keys (`$.clients: additional or restricted API keys require Mailstack Pro`).
+The Worker loads no extensions, so `npm run setup` rejects `clients` and only the full key works there.
 
 ### Migrating a legacy brand registry
 
@@ -632,8 +642,9 @@ maps missing required template fields. `ignore` acknowledges without sending;
 `reject` returns `422 unsupported_event`; unlisted events are ignored.
 Bearer plus `hook:<id>` scope and brand/template permissions are always required.
 Signatures support `t-v1`, `sha256-prefix` and `bearer-only`; signing is additional
-when the client names a runtime secret. Configure no signing reference for
-`bearer-only`. Source definitions contain secret references only through clients.
+when the key names a runtime secret (`legacyApiKey.signatureSecretEnv` for the full key's
+`hook:sellf`, or a Pro client's reference). Configure no signing reference for
+`bearer-only`. Source definitions contain secret references only through keys.
 
 Fields use plain dotted paths (including numeric indices), `{"join":["path"]}`,
 `{"first":["preferred.path","fallback.path"]}` (first nonblank scalar),
@@ -1219,7 +1230,9 @@ a file with the same idempotency key returns `409 idempotency_conflict` at level
 ## Extensions
 
 Node can load optional modules at startup; Worker does not load or execute them.
-Omitting `extensions` is equivalent to `"extensions": []`.
+Omitting `extensions` is equivalent to `"extensions": []`. At most one extension may
+implement `keys(config)`, returning `{ authenticate(token, env), client(id) }` for tokens
+other than the full key (Mailstack Pro uses it for scoped clients).
 
 ```json
 {

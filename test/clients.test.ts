@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { testKeys } from "./fixtures/keys";
 import { createHash, randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/core/config";
@@ -12,7 +12,7 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const entry = () => ({ id: "acme-app", tokenSha256: hash(token), scopes: ["send", "hook:sellf"], brands: ["acme"], templates: ["contact", "payment"], recipientOverride: false, attachments: false });
 const original = structuredClone(config);
 const env: Env = { API_KEY: "example-legacy-key", SES_REGION: "eu-west-1", SES_ACCESS_KEY_ID: "example", SES_SECRET_ACCESS_KEY: "example", TURNSTILE_SECRET: "example", ALTCHA_HMAC_KEY: "example" };
-const deps = () => ({ sendEmail: vi.fn(async () => ({ ok: true, status: 200 })), verifyTurnstile: vi.fn(async () => true), verifyAltcha: vi.fn(async () => true), now: () => new Date("2026-10-24T12:00:00Z") } satisfies SendDeps);
+const deps = () => ({ keys: testKeys(config), sendEmail: vi.fn(async () => ({ ok: true, status: 200 })), verifyTurnstile: vi.fn(async () => true), verifyAltcha: vi.fn(async () => true), now: () => new Date("2026-10-24T12:00:00Z") } satisfies SendDeps);
 function configure(overrides: Record<string, unknown> = {}) {
   Object.assign(config, parseConfig({ ...original, clients: [entry()], ...overrides }));
 }
@@ -96,70 +96,52 @@ it("disables legacy without disabling scoped clients", async () => {
   expect((await handleSellfHook(request("/v1/hooks/sellf", purchase, env.API_KEY), env, deps())).status).toBe(401);
   expect((await handleSend(request("/v1/send", { brand: "acme" }), env, deps())).status).toBe(200);
 });
-it("uses the configured legacy secret and permissions", async () => {
-  configure({ legacyApiKey: { enabled: true, env: "CUSTOM_KEY", scopes: ["send"], brands: ["demo"], templates: ["notice"], recipientOverride: false } });
-  const customEnv = { ...env, CUSTOM_KEY: "custom-example" };
-  const res = await handleSend(request("/v1/send", { brand: "acme" }, "custom-example"), customEnv, deps());
-  expect(await res.json()).toEqual(forbidden);
-  expect((await handleSend(request("/v1/send", { brand: "demo", template: "notice" }, "custom-example"), customEnv, deps())).status).toBe(200);
-  expect((await handleSellfHook(request("/v1/hooks/sellf", purchase, "custom-example"), customEnv, deps())).status).toBe(403);
-  expect((await handleSellfHook(request("/v1/hooks/sellf", purchase, env.API_KEY), customEnv, deps())).status).toBe(401);
-});
 
-it("creates a token once and a usable configuration entry through the CLI", async () => {
-  const result = spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "demo-cli", "--scopes", "send", "--brands", "demo", "--templates", "notice", "--recipient-override"], { encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(0);
-  const output = JSON.parse(result.stdout);
-  expect(output.token).toMatch(/^msk_demo-cli_[A-Za-z0-9_-]{43}$/);
-  expect(result.stdout.split(output.token)).toHaveLength(2);
-  expect(output.client.tokenSha256).toBe(hash(output.token)); expect(JSON.stringify(output.client)).not.toContain(output.token);
-  configure({ clients: [output.client] });
-  const res = await handleSend(request("/v1/send", { brand: "demo", template: "notice", to: "buyer@example.com" }, output.token), env, deps());
-  expect(res.status).toBe(200);
-});
-it.each([["--id", "Bad", "--scopes", "send"], ["--id", "demo", "--scopes", "send,panel"], ["--id", "demo"], ["--id", "demo", "--scopes", "send", "--unknown"], ["--id", "demo", "--scopes", "send", "--brands"]])("validates CLI arguments: %j", (...args) => {
-  const result = spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", ...args], { encoding: "utf8" });
-  expect(result.status).toBe(1); expect(result.stdout).toBe("");
-});
 
-it("returns the authenticated client identity and accepts uppercase hex", async () => {
-  const { authenticate } = await import("../src/clients.ts");
-  const req = request("/v1/send", {});
-  const settings = parseConfig({ ...original, clients: [{ ...entry(), tokenSha256: hash(token).toUpperCase() }] });
-  expect((await authenticate(req, env, settings))?.id).toBe("acme-app");
-  expect((await authenticate(request("/v1/send", {}, env.API_KEY), env, settings))?.id).toBe("legacy");
-  expect(await authenticate(req, env, { clients: [] })).toBeNull();
-  expect(await authenticate(request("/v1/send", {}, env.API_KEY), { API_KEY: "" }, settings)).toBeNull();
-});
-it.each([
-  [{ templates: ["payment"] }, {}],
-  [{ recipientOverride: false }, { to: "buyer@example.com" }],
-  [{ scopes: ["hook:sellf"] }, {}],
-])("applies configured legacy permissions: %j", async (permissions, body) => {
-  configure({ legacyApiKey: permissions });
-  const d = deps();
-  const res = await handleSend(request("/v1/send", { brand: "acme", ...body }, env.API_KEY), env, d);
-  expect(res.status).toBe(403); expect(await res.json()).toEqual(forbidden); expect(d.sendEmail).not.toHaveBeenCalled();
-});
-it("creates distinct tokens with explicit selections", () => {
-  const run = () => spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "demo-cli", "--scopes", "send,hook:sellf", "--brands", "*", "--templates", "*"], { encoding: "utf8" });
-  const first = run(); const second = run();
-  expect(first.status, first.stderr).toBe(0); expect(second.status, second.stderr).toBe(0);
-  const output = JSON.parse(first.stdout);
-  expect(output.client).toMatchObject({ scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: false, attachments: false });
-  expect(output.token).not.toBe(JSON.parse(second.stdout).token);
-});
 
-it.each([
-  ["send", "--brands"], ["send", "--templates"], ["hook:sellf", "--brands"], ["hook:sellf", "--templates"],
-])("requires explicit CLI selections for %s: %s", (scope, missing) => {
-  const selections = missing === "--brands" ? ["--templates", "payment"] : ["--brands", "acme"];
-  const result = spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "acme-app", "--scopes", scope, ...selections], { encoding: "utf8" });
-  expect(result.status).toBe(1); expect(result.stdout).toBe("");
-  expect(result.stderr).toContain(missing); expect(result.stderr).toContain("required");
-});
-it("creates a panel client without CLI selections", () => {
-  const result = spawnSync(process.execPath, ["scripts/mailstack.ts", "client", "create", "--id", "panel", "--scopes", "panel"], { encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).client).toMatchObject({ scopes: ["panel"], brands: [], templates: [] });
+
+describe("free core without a key provider", () => {
+  const free = () => ({ ...deps(), keys: undefined });
+  it("accepts only the full key and rejects scoped tokens as unauthenticated", async () => {
+    expect((await handleSend(request("/v1/send", { brand: "demo", template: "notice", to: "buyer@example.com" }, env.API_KEY), env, free())).status).toBe(200);
+    expect((await handleSellfHook(request("/v1/hooks/sellf", purchase, env.API_KEY), env, free())).status).toBe(200);
+    const hook = await handleSellfHook(request("/v1/hooks/sellf", purchase), env, free());
+    expect(hook.status).toBe(401); expect(await hook.json()).toEqual({ success: false, message: "unauthorized" });
+    const d = free();
+    expect((await handleSend(request("/v1/send", { brand: "acme", template: "payment" }), env, d)).status).toBe(403);
+    expect(d.sendEmail).not.toHaveBeenCalled();
+  });
+  it("refuses clients at startup without an extension that provides keys", async () => {
+    const { loadExtensions } = await import("../src/runtime/extensions");
+    const { createSqliteStore } = await import("../src/core/store/sqlite");
+    const store = createSqliteStore(":memory:"); await store.migrate();
+    try {
+      await expect(loadExtensions(config, store)).rejects.toThrow("$.clients: additional or restricted API keys require Mailstack Pro");
+      const other = { ...config, extensions: [{ module: "other" }] };
+      await expect(loadExtensions(other, store, async () => ({ default: { name: "other" } }))).rejects.toThrow("$.clients:");
+      const { clients: _, ...plain } = config;
+      await expect(loadExtensions(plain as typeof config, store)).resolves.toMatchObject({ keys: undefined });
+    } finally { await store.db.destroy(); }
+  });
+  it.each([
+    ["brands", ["acme"]], ["templates", ["payment"]], ["scopes", ["send"]], ["recipientOverride", false],
+  ])("refuses a restricted full key: %s", (field, value) => {
+    expect(() => parseConfig({ ...original, legacyApiKey: { [field]: value } })).toThrow(`$.legacyApiKey.${field}: additional or restricted API keys require Mailstack Pro`);
+  });
+  it("accepts restated full permissions and free options", () => {
+    const legacyApiKey = { enabled: true, env: "API_KEY", attachments: true, scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: true };
+    expect(parseConfig({ ...original, legacyApiKey }).legacyApiKey).toMatchObject({ attachments: true, env: "API_KEY" });
+  });
+  it("verifies Sellf signatures on the full key", async () => {
+    const { createHmac } = await import("node:crypto");
+    configure({ legacyApiKey: { signatureSecretEnv: "SELLF_SECRET" } });
+    const signed = { ...env, SELLF_SECRET: "example-signing-secret" };
+    const raw = JSON.stringify(purchase), t = String(Math.floor(deps().now().getTime() / 1000));
+    const signature = `t=${t},v1=${createHmac("sha256", signed.SELLF_SECRET).update(`${t}.${raw}`).digest("hex")}`;
+    const call = (headers: Record<string, string>) => handleSellfHook(new Request("https://mail.example.com/v1/hooks/sellf", { method: "POST", body: raw, headers: { authorization: `Bearer ${env.API_KEY}`, ...headers } }), signed, free());
+    expect((await call({})).status).toBe(401);
+    expect((await call({ "x-sellf-signature": signature })).status).toBe(200);
+    expect(() => configure({ legacyApiKey: { signatureSecretEnv: "SELLF_SECRET" }, sources: { sellf: { ...original.sources?.sellf, signature: { scheme: "bearer-only" } } } }))
+      .toThrow("$.legacyApiKey.signatureSecretEnv: requires a signing scheme");
+  });
 });

@@ -43,7 +43,8 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     if (m.status === 'sending' || m.status === 'unknown') fail(409, 'original_unresolved');
     if (!(await sql<{ ok: number }>`select ${unsuppressed(id)} as ok`.execute(store.db)).rows[0].ok) fail(409, 'suppressed');
     const replay = await store.db.selectFrom('replays').select(['sealed', 'expires_at']).where('message_id', '=', id).executeTakeFirst();
-    const owner = cfg.clients?.find(c => c.id === m.client_id && c.resendCallback && permits(c, 'send', m.brand, m.template));
+    const candidate = m.client_id ? deps.keys?.client(m.client_id) : undefined;
+    const owner = candidate?.resendCallback && permits(candidate, 'send', m.brand, m.template) ? candidate : undefined;
     if (policy.resend === 'replay' && (template.secretFields?.length || !['masked', 'full'].includes(policy.level) || m.attachments_meta || !m.replay_mac ||
       !replay || replay.expires_at <= at() || !m.content_expires_at || m.content_expires_at <= at() ||
       m.created_at <= at() - Math.min(policy.contentDays, cfg.logging.ceilings.contentDays) * 86400000)) fail(409, 'resend_disabled');
