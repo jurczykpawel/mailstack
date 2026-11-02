@@ -184,7 +184,9 @@ live in Mailstack Pro (`mailstack-pro/src/keys.ts`, CLI `node scripts/client.ts 
 Pro registers a `KeyProvider` through the extension `keys(config)` hook; `authenticate`
 checks the full key first, then asks the provider. Pro returns null without a valid
 license, so the full key never depends on licensing. `clients` without a key provider stops
-Node startup and `npm run setup` (Worker loads no extensions → only the full key).
+Node startup and `npm run setup`. The Worker gets Pro keys only from a build with
+`MAILSTACK_PRO_PATH` in `.env` (generated `src/core/pro.generated.ts`, license cache in D1,
+secret `MAILSTACK_LICENSE`, `proCommit` in `/health`); see README.
 Core still enforces the returned principal (`permits`, `recipientOverride`, `attachments`)
 in send/sources/panel; core tests use `test/fixtures/keys.ts` as a stand-in provider.
 

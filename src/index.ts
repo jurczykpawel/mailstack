@@ -15,6 +15,8 @@ import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
 import { createChallenge, createNonce, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
+import { proKeys } from "./core/pro.generated";
+import type { KeyProvider } from "./clients";
 
 const verifySns = createVerifier();
 
@@ -54,7 +56,9 @@ export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionCo
   ctx.waitUntil(runRetention(createD1Store(env.DB), event.scheduledTime, config));
 }
 
-export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore } = {}) {
+export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore } = {}, pro = proKeys) {
+  // Built once per isolate on first use (needs env); a failure leaves only the full key.
+  let keys: Promise<KeyProvider | undefined> | undefined;
   return {
     scheduled,
     async fetch(
@@ -63,7 +67,8 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       ctx: ExecutionContext,
     ): Promise<Response> {
       const store = overrides.store ?? (env.DB ? createD1Store(env.DB) : undefined);
-      const deps = { ...defaultDeps, ...overrides, store,
+      keys ??= Promise.resolve().then(() => pro?.(config, env)).catch(() => undefined);
+      const deps = { ...defaultDeps, ...overrides, store, keys: overrides.keys ?? await keys,
         notifier: overrides.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
         waitUntil: ctx.waitUntil?.bind(ctx) ?? overrides.waitUntil,
       };
@@ -74,7 +79,8 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         let storeState = "down";
         try { if (store) { await store.health(); storeState = "ok"; } } catch {}
         return new Response(
-          JSON.stringify({ store: storeState, ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev" }),
+          JSON.stringify({ store: storeState, ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev",
+            ...(env.BUILD_PRO_COMMIT ? { proCommit: env.BUILD_PRO_COMMIT } : {}) }),
           { headers: { "content-type": "application/json; charset=utf-8" } },
         );
       }

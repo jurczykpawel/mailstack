@@ -9,8 +9,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const state = resolve(process.env.MAILSTACK_STAGING_STATE ?? `${process.env.HOME}/.config/mailstack-staging/worker`);
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const name = 'mailstack-staging', hostname = 'mailstack-test.techskills.academy';
+// A Worker cannot fetch its own custom domain (522), so Pro reads the fixture license endpoints from a second Worker.
+const licenseName = 'mailstack-staging-license', licenseHost = 'mailstack-license-test.techskills.academy';
 const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
+// Optional Mailstack Pro checkout (clean tree); its commit is extracted like the core one.
+const pro = process.env.MAILSTACK_STAGING_PRO, branch = process.env.MAILSTACK_STAGING_BRANCH ?? 'main';
 if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
 if (!account || !['deploy', 'status', 'destroy', 'hmac-swap', 'hmac-restore'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy|hmac-swap|hmac-restore');
 if (state.startsWith(root + '/')) throw new Error('State must be outside the source directory');
@@ -52,7 +56,8 @@ async function mutate(label, path, method, body) {
 const databases = await api(`${base}/d1/database`);
 let database = databases.find(value => value.name === name);
 const domains = await api(`${base}/workers/domains`);
-const domain = domains.find(value => value.hostname === hostname);
+const domain = domains.find(value => value.hostname === hostname), licenseDomain = domains.find(value => value.hostname === licenseHost);
+if (licenseDomain && licenseDomain.service !== licenseName) throw new Error('License hostname is already assigned to another service');
 if (domain && domain.service !== name) throw new Error('Staging hostname is already assigned to another service');
 if (command.startsWith('hmac-')) {
   const record = JSON.parse(readFileSync(`${state}/resources.json`));
@@ -75,12 +80,18 @@ if (command.startsWith('hmac-')) {
   const record = JSON.parse(readFileSync(`${state}/resources.json`));
   if (record.account !== account || record.name !== name || database && record.database !== database.uuid) throw new Error('Resource identity differs from local record');
   if (domain) await mutate('remove-domain', `${base}/workers/domains/${domain.id}`, 'DELETE');
+  if (licenseDomain) await mutate('remove-license-domain', `${base}/workers/domains/${licenseDomain.id}`, 'DELETE');
   const scripts = await api(`${base}/workers/scripts`);
+  if (scripts.some(value => value.id === licenseName)) await mutate('remove-license-worker', `${base}/workers/scripts/${licenseName}`, 'DELETE');
   if (scripts.some(value => value.id === name)) await mutate('remove-worker', script, 'DELETE');
   if (database) await mutate('remove-database', `${base}/d1/database/${database.uuid}`, 'DELETE');
 } else {
-  const commit = process.env.MAILSTACK_STAGING_COMMIT ?? (existsSync(`${state}/resources.json`) ? JSON.parse(readFileSync(`${state}/resources.json`)).commit : execFileSync('git', ['rev-parse', 'main'], { cwd: root, encoding: 'utf8' }).trim());
-  execFileSync('git', ['merge-base', '--is-ancestor', commit, 'main'], { cwd: root });
+  const commit = process.env.MAILSTACK_STAGING_COMMIT ?? (existsSync(`${state}/resources.json`) ? JSON.parse(readFileSync(`${state}/resources.json`)).commit : execFileSync('git', ['rev-parse', branch], { cwd: root, encoding: 'utf8' }).trim());
+  execFileSync('git', ['merge-base', '--is-ancestor', commit, branch], { cwd: root });
+  const proCommit = pro && execFileSync('git', ['rev-parse', 'HEAD'], { cwd: pro, encoding: 'utf8' }).trim();
+  if (pro && execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: pro, encoding: 'utf8' })) throw new Error('Pro checkout must be clean');
+  const proSource = pro && `${state}/source-pro/${proCommit}`;
+  if (pro) { mkdirSync(proSource, { recursive: true, mode: 0o700 }); execFileSync('tar', ['-xf', '-', '-C', proSource], { input: execFileSync('git', ['archive', proCommit, 'src'], { cwd: pro, maxBuffer: 16 * 1024 * 1024 }) }); }
   const source = `${state}/source/${commit}`;
   mkdirSync(source, { recursive: true, mode: 0o700 });
   execFileSync('tar', ['-xf', '-', '-C', source], { input: execFileSync('git', ['archive', commit, 'src', 'package.json', 'config/mailstack.example.json', ':(glob)docs/sources/*.json'], { cwd: root, maxBuffer: 16 * 1024 * 1024 }) });
@@ -98,7 +109,7 @@ if (command.startsWith('hmac-')) {
     cfg.events = { ses: { topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false } };
   }
   cfg.sender = { type: 'ses' }; delete cfg.clients;
-  // The Worker has no Pro key provider: one full key, with the Sellf hook signature on it.
+  // The full key carries the Sellf hook signature; Pro adds scoped clients with tokens in secrets.json.
   cfg.legacyApiKey = { enabled: true, env: 'API_KEY', signatureSecretEnv: 'SELLF_STAGING_HMAC' };
   cfg.logging.defaults = { ...cfg.logging.defaults, level: 'masked', requireLog: true, contentDays: 1, metaDays: 7 };
   const pair = generateKeyPairSync('x25519'), kid = 'staging-content';
@@ -110,6 +121,18 @@ if (command.startsWith('hmac-')) {
   secrets.API_KEY ??= randomBytes(32).toString('base64url');
   delete secrets.SEND_TOKEN; delete secrets.HOOK_TOKEN;
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
+  if (pro) {
+    if (process.env.MAILSTACK_STAGING_LICENSE) secrets.MAILSTACK_LICENSE = process.env.MAILSTACK_STAGING_LICENSE;
+    if (!secrets.MAILSTACK_LICENSE) throw new Error('Set MAILSTACK_STAGING_LICENSE for the first Pro deploy');
+    secrets.STAGING_SEND_TOKEN ??= `msk_st-send_${randomBytes(32).toString('base64url')}`;
+    secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
+    cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
+      jwksUrl: `https://${licenseHost}/_staging/jwks`, revocationUrl: `https://${licenseHost}/_staging/revoked` } }];
+    cfg.clients = [
+      { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'] },
+      { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
+    ];
+  }
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
   secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
   put('secrets.json', secrets);
@@ -136,15 +159,22 @@ const app=createApp({sendEmail:async(...args)=>{const r=await sender(...args);if
 const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
 if(${JSON.stringify(delivery)}==='disabled'&&r.status===502)return Response.json({success:false,message:'staging delivery disabled',code:'delivery_disabled'},{status:503,headers:h});
 return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}};`;
-  await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
+  await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], alias: { mailstack: source, zod: `${root}/node_modules/zod` }, conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
     b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
     b.onResolve({ filter: /\/assets\/logo$/ }, () => ({ path: `${source}/src/assets/logo.example.ts` }));
+    b.onResolve({ filter: /\/pro\.generated$/ }, () => ({ path: 'pro', namespace: 'staging-pro' }));
+    b.onLoad({ filter: /.*/, namespace: 'staging-pro' }, () => ({ resolveDir: source, loader: 'ts', contents: pro ? `export { workerKeys as proKeys } from ${JSON.stringify(`${proSource}/src/worker.ts`)};` : 'export const proKeys = undefined;' }));
   } }] });
   const { INITIAL_SCHEMA: migration } = await import(pathToFileURL(`${source}/src/core/store/migration.ts`).href);
   const rows = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'" });
   if (!rows[0].results.length) await mutate('migrate-database', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migration });
-  const vars = { BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  if (pro) {
+    const { CACHE_SCHEMA } = await import(pathToFileURL(`${pro}/src/worker.ts`).href);
+    const found = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='pro_license_cache'" });
+    if (!found[0].results.length) await mutate('migrate-pro-cache', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: CACHE_SCHEMA });
+  }
+  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
@@ -166,5 +196,12 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
   const zone = zones.find(value => value.account.id === account);
   if (!zone) throw new Error('Zone unavailable');
   if (!domain) await mutate('attach-domain', `${base}/workers/domains`, 'PUT', { hostname, service: name, environment: 'production', zone_id: zone.id });
+  if (pro) {
+    const fixtureForm = new FormData();
+    fixtureForm.set('metadata', new Blob([JSON.stringify({ main_module: 'license.mjs', compatibility_date: '2026-10-26', bindings: [], observability: { enabled: false } })], { type: 'application/json' }));
+    fixtureForm.set('license.mjs', new Blob([`export default {fetch(req){const p=new URL(req.url).pathname;if(req.method==='GET'&&p==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});if(req.method==='GET'&&p==='/_staging/revoked')return Response.json({order_hashes:[]});return new Response(null,{status:404});}};`], { type: 'application/javascript+module' }), 'license.mjs');
+    await mutate('upload-license-worker', `${base}/workers/scripts/${licenseName}`, 'PUT', fixtureForm);
+    if (!licenseDomain) await mutate('attach-license-domain', `${base}/workers/domains`, 'PUT', { hostname: licenseHost, service: licenseName, environment: 'production', zone_id: zone.id });
+  }
   console.log(`Staging ready: https://${hostname}; delivery ${delivery}; keys stored outside source`);
 }

@@ -128,6 +128,20 @@ describe("deploy execution", () => {
     expect(opts.fetchHealth).not.toHaveBeenCalled();
     expect(opts.log).toHaveBeenCalledWith(expect.stringMatching(/MAILSTACK_HEALTH_URL.*skip/i));
   });
+  it("requires a clean Pro checkout at origin/main and records its commit", async () => {
+    const pro = join(root, "pro"); git(root, "clone", origin, pro); identity(pro);
+    const opts = { ...options(), proPath: pro }, sha = git(cwd, "rev-parse", "HEAD");
+    opts.fetchHealth.mockResolvedValue(Response.json({ commit: sha, proCommit: sha }));
+    await deploy(opts);
+    expect(opts.runWrangler).toHaveBeenCalledWith(["deploy", "--var", `BUILD_COMMIT:${sha}`, "--var", `BUILD_PRO_COMMIT:${sha}`]);
+    opts.fetchHealth.mockResolvedValue(Response.json({ commit: sha }));
+    await expect(deploy(opts)).rejects.toThrow(/commit/i);
+    commit(pro, "local Pro change"); opts.runWrangler.mockClear();
+    await expect(deploy(opts)).rejects.toThrow(/origin\/main/);
+    writeFileSync(join(pro, "extra"), "dirty");
+    await expect(deploy(opts)).rejects.toThrow(/clean/);
+    expect(opts.runWrangler).not.toHaveBeenCalled();
+  });
   it("runs the guard before setup and wraps the deploy command", () => {
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
     expect(pkg.scripts.predeploy).toBe("node scripts/deploy-guard.mjs && npm run setup");

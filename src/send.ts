@@ -153,7 +153,7 @@ export async function handleSend(
     [getBrand(queryBrandId), getBrand(bodyBrandId), findBrandByOrigin(origin)]
       .some(candidate => candidate && isOriginAllowed(candidate, origin)) ? origin : null;
 
-  const client = await authenticate(req, env, config, deps.keys);
+  const client = await authenticate(req, env, config, deps.keys, deps.waitUntil);
   const trusted = !!client;
   let rawText: string;
   try {

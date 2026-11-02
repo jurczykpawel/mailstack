@@ -86,7 +86,7 @@ it("builds external config and verifies subsequent input changes", async () => {
   mkdirSync(join(root, "scripts"), { recursive: true });
   mkdirSync(join(root, "src/core/config"), { recursive: true });
   for (const file of ["schema.ts", "sources.ts", "load.ts", "node.ts"]) cpSync(`src/core/config/${file}`, join(root, "src/core/config", file));
-  cpSync("scripts/bundle-config.ts", join(root, "scripts/bundle-config.ts"));
+  for (const file of ["bundle-config.ts", "env.ts"]) cpSync(`scripts/${file}`, join(root, "scripts", file));
   for (const file of ["urls.ts", "purchase-licenses.ts", "clients.ts"]) cpSync(`src/${file}`, join(root, "src", file));
   cpSync("src/templates", join(root, "src/templates"), { recursive: true });
   cpSync("src/markup", join(root, "src/markup"), { recursive: true });
@@ -101,7 +101,7 @@ it("builds external config and verifies subsequent input changes", async () => {
   const scoped = run("--check");
   expect(scoped.status).toBe(1); expect(scoped.stderr).toContain("$.clients: additional or restricted API keys require Mailstack Pro");
   writeFileSync(file, json + "\n");
-  expect(run("--verify").stderr).toContain("BUILD_CONFIG_SHA");
+  expect(run("--verify").stderr).toContain("bundled.ts changed");
   writeFileSync(file, "{}");
   expect(run().stderr).toContain("$.version");
 });

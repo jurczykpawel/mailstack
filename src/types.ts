@@ -11,6 +11,8 @@ export interface Env extends KeyEnvironment {
   SES_REGION: string;
   SES_CONFIGURATION_SET?: string;
   BUILD_COMMIT?: string;
+  /** Mailstack Pro commit in a Worker built with MAILSTACK_PRO_PATH. */
+  BUILD_PRO_COMMIT?: string;
   TRUSTED_PROXY?: string;
   /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
   SELLF_DEFAULT_BRAND?: string;
