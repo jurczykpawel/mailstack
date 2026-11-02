@@ -16,7 +16,7 @@ const compose = args => docker(['compose', '-p', project, '-f', join(dir, 'compo
 const pair = generateKeyPairSync('x25519');
 const cfg = JSON.parse(readFileSync('config/mailstack.example.json'));
 cfg.sender = { type: 'smtp' };
-cfg.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
+cfg.legacyApiKey = { enabled: true, env: 'API_KEY', attachments: true };
 cfg.logging.defaults.level = 'full'; cfg.logging.defaults.requireLog = true;
 writeFileSync(join(dir, 'config.json'), JSON.stringify(cfg));
 chmodSync(join(dir, 'config.json'), 0o644);

@@ -40,7 +40,7 @@ scopes and selections. Event hooks receive no panel principal. P2/P6/P8 can use
 specific scope and apply the principal's selections to their own queries/mutations.
 A webhook configuration client may have `panel,webhooks:write`; panel remains
 separate from send/hook clients. `webhooks:write` alone grants neither panel access
-nor read/send permissions. The schema and `client create --scopes` accept it;
+nor read/send permissions. Mailstack Pro (`src/keys.ts`, `scripts/client.ts create --scopes`) accepts it;
 webhook routes and behavior belong to the extension.
 
 ## Roles and operations

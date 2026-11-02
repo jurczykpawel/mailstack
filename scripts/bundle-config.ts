@@ -4,6 +4,7 @@ import { relative, resolve, isAbsolute } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { readConfigFile } from "../src/core/config/node.ts";
 import { loadConfig } from "../src/core/config/load.ts";
+import { requireKeyProvider } from "../src/clients.ts";
 
 try {
   const root = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
@@ -14,7 +15,7 @@ try {
   if (mode !== "--example" && !location.startsWith("../") && !isAbsolute(location))
     throw new Error("$: MAILSTACK_CONFIG must be outside the repository");
   const json = readConfigFile(path);
-  loadConfig(json);
+  requireKeyProvider(loadConfig(json)); // the Worker loads no extensions: only the full key
   const sha = createHash("sha256").update(json).digest("hex");
   const output = resolve(root, "src/core/config/bundled.ts");
   const content = `export const CONFIG_JSON = ${JSON.stringify(json)};\nexport const BUILD_CONFIG_SHA = "${sha}";\n`;

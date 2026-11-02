@@ -35,7 +35,7 @@ scripts/staging/worker.sh deploy
 
 This removes only the recorded staging domain, Worker and D1, then recreates them with the retained keys. Destroy is repeatable. It permanently removes staging messages. Keep the local state for the resource identity check and preserve its credentials in Vaultwarden.
 
-Trusted synthetic send: read `SEND_TOKEN` from the protected state into a local environment variable and send bearer auth through a client that does not log headers. The scoped client permits `brand=acme`, `template=notice`, with the fixed synthetic recipient. Expect `503 delivery_disabled`. Public ALTCHA submissions also reach the disabled adapter after verification. The Sellf hook uses `HOOK_TOKEN` plus `SELLF_STAGING_HMAC`; sign the exact JSON bytes as HMAC-SHA256 over `<unix-seconds>.<body>` and send `X-Sellf-Signature: t=<unix-seconds>,v1=<hex>`.
+Trusted synthetic send: read `API_KEY` from the protected state into a local environment variable and send bearer auth through a client that does not log headers. The Worker has no Pro key provider, so staging uses only the full key (all brands and templates, recipient override); send only synthetic simulator recipients. Expect `503 delivery_disabled` in disabled mode. Public ALTCHA submissions also reach the disabled adapter after verification. The Sellf hook uses the same `API_KEY` plus `SELLF_STAGING_HMAC` (`legacyApiKey.signatureSecretEnv`); sign the exact JSON bytes as HMAC-SHA256 over `<unix-seconds>.<body>` and send `X-Sellf-Signature: t=<unix-seconds>,v1=<hex>`.
 
 In SES mode the staging SNS topic fans out to both installations. The disabled-send response intentionally contains no message ID; administrators can inspect the staging D1 message rows. A provider event timeline remains empty until a provider event exists.
 
@@ -356,7 +356,7 @@ remain blocked; passing local tests does not establish staging readiness.
 | Version freeze | One immutable core SHA and Pro SHA, API/panel image IDs and bundle hashes, configuration digests, health from both staging URLs above, and matching LOCAL/W manifests. Freeze these for the whole cycle; repeat affected tests if they change. |
 | TEST-WORKER | Run `scripts/test-worker.sh status`. This is a local, read-only operation, without Vaultwarden or Cloudflare access. Default record: `/private/tmp/mailstack-test-worker/status.json` (0600). `MAILSTACK_TEST_WORKER_STATUS` selects a delivered copy. Missing/incomplete record exits 3 with the exact path; existing record says `RECORDED_NOT_LIVE_VERIFIED`. Coordinator supplies current health/SHA/config/delivery evidence separately. The disposable `mailstack-test` + `mailstack-preview` environment is distinct from permanent SES staging. Testers do not deploy it to unblock themselves. |
 | Receiver | Deploy the staging composition containing `receiver.ts`, then verify the POST/GET/DELETE operations below with a unique run ID. Preserve raw evidence locally before cleanup/retention. A historical 404 endpoint is insufficient. |
-| Hook HMAC | Dedicated `staging-hook`, acme, payment/refund/notice/welcome; bearer plus configured HMAC. Ensure original-secret probes succeed before swapping. Complete swap/restore with the commands below in an exclusive coordinator-assigned slot. |
+| Hook HMAC | Node: dedicated Pro client `staging-hook`, acme, payment/refund/notice/welcome; Worker: full `API_KEY`. Bearer plus configured HMAC. Ensure original-secret probes succeed before swapping. Complete swap/restore with the commands below in an exclusive coordinator-assigned slot. |
 | Delivery budget | Current independent Node SQLite and Worker D1 ledgers, 50/day and 10/hour each, dedicated simulator-only IAM evidence, SES From/configuration set and confirmed SNS subscriptions. Reserve every possible provider call, including refusal/unknown, before sending. Never reset a ledger or transfer a rejected send to the other installation. |
 | Critical journey | Node Pro, step-up and permitted resend strategy must be ready before the purchase. Node messages live in SQLite, Worker messages in D1. SNS fan-out does not merge them. Use only synthetic simulator recipients; SES offers no readable MIME inbox. Compare MIME separately on LOCAL with the same versions. |
 | Recovery | Keep original configuration/keys and HMAC recovery files outside repositories. On failure stop dependent tests, restore HMAC, verify both signatures and health, then remove only the run's receiver rows and owned resources. Leave staging, shared inbox, audit and budgets running/intact. |
@@ -424,15 +424,15 @@ Export evidence before expiry; cleanup never touches SES budgets or product rows
 ### Temporary hook HMAC operations
 
 These operations change one staging secret, never product code. They do not
-provision the Node HMAC binding. Before first use, the coordinator must configure
-only dedicated `staging-hook` with `signatureSecretEnv` (or its Sellf alias)
+provision the Node HMAC binding. Worker binds the HMAC to its full key. Before first use on Node, the coordinator must configure
+only dedicated `staging-hook` (a Pro client; Node staging runs licensed Pro) with `signatureSecretEnv` (or its Sellf alias)
 pointing to an existing plain environment value. On Node the corresponding
 `.env` entry must be a single unquoted `NAME=value` line, and Compose must pass
 it into API. The operation rejects an absent binding or a mismatch with the live
 container. Do not change scopes, policies or recipients as part of a swap.
 
 Supply the temporary Sellf endpoint secret on stdin from a protected file, never
-as an argument. Worker uses its existing protected state and `HOOK_TOKEN`:
+as an argument. Worker uses its existing protected state and `API_KEY`:
 
 ```sh
 scripts/staging/worker.sh hmac-swap < /secure/temporary-sellf-secret

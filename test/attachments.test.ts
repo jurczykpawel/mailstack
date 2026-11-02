@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { testKeys } from './fixtures/keys';
 import { AwsClient } from 'aws4fetch';
 import { tokenSha256 } from '../src/clients';
 import { config } from '../src/core/config';
@@ -14,7 +15,7 @@ const legacy = config.legacyApiKey;
 let deps: SendDeps;
 beforeEach(() => {
   config.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
-  deps = { logging: structuredClone(config.logging), sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
+  deps = { keys: testKeys(config), logging: structuredClone(config.logging), sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
     verifyTurnstile: vi.fn().mockResolvedValue(true), verifyAltcha: vi.fn(), now: () => new Date() };
   deps.logging!.defaults.level = 'none';
 });

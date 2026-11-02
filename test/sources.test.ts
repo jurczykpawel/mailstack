@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { testKeys } from './fixtures/keys';
 import { createHash, createHmac } from 'node:crypto';
 import { config } from '../src/core/config';
 import { parseConfig } from '../src/core/config/schema';
@@ -39,7 +40,7 @@ afterEach(() => {
 async function run(body: unknown = payload(), headers: Record<string, string> = {}, path = 'github', overrides: Parameters<typeof createApp>[0] = {}, runtime = env, brand = 'acme') {
   const raw = typeof body === 'string' ? body : JSON.stringify(body);
   const sendEmail = vi.fn(async (_env: Env, _params: SendParams) => ({ ok: true, status: 200 }));
-  const deps = { sendEmail, now: () => new Date('2026-10-31T12:00:00Z') } satisfies Partial<SendDeps>;
+  const deps = { sendEmail, keys: testKeys(config), now: () => new Date('2026-10-31T12:00:00Z') } satisfies Partial<SendDeps>;
   const signature = `sha256=${createHmac('sha256', Reflect.get(env, 'SOURCE_SECRET') as string).update(raw).digest('hex')}`;
   const response = await createApp({ ...deps, logging: config.logging, ...overrides }).fetch(new Request(`https://local.example/v1/hooks/${path}?brand=${brand}`, {
     method: 'POST', body: raw, headers: { authorization: `Bearer ${token}`, 'X-Hub-Signature-256': signature, ...headers },
@@ -136,10 +137,6 @@ it('retains the Sellf signature reference alias for the Sellf source', async () 
   const { response, sendEmail } = await run(payload(), { 'X-Hub-Signature-256': '' }, 'sellf');
   expect(response.status).toBe(401); expect(sendEmail).not.toHaveBeenCalled();
   expect((await run()).response.status).toBe(404);
-});
-it('refuses conflicting signature references and signing references with bearer-only sources', () => {
-  expect(() => configure({ clients: [{ ...client(), sellfSignatureSecretEnv: 'OTHER_SECRET' }] })).toThrow('signature references must match');
-  expect(() => configure({ sources: { github: { ...source(), signature: { scheme: 'bearer-only' } } } })).toThrow('requires a signing scheme');
 });
 it.each(['', 'data..email', 'data[0]', 'data.email()', '__proto__.email', 'data.constructor', 'data.prototype', 'data.email + value'])('refuses non-path selections %s', to => {
   const definition = source(); definition.events.created.to = to;
@@ -258,20 +255,10 @@ it('refuses incomplete source maps in Node and Worker configuration entry points
     rmSync(directory, { recursive: true, force: true });
   }
 });
-it('creates hook clients with explicit selections through the CLI', () => {
-  const args = ['scripts/mailstack.ts', 'client', 'create', '--id', 'local-source', '--scopes', 'hook:github'];
-  expect(spawnSync(process.execPath, args, { encoding: 'utf8' }).status).toBe(1);
-  const result = spawnSync(process.execPath, [...args, '--brands', 'acme', '--templates', 'notice'], { encoding: 'utf8' });
-  expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).client).toMatchObject({ scopes: ['hook:github'], brands: ['acme'], templates: ['notice'] });
-});
 it('disables the Sellf route when the explicit source registry is empty', async () => {
   configure({ sources: {}, clients: [{ ...client(), scopes: ['hook:sellf'] }] });
   const { response, sendEmail } = await run(payload(), {}, 'sellf');
   expect(response.status).toBe(404); expect(sendEmail).not.toHaveBeenCalled();
-});
-it.each(['hook:', 'hook:UPPER', 'hook:a/b', `hook:${'a'.repeat(65)}`, 'hook:*'])('refuses invalid source scopes %s', scope => {
-  expect(() => configure({ clients: [{ ...client(), scopes: [scope] }] })).toThrow('clients.0.scopes');
 });
 it('checks the signature against the exact request body', async () => {
   configure();
@@ -325,7 +312,7 @@ it.each((['t-v1', 'sha256-prefix'] as const).flatMap(scheme =>
     headers: { authorization: `Bearer ${token}`, 'X-Example-Signature': scheme === 't-v1' ? `t=${timestamp},v1=${digest}` : `sha256=${digest}` },
     ...(chunked ? { duplex: 'half' } : {}),
   });
-  const response = await createApp({ sendEmail, now: () => new Date('2026-10-31T12:00:00Z'), logging: config.logging })
+  const response = await createApp({ sendEmail, keys: testKeys(config), now: () => new Date('2026-10-31T12:00:00Z'), logging: config.logging })
     .fetch(request, env, {} as ExecutionContext);
   expect(response.status, `${scheme}, chunked=${chunked}, expected=${status}`).toBe(status);
   expect(sendEmail).toHaveBeenCalledTimes(status === 200 ? 1 : 0);

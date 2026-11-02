@@ -2,6 +2,7 @@ import type { PanelPrincipal } from './panel';
 import type { Kysely } from 'kysely';
 import type { AuditEntry, AuditRow } from './audit';
 import type { Config } from './config/schema';
+import type { KeyProvider } from '../clients';
 
 export interface DomainEvent {
   id: string;
@@ -33,5 +34,7 @@ export interface Extension {
   onBeforeDelete?(selection: MessageDeletion, ctx: ExtensionContext): void | Promise<void>;
   onEvent?(event: DomainEvent, ctx: ExtensionContext): void | Promise<void>;
   routes?(app: ExtensionApp): void | Promise<void>;
+  /** Supplies API keys beyond the core's single full key; receives the validated core configuration. */
+  keys?(config: Config): KeyProvider | Promise<KeyProvider>;
 }
 export type EmitEvent = (event: Omit<DomainEvent, 'id'>, waitUntil?: (task: Promise<unknown>) => void) => void;

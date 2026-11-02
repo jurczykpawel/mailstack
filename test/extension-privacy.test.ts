@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { testKeys, withKeys } from './fixtures/keys';
 import { sql, type RootOperationNode } from 'kysely';
 import { appendAudit } from '../src/core/audit';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
@@ -20,7 +21,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
   let store: KyselyStore, mf: Miniflare | undefined;
   let cfg: ReturnType<typeof parseConfig>;
   const rows = async (table: string) => (await sql<Record<string, unknown>>`select * from ${sql.table(table)} order by 1`.execute(store.db)).rows;
-  const load = (extension: Extension) => loadExtensions(cfg, store, async () => ({ default: extension }));
+  const load = (extension: Extension) => loadExtensions(cfg, store, async () => ({ default: withKeys(extension) }));
   async function seed(count = 1, expired = false) {
     const now = Date.now(), idx = await blindIndex('one@example.com', indexKey);
     for (let start = 0; start < count; start += 10) {
@@ -193,7 +194,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
         await queries[operation].execute();
       });
       await expect(loadExtensions(cfg, store, async module => ({ default: {
-        name: module.replace('-extension', ''), migrate,
+        ...(module === cfg.extensions[0].module ? { keys: testKeys } : {}), name: module.replace('-extension', ''), migrate,
       } }))).rejects.toThrow('extension initialization failed');
       expect(migrate).not.toHaveBeenCalled();
       expect(await rows('ext_demo_other_items')).toEqual([{ id: 'other' }]);
@@ -203,7 +204,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     cfg.extensions = [{ module: 'demo_other-extension' }, { module: 'demoother-extension' }];
     let db!: ExtensionDatabase;
     await loadExtensions(cfg, store, async module => ({ default: {
-      name: module.replace('-extension', ''), migrate: async handle => {
+      ...(module === cfg.extensions[0].module ? { keys: testKeys } : {}), name: module.replace('-extension', ''), migrate: async handle => {
         if (module === 'demo_other-extension') db = handle;
       },
     } satisfies Extension }));
@@ -263,7 +264,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     cfg.extensions.push({ module: 'second-extension' });
     const first = vi.fn(), second = vi.fn(() => { throw new Error('unavailable'); });
     const runtime = await loadExtensions(cfg, store, async module => ({ default: {
-      name: module === 'demo-extension' ? 'demo' : 'second', onBeforeDelete: module === 'demo-extension' ? first : second,
+      ...(module === cfg.extensions[0].module ? { keys: testKeys } : {}), name: module === 'demo-extension' ? 'demo' : 'second', onBeforeDelete: module === 'demo-extension' ? first : second,
     } }));
     expect((await erase(runtime)).status).toBe(503);
     expect(first).toHaveBeenCalledTimes(1); expect(second).toHaveBeenCalledTimes(1);

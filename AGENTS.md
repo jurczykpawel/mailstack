@@ -99,12 +99,12 @@ curl -X POST https://mail.example.com/v1/send \
 ```
 
 ### Trusted mode (server-to-server / transactional)
-Send `Authorization: Bearer <token>` for a configured client with `send` scope and
-allowed brand/template, or the enabled legacy `API_KEY`. This skips public guards and allows:
+Send `Authorization: Bearer <token>` with the full `API_KEY` (free core) or a Mailstack Pro
+client with `send` scope and allowed brand/template. This skips public guards and allows:
 - a `template` selection (any registered type — see [Templates](#templates); public is
   always pinned to `contact`),
 - a `subject` override,
-- a validated `to` override when `recipientOverride: true` (valid email(s), capped to 5),
+- a validated `to` override (full key always; Pro clients with `recipientOverride: true`; valid email(s), capped to 5),
 - a validated `replyTo` override.
 
 Transactional example (payment receipt):
@@ -163,7 +163,7 @@ interface Brand {
 
 Example brands in `config/mailstack.example.json`: `acme` (auto-reply on) and `demo`. Copy the JSON outside the repository and export `MAILSTACK_CONFIG`. Node 24+ runs the TypeScript CLI directly: `node scripts/mailstack.ts config check <file>` or `config import-brands <legacy-brands.ts>` (JSON stdout; trusted local input).
 
-The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. Clients, legacyApiKey, sender and events.ses are optional validated sections; alerts is reserved and uninterpreted. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; both runtime loaders currently reject it; keep includeSecrets false. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
+The zod schema in `src/core/config/schema.ts` validates brands and logging at boot with JSON-path errors. legacyApiKey, sender and events.ses are optional validated sections; `clients` is validated by Mailstack Pro; alerts is reserved and uninterpreted. Node uses `loadNodeConfig()`; Worker setup bundles validated JSON and records `BUILD_CONFIG_SHA` in Wrangler vars. The custom build verifies the input hash. `includeSecrets` needs an audit sink at boot; both runtime loaders currently reject it; keep includeSecrets false. Tests/typecheck generate the example bundle; rerun setup with the external config before building.
 
 For a complete validated JSON example and legacy migration commands, see
 [configuration](README.md#complete-configuration-example) and
@@ -171,18 +171,22 @@ For a complete validated JSON example and legacy migration commands, see
 precedence, `secretFields`, `subjectRoles` and policy constraints are described under
 [logging policies](README.md#logging-policies). Defaults stay `resend: "off"`; execution requires the extension capability documented in README.
 
-### Client configuration
+### API keys: free core vs Mailstack Pro
 
-```bash
-node scripts/mailstack.ts client create --id acme-app --scopes send --brands acme --templates notice,payment
-node scripts/mailstack.ts client create --id panel --scopes panel
-```
+The free core (`src/clients.ts`) authenticates ONE full key: `API_KEY` / `legacyApiKey`
+(scopes `send` + `hook:sellf`, all brands/templates, `to` override allowed). Free options:
+`enabled`, `env`, `attachments`, `signatureSecretEnv` (Sellf signature on the full key).
+Restricting `scopes`/`brands`/`templates`/`recipientOverride` fails validation
+(`additional or restricted API keys require Mailstack Pro`).
 
-The CLI prints the token once alongside a configuration entry containing `tokenSha256`.
-Clients with `send` or `hook:sellf` require explicit `brands` and `templates` (lists or `"*"`);
-CLI callers must provide both `--brands` and `--templates` (quote `'*'` for all values).
-Panel-only clients may omit these selections, which become empty lists. `legacyApiKey`
-retains its wildcard defaults for both fields.
+Additional keys (`clients`), restrictions, `rate`, `resendCallback` and the `panel` client
+live in Mailstack Pro (`mailstack-pro/src/keys.ts`, CLI `node scripts/client.ts create`).
+Pro registers a `KeyProvider` through the extension `keys(config)` hook; `authenticate`
+checks the full key first, then asks the provider. Pro returns null without a valid
+license, so the full key never depends on licensing. `clients` without a key provider stops
+Node startup and `npm run setup` (Worker loads no extensions → only the full key).
+Core still enforces the returned principal (`permits`, `recipientOverride`, `attachments`)
+in send/sources/panel; core tests use `test/fixtures/keys.ts` as a stand-in provider.
 
 ### How to add a brand
 1. Append an entry to `brands` in the external JSON with a new id.
@@ -338,8 +342,8 @@ them as `RenderedBody.jsonLd` (see `src/templates/types/payment.ts`).
 `POST /v1/hooks/sellf` turns Sellf webhook events into branded emails to the customer,
 reusing the existing templates (no new template types).
 
-- **Auth: Bearer required.** Sellf uses a client with `hook:sellf` scope or the legacy
-  API key. Clients with `sellfSignatureSecretEnv` additionally require a valid
+- **Auth: Bearer required.** Sellf uses the full API key or a Pro client with `hook:sellf`
+  scope. `legacyApiKey.signatureSecretEnv` (free) or a Pro client's signature reference additionally require a valid
   `X-Sellf-Signature` (see Send logging and idempotency below). Missing/invalid
   credentials return `401 {success:false,message:"unauthorized"}`.
 - **Brand:** `?brand=<id>`, defaults to `SELLF_DEFAULT_BRAND` env var or the first brand in the registry. Unknown brand → `400 {success:false,message:"unknown brand"}`.

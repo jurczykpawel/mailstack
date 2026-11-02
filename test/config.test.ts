@@ -4,7 +4,6 @@ import { loadConfig } from "../src/core/config/load";
 import example from "../config/mailstack.example.json";
 import { TEMPLATES } from "../src/templates/index";
 const BRANDS = example.brands;
-const clientDefaults = { id: "demo-client", tokenSha256: "a".repeat(64), scopes: ["send"], recipientOverride: false, attachments: false };
 
 function config() {
   return {
@@ -28,7 +27,6 @@ describe("configuration schema", () => {
     ["content ceiling", (v: Draft) => { v.logging.ceilings.contentDays = 20; }, "$.logging.defaults.contentDays"],
     ["metadata ceiling", (v: Draft) => { v.logging.ceilings.metaDays = 80; }, "$.logging.defaults.metaDays"],
     ["replay level", (v: Draft) => { v.logging.defaults.resend = "replay"; }, "$.logging.defaults.resend"],
-    ["source callback", (v: Draft) => { v.logging.defaults.resend = "source"; }, "$.logging.defaults.resend"],
     ["secret level", (v: Draft) => { v.logging.defaults.includeSecrets = true; }, "$.logging.defaults.includeSecrets"],
     ["fractional days", (v: Draft) => { v.logging.defaults.contentDays = 1.5; }, "$.logging.defaults.contentDays"],
     ["zero days", (v: Draft) => { v.logging.defaults.contentDays = 0; }, "$.logging.defaults.contentDays"],
@@ -60,13 +58,6 @@ describe("configuration schema", () => {
     const value = parseConfig(config()); value.logging.defaults.level = "masked"; value.logging.brands = { acme: { templates: { payment: { resend: "replay" } } } };
     expect(parseConfig(value).logging.brands.acme.templates?.payment.resend).toBe("replay");
   });
-  it("requires a callback matching the effective brand and template", () => {
-    const value = { ...config(), clients: [{ ...clientDefaults, brands: ["demo"], templates: ["payment"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } }] };
-    const logging = { ...value.logging, brands: { acme: { templates: { payment: { resend: "source" } } } } };
-    expect(() => parseConfig({ ...value, logging })).toThrow("$.logging.brands.acme.templates.payment.resend");
-    value.clients[0].brands = ["acme"];
-    expect(parseConfig({ ...value, logging }).clients).toEqual(value.clients);
-  });
   it("accepts the deferred alerts section without interpreting it", () => {
     expect(parseConfig({ ...config(), alerts: "later" }).alerts).toBe("later");
   });
@@ -88,13 +79,6 @@ describe("configuration schema", () => {
 it("applies policy validation through the exported zod schema", () => {
   const value = config(); value.logging.defaults.resend = "replay";
   expect(configSchema.safeParse(value).success).toBe(false);
-});
-it("accepts a global source policy covered by clients for every registered template", () => {
-  const value = config(); value.logging.defaults.resend = "source";
-  const client = { ...clientDefaults, brands: ["acme", "demo"], templates: ["contact", "welcome", "received", "payment", "notice", "license", "refund"], resendCallback: { url: "https://example.com/resend", secretEnv: "RESEND_SECRET" } };
-  expect(() => parseConfig({ ...value, clients: [client] })).not.toThrow();
-  client.templates = ["payment"];
-  expect(() => parseConfig({ ...value, clients: [client] })).toThrow("$.logging.defaults.resend");
 });
 it("validates default policies even when the brand registry is empty", () => {
   const value = config(); value.logging.defaults.resend = "replay";

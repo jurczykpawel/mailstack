@@ -87,7 +87,7 @@ it("builds external config and verifies subsequent input changes", async () => {
   mkdirSync(join(root, "src/core/config"), { recursive: true });
   for (const file of ["schema.ts", "sources.ts", "load.ts", "node.ts"]) cpSync(`src/core/config/${file}`, join(root, "src/core/config", file));
   cpSync("scripts/bundle-config.ts", join(root, "scripts/bundle-config.ts"));
-  for (const file of ["urls.ts", "purchase-licenses.ts"]) cpSync(`src/${file}`, join(root, "src", file));
+  for (const file of ["urls.ts", "purchase-licenses.ts", "clients.ts"]) cpSync(`src/${file}`, join(root, "src", file));
   cpSync("src/templates", join(root, "src/templates"), { recursive: true });
   cpSync("src/markup", join(root, "src/markup"), { recursive: true });
   cpSync("docs/sources", join(root, "docs/sources"), { recursive: true });
@@ -97,15 +97,12 @@ it("builds external config and verifies subsequent input changes", async () => {
   expect(run().status).toBe(0);
   expect(readFileSync(join(root, "src/core/config/bundled.ts"), "utf8")).toContain(createHash("sha256").update(json).digest("hex"));
   expect(run("--verify").status).toBe(0);
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(json), clients: [] }));
+  const scoped = run("--check");
+  expect(scoped.status).toBe(1); expect(scoped.stderr).toContain("$.clients: additional or restricted API keys require Mailstack Pro");
   writeFileSync(file, json + "\n");
   expect(run("--verify").stderr).toContain("BUILD_CONFIG_SHA");
   writeFileSync(file, "{}");
   expect(run().stderr).toContain("$.version");
 });
 
-it('creates an explicit webhook configuration client without other scopes', () => {
-  const result = cli(['client', 'create', '--id', 'hooks', '--scopes', 'webhooks:write']);
-  expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).client).toMatchObject({ scopes: ['webhooks:write'], brands: [], templates: [] });
-  expect(cli(['client', 'create', '--id', 'panel', '--scopes', 'panel,webhooks:write', '--brands', '*', '--templates', '*']).status).toBe(0);
-});

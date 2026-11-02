@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { testKeys } from './fixtures/keys';
 import { generateKeyPairSync } from 'node:crypto';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { config } from '../src/core/config';
@@ -50,7 +51,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`Sellf refunds: ${drive
     await store.db.deleteFrom('messages').execute();
     await store.db.deleteFrom('guards').execute();
     now = Date.parse('2026-10-28T22:12:43Z');
-    deps = { store, logging: structuredClone(config.logging), now: () => new Date(now),
+    deps = { store, keys: testKeys(config), logging: structuredClone(config.logging), now: () => new Date(now),
       verifyAltcha: vi.fn(), verifyTurnstile: vi.fn(), emitEvent: vi.fn(), sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200 }) };
     deps.logging!.defaults.level = 'meta';
   });

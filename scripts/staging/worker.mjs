@@ -66,7 +66,7 @@ if (command.startsWith('hmac-')) {
       put('secrets.json', secrets);
       await mutate('hmac-secret', `${script}/secrets`, 'PUT', { name: 'SELLF_STAGING_HMAC', text: value, type: 'secret_text' });
     },
-    verify: (active, inactive) => verifyHmac(`https://${hostname}`, secrets.HOOK_TOKEN, active, inactive),
+    verify: (active, inactive) => verifyHmac(`https://${hostname}`, secrets.API_KEY, active, inactive),
   });
   console.log(`${command}: verified; production IDENTICAL`);
 } else if (command === 'status') {
@@ -97,26 +97,22 @@ if (command.startsWith('hmac-')) {
     }
     cfg.events = { ses: { topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false } };
   }
-  cfg.sender = { type: 'ses' }; cfg.legacyApiKey = { enabled: false };
+  cfg.sender = { type: 'ses' }; delete cfg.clients;
+  // The Worker has no Pro key provider: one full key, with the Sellf hook signature on it.
+  cfg.legacyApiKey = { enabled: true, env: 'API_KEY', signatureSecretEnv: 'SELLF_STAGING_HMAC' };
   cfg.logging.defaults = { ...cfg.logging.defaults, level: 'masked', requireLog: true, contentDays: 1, metaDays: 7 };
   const pair = generateKeyPairSync('x25519'), kid = 'staging-content';
   const secrets = existsSync(`${state}/secrets.json`) ? JSON.parse(readFileSync(`${state}/secrets.json`)) : {
-    SEND_TOKEN: randomBytes(32).toString('base64url'), HOOK_TOKEN: randomBytes(32).toString('base64url'),
     SELLF_STAGING_HMAC: randomBytes(32).toString('base64url'), ALTCHA_HMAC_KEY: randomBytes(32).toString('base64url'),
     CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [{ ...pair.publicKey.export({ format: 'jwk' }), kid }] }),
     INDEX_KEYS: JSON.stringify([{ kid: 'staging-index', key: randomBytes(32).toString('base64url') }]),
   };
-  for (const [key, id] of [['SEND_TOKEN', 'staging-send'], ['HOOK_TOKEN', 'staging-hook']]) {
-    if (!secrets[key].startsWith(`msk_${id}_`)) secrets[key] = `msk_${id}_${secrets[key]}`;
-  }
+  secrets.API_KEY ??= randomBytes(32).toString('base64url');
+  delete secrets.SEND_TOKEN; delete secrets.HOOK_TOKEN;
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
   secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
   put('secrets.json', secrets);
-  cfg.clients = [
-    { id: 'staging-send', tokenSha256: digest(secrets.SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'], recipientOverride: delivery === 'ses' },
-    { id: 'staging-hook', tokenSha256: digest(secrets.HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], sellfSignatureSecretEnv: 'SELLF_STAGING_HMAC' },
-  ];
   put('mailstack.json', cfg);
   const configJSON = JSON.stringify(cfg), sha = digest(configJSON);
   // The staging composition restricts every enabled provider call to the simulator.
@@ -160,7 +156,7 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
   const metadata = { main_module: 'worker.mjs', compatibility_date: '2026-10-26', compatibility_flags: ['nodejs_compat'], bindings: [
     { name: 'DB', type: 'd1', id: database.uuid },
     ...Object.entries(vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
-    ...Object.entries({ ...secrets, ...providerSecrets }).filter(([key]) => !['SEND_TOKEN', 'HOOK_TOKEN'].includes(key)).map(([name, text]) => ({ name, text, type: 'secret_text' })),
+    ...Object.entries({ ...secrets, ...providerSecrets }).map(([name, text]) => ({ name, text, type: 'secret_text' })),
   ], observability: { enabled: false } };
   const form = new FormData(); form.set('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.set('worker.mjs', new Blob([readFileSync(`${state}/worker.mjs`)], { type: 'application/javascript+module' }), 'worker.mjs');

@@ -63,11 +63,16 @@ it('deploys isolated resources with a record for each write', () => {
     );
   }
 });
-it('permits every template used by the Sellf preset for the staging hook', () => {
+it('uses the full key with the Sellf signature and no scoped clients', () => {
   const { dir } = run('deploy');
   const config = JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8'));
-  const hook = config.clients.find((client: { id: string }) => client.id === 'staging-hook');
-  expect(hook.templates).toEqual(['payment', 'refund', 'notice', 'welcome']);
+  expect(config.clients).toBeUndefined();
+  expect(parseConfig(config).legacyApiKey).toMatchObject({ enabled: true, env: 'API_KEY', signatureSecretEnv: 'SELLF_STAGING_HMAC' });
+  const secrets = JSON.parse(readFileSync(join(dir, 'secrets.json'), 'utf8'));
+  expect(Object.keys(secrets)).toContain('API_KEY');
+  expect(Object.keys(secrets)).not.toContain('SEND_TOKEN');
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings).toEqual(expect.arrayContaining([{ name: 'API_KEY', type: 'secret_text' }, { name: 'SELLF_STAGING_HMAC', type: 'secret_text' }]));
 });
 it('accepts repeated removal when recorded resources are already absent', () => {
   const { child } = run('destroy');
@@ -79,7 +84,6 @@ it('limits enabled SES delivery to simulator recipients and keeps credentials ou
   expect(child.status, child.stderr).toBe(0);
   const config = JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8'));
   expect(config.events.ses).toEqual({ topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false });
-  expect(config.clients[0].recipientOverride).toBe(true);
   const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
   expect(bindings).toEqual(expect.arrayContaining([
     { name: 'SES_ACCESS_KEY_ID', type: 'secret_text' },

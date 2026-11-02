@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { keysOnly } from './fixtures/keys';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -223,7 +224,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     const cfg = configuration('masked');
     const token = 'msk_panel_' + 'a'.repeat(43), key = Buffer.alloc(32, 7).toString('base64url');
     cfg.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', recipientOverride: false, attachments: false }];
-    const runtime = await loadExtensions(cfg, store);
+    const [keyed, importer] = keysOnly(cfg);
+    const runtime = await loadExtensions(keyed, store, importer);
     const at = Date.now();
     const request = new Request('http://localhost/internal/v1/subjects/erase', { method: 'POST',
       headers: { authorization: 'Bearer ' + token, 'x-panel-actor': 'user-1' },
