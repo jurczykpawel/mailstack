@@ -111,5 +111,5 @@ async function main() {
   } catch (error) { await store.db.destroy(); throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(error => { console.error(error instanceof Error && /^\$\.(?:extensions\b|clients:)/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
+  main().catch(error => { console.error(error instanceof Error && /^\$\.(?:extensions|clients|logging)\b/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
 }
