@@ -7,7 +7,7 @@ it.each(['complete', 'swap-partial', 'swap-interrupted', 'swap-rename', 'restore
   const dir=mkdtempSync(join(tmpdir(),'worker-hmac-')),preload=join(dir,'mock.mjs');
   const original='original_secret_123456',temporary='temporary_secret_123456';
   writeFileSync(join(dir,'resources.json'),JSON.stringify({account:'test',name:'mailstack-staging',database:'dedicated'}));
-  writeFileSync(join(dir,'secrets.json'),JSON.stringify({HOOK_TOKEN:'hook',SELLF_STAGING_HMAC:original,OTHER:'preserve'}));
+  writeFileSync(join(dir,'secrets.json'),JSON.stringify({API_KEY:'full',SELLF_STAGING_HMAC:original,OTHER:'preserve'}));
   writeFileSync(join(dir,'live'),original);
   writeFileSync(preload,`import fs, {readFileSync,writeFileSync,appendFileSync} from 'node:fs';import {syncBuiltinESMExports} from 'node:module';import {createHmac} from 'node:crypto';
 const dir=${JSON.stringify(dir)};
@@ -36,6 +36,7 @@ globalThis.fetch=async(url,options={})=>{
    writeFileSync(dir+'/live',value.text);appendFileSync(dir+'/writes',value.name+'\\n');return response({});
  }
  if(path==='/v1/hooks/sellf'){
+   if(options.headers.authorization!=='Bearer full')return Response.json({success:false},{status:401});
    const signature=options.headers['X-Sellf-Signature'],t=signature.match(/t=(\\d+)/)[1];
    const expected=createHmac('sha256',readFileSync(dir+'/live','utf8')).update(t+'.'+options.body).digest('hex');
    return signature.endsWith(expected)?Response.json({success:true,ignored:'staging.hmac.probe'}):Response.json({success:false},{status:401});
@@ -58,7 +59,7 @@ globalThis.fetch=async(url,options={})=>{
         rmSync(join(dir,'hmac.lock'));
       }
       const restored=run('hmac-restore');expect(restored.status,restored.stderr).toBe(0);
-      expect(JSON.parse(readFileSync(join(dir,'secrets.json')))).toEqual({HOOK_TOKEN:'hook',SELLF_STAGING_HMAC:original,OTHER:'preserve'});
+      expect(JSON.parse(readFileSync(join(dir,'secrets.json')))).toEqual({API_KEY:'full',SELLF_STAGING_HMAC:original,OTHER:'preserve'});
       expect(readFileSync(join(dir,'live'),'utf8')).toBe(original);
       return;
     }
