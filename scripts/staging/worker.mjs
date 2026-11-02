@@ -9,6 +9,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const state = resolve(process.env.MAILSTACK_STAGING_STATE ?? `${process.env.HOME}/.config/mailstack-staging/worker`);
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const name = 'mailstack-staging', hostname = 'mailstack-test.techskills.academy';
+// A Worker cannot fetch its own custom domain (522), so Pro reads the fixture license endpoints from a second Worker.
+const licenseName = 'mailstack-staging-license', licenseHost = 'mailstack-license-test.techskills.academy';
 const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
 // Optional Mailstack Pro checkout (clean tree); its commit is extracted like the core one.
@@ -54,7 +56,8 @@ async function mutate(label, path, method, body) {
 const databases = await api(`${base}/d1/database`);
 let database = databases.find(value => value.name === name);
 const domains = await api(`${base}/workers/domains`);
-const domain = domains.find(value => value.hostname === hostname);
+const domain = domains.find(value => value.hostname === hostname), licenseDomain = domains.find(value => value.hostname === licenseHost);
+if (licenseDomain && licenseDomain.service !== licenseName) throw new Error('License hostname is already assigned to another service');
 if (domain && domain.service !== name) throw new Error('Staging hostname is already assigned to another service');
 if (command.startsWith('hmac-')) {
   const record = JSON.parse(readFileSync(`${state}/resources.json`));
@@ -77,7 +80,9 @@ if (command.startsWith('hmac-')) {
   const record = JSON.parse(readFileSync(`${state}/resources.json`));
   if (record.account !== account || record.name !== name || database && record.database !== database.uuid) throw new Error('Resource identity differs from local record');
   if (domain) await mutate('remove-domain', `${base}/workers/domains/${domain.id}`, 'DELETE');
+  if (licenseDomain) await mutate('remove-license-domain', `${base}/workers/domains/${licenseDomain.id}`, 'DELETE');
   const scripts = await api(`${base}/workers/scripts`);
+  if (scripts.some(value => value.id === licenseName)) await mutate('remove-license-worker', `${base}/workers/scripts/${licenseName}`, 'DELETE');
   if (scripts.some(value => value.id === name)) await mutate('remove-worker', script, 'DELETE');
   if (database) await mutate('remove-database', `${base}/d1/database/${database.uuid}`, 'DELETE');
 } else {
@@ -122,7 +127,7 @@ if (command.startsWith('hmac-')) {
     secrets.STAGING_SEND_TOKEN ??= `msk_st-send_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
     cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
-      jwksUrl: `https://${hostname}/_staging/jwks`, revocationUrl: `https://${hostname}/_staging/revoked` } }];
+      jwksUrl: `https://${licenseHost}/_staging/jwks`, revocationUrl: `https://${licenseHost}/_staging/revoked` } }];
     cfg.clients = [
       { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'] },
       { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
@@ -191,5 +196,12 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
   const zone = zones.find(value => value.account.id === account);
   if (!zone) throw new Error('Zone unavailable');
   if (!domain) await mutate('attach-domain', `${base}/workers/domains`, 'PUT', { hostname, service: name, environment: 'production', zone_id: zone.id });
+  if (pro) {
+    const fixtureForm = new FormData();
+    fixtureForm.set('metadata', new Blob([JSON.stringify({ main_module: 'license.mjs', compatibility_date: '2026-10-26', bindings: [], observability: { enabled: false } })], { type: 'application/json' }));
+    fixtureForm.set('license.mjs', new Blob([`export default {fetch(req){const p=new URL(req.url).pathname;if(req.method==='GET'&&p==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});if(req.method==='GET'&&p==='/_staging/revoked')return Response.json({order_hashes:[]});return new Response(null,{status:404});}};`], { type: 'application/javascript+module' }), 'license.mjs');
+    await mutate('upload-license-worker', `${base}/workers/scripts/${licenseName}`, 'PUT', fixtureForm);
+    if (!licenseDomain) await mutate('attach-license-domain', `${base}/workers/domains`, 'PUT', { hostname: licenseHost, service: licenseName, environment: 'production', zone_id: zone.id });
+  }
   console.log(`Staging ready: https://${hostname}; delivery ${delivery}; keys stored outside source`);
 }
