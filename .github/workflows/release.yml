@@ -17,6 +17,7 @@ jobs:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+      - run: npm run setup
       - run: npm run typecheck
       - run: npm test
   image:
