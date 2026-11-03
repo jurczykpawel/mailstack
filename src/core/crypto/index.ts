@@ -10,18 +10,18 @@ export interface SealContext {
   purpose: 'rcpt' | 'subject' | 'ref' | 'content' | 'replay' | 'evidence' | 'provider_response';
 }
 
-const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm() });
+export const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm() });
 const utf8 = new TextEncoder();
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const purposes = new Set(['rcpt', 'subject', 'ref', 'content', 'replay', 'evidence', 'provider_response']);
 const invalid = () => new Error('Invalid key configuration');
 
-function encode(value: ArrayBuffer): string {
+export function encode(value: ArrayBuffer): string {
   return btoa(Array.from(new Uint8Array(value), (b) => String.fromCharCode(b)).join(''))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function decode(value: string): ArrayBuffer {
+export function decode(value: string): ArrayBuffer {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw invalid();
   const bytes = Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
   if (encode(bytes.buffer) !== value) throw invalid();
