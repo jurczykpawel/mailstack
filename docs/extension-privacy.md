@@ -38,10 +38,10 @@ const extension: Extension = {
 ```
 
 Hooks run in configured extension order, with a five-second deadline per hook and
-batch. Erasure prepares batches of at most 50 messages and awaits every cleanup
-before deleting any core message or child row. A hook error or deadline returns
-503 with `{ success: false }`. The existing audit entry records the attempted
-operation. Retention prepares batches of at most 500; a hook failure preserves that
+batch. Erasure runs as a background job: each portion of at most 500 messages is
+passed to every cleanup before the core hides it, and its rows are deleted only in a
+later phase. A hook error or deadline leaves that portion untouched and the job
+retries it after a delay; earlier portions stay hidden. Retention prepares batches of at most 500; a hook failure preserves that
 message batch for a later pass. Other batches and independent content, replay,
 guard and resend-job expiry, stale-send reconciliation and audit pruning continue.
 The pass reports the cleanup failure after this maintenance completes.
@@ -52,7 +52,7 @@ deadline does not cancel extension code. Extensions must coordinate their own
 queued and active work with cleanup, awaiting durable completion before returning.
 The core deletes exactly the prepared message IDs after hook completion.
 
-Node's scheduler uses `runtime.runRetention(now)` from `loadExtensions`. Custom
-integrations may pass a `BeforeMessageDelete` callback to core `runRetention` and
-`internalFetch`. With no cleanup hooks, existing responses and retention policies
+Node's scheduler uses `runtime.runRetention(now)` from `loadExtensions` and passes
+`runtime.beforeDelete` to `runJobs`. Custom integrations may pass a
+`BeforeMessageDelete` callback to core `runRetention` and `runJobs`. With no cleanup hooks, existing responses and retention policies
 apply. Subject export retains its existing core response contract.

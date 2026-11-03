@@ -138,6 +138,13 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
       result: { count: 3, tombstones: [{ kid: 'k1', index: (await blindIndex('one@example.com', indexKey)).index, at, brands: ['acme'], templates: '*' }] } });
   });
 
+  it('requires an admin with a recent step-up to start an erasure', async () => {
+    await seed(1);
+    for (const p of [principal({ stepUpAt: null }), principal({ stepUpAt: Date.now() - 300001 }), principal({ role: 'operator' })])
+      expect((await api('/subjects/erase', { email: 'one@example.com', reason: 'Requested by subject' }, p)).status).toBe(403);
+    expect(await jobs()).toEqual([]);
+  });
+
   it('shows job status only to admins whose scope covers the job', async () => {
     const job = await start(undefined, principal({ brands: ['acme', 'demo'] }));
     expect((await api('/jobs/' + job, undefined, principal({ brands: ['acme'] }))).status).toBe(404);
