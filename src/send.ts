@@ -13,7 +13,7 @@ import type {
 import { deliver, deliveryResponse } from "./core/logging/delivery";
 import type { DeliveryContext } from "./core/logging/delivery";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
-import { authenticate, permits } from "./clients.ts";
+import { authenticate, licenseRequired, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { consumeAltcha, verifyNonce } from "./altcha";
 import { checkRateLimit } from "./ratelimit";
@@ -153,7 +153,9 @@ export async function handleSend(
     [getBrand(queryBrandId), getBrand(bodyBrandId), findBrandByOrigin(origin)]
       .some(candidate => candidate && isOriginAllowed(candidate, origin)) ? origin : null;
 
-  const client = await authenticate(req, env, config, deps.keys, deps.waitUntil);
+  const authenticated = await authenticate(req, env, config, deps.keys, deps.waitUntil);
+  if (authenticated && "denied" in authenticated) return licenseRequired();
+  const client = authenticated;
   const trusted = !!client;
   let rawText: string;
   try {

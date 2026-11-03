@@ -10,14 +10,17 @@ export interface Client {
 }
 /** Keeps a background task alive past the response (Worker `ctx.waitUntil`). */
 export type Defer = (task: Promise<unknown>) => void;
+/** A valid scoped token whose license was refused; only the panel's capabilities route accepts it (D2, N7). */
+export interface Denied { denied: "license"; client: Client }
 /** Extension hook for keys beyond the single full key (Mailstack Pro). */
 export interface KeyProvider {
-  authenticate(token: string, env: object, defer?: Defer): Promise<Client | null>;
+  authenticate(token: string, env: object, defer?: Defer): Promise<Client | Denied | null>;
   client(id: string): Client | undefined;
 }
 /** Worker build of Mailstack Pro, generated into `src/core/pro.generated.ts` by `npm run setup`. */
 export type ProKeys = (config: Config, env: object) => KeyProvider;
 export const PRO_KEYS = "additional or restricted API keys require Mailstack Pro";
+export const licenseRequired = () => Response.json({ success: false, message: "license required", code: "license_required" }, { status: 403 });
 
 const encoder = new TextEncoder();
 export async function tokenSha256(token: string): Promise<string> {
@@ -35,7 +38,7 @@ export async function tokenMatches(token: string, expected: string): Promise<boo
 export const bearerToken = (req: Request): string | undefined => /^Bearer\s+(.+)$/i.exec(req.headers.get("authorization") ?? "")?.[1].trim();
 export async function authenticate(
   req: Request, env: object, config: Pick<Config, "legacyApiKey">, keys?: KeyProvider, defer?: Defer,
-): Promise<Client | null> {
+): Promise<Client | Denied | null> {
   const token = bearerToken(req);
   if (!token) return null;
   const legacy = config.legacyApiKey;
@@ -44,7 +47,11 @@ export async function authenticate(
     return { id: "legacy", scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: true,
       attachments: legacy?.attachments ?? false, signatureSecretEnv: legacy?.signatureSecretEnv };
   }
-  return keys ? keys.authenticate(token, env, defer) : null;
+  const result = keys ? await keys.authenticate(token, env, defer) : null;
+  if (!result || !("denied" in result)) return result;
+  // A denial carries the configured principal, never a wider one supplied with it.
+  const configured = keys!.client(result.client.id);
+  return configured ? { denied: "license", client: configured } : null;
 }
 /** Fails startup when the configuration declares clients without a key provider. */
 export function requireKeyProvider(config: Pick<Config, "clients">, keys?: KeyProvider): void {

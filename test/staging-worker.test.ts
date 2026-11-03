@@ -4,6 +4,7 @@ import { parseConfig } from '../src/core/config/schema';
 import { resolvePolicy } from '../src/core/logging/policy';
 import { projectArchive } from '../src/core/logging/projection';
 import { getTemplate } from '../src/templates';
+import { parseTransitKeys } from '../src/core/keyring';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -73,6 +74,13 @@ it('uses the full key with the Sellf signature and no scoped clients', () => {
   expect(Object.keys(secrets)).not.toContain('SEND_TOKEN');
   const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
   expect(bindings).toEqual(expect.arrayContaining([{ name: 'API_KEY', type: 'secret_text' }, { name: 'SELLF_STAGING_HMAC', type: 'secret_text' }]));
+});
+it('provisions a valid transit keyring as a Worker secret', async () => {
+  const { dir } = run('deploy');
+  const secrets = JSON.parse(readFileSync(join(dir, 'secrets.json'), 'utf8'));
+  expect((await parseTransitKeys(secrets.TRANSIT_KEYS)).publicKeys).toEqual([{ kid: 'staging-transit', x: expect.any(String) }]);
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings).toEqual(expect.arrayContaining([{ name: 'TRANSIT_KEYS', type: 'secret_text' }]));
 });
 it('accepts repeated removal when recorded resources are already absent', () => {
   const { child } = run('destroy');

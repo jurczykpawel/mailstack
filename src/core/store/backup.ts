@@ -1,8 +1,9 @@
 import type Database from 'better-sqlite3';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { NODE_SNAPSHOTS } from '../capabilities';
 
-export async function backupSqlite(db: Database.Database, dir: string, now: number, keep = 7): Promise<string> {
+export async function backupSqlite(db: Database.Database, dir: string, now: number, keep = NODE_SNAPSHOTS): Promise<string> {
   if (!Number.isSafeInteger(keep) || keep < 1 || !Number.isFinite(now)) throw new Error('Invalid backup options');
   const name = `mailstack-${new Date(now).toISOString().slice(0, 10).replaceAll('-', '')}.db`;
   await mkdir(dir, { recursive: true, mode: 0o700 });

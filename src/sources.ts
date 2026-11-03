@@ -4,7 +4,7 @@ import { config, getBrand } from './core/config';
 import { SOURCE_LIMITS } from './core/config/sources';
 import type { Source, SourceField } from './core/config/sources';
 import { boundedBytes } from './core/http';
-import { authenticate, permits, tokenSha256 } from './clients';
+import { authenticate, licenseRequired, permits, tokenSha256 } from './clients';
 import { getTemplate, missingRequiredFields } from './templates/index';
 import { renderAndSend } from './send';
 import { deliveryResponse } from './core/logging/delivery';
@@ -73,6 +73,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (!source) return json({ success: false, message: 'not found' }, 404);
   const client = await authenticate(req, env, config, deps.keys, deps.waitUntil);
   if (!client) return json({ success: false, message: 'unauthorized' }, 401);
+  if ('denied' in client) return licenseRequired();
   const brandId = new URL(req.url).searchParams.get('brand') || (id === 'sellf' ? env.SELLF_DEFAULT_BRAND : undefined) || Object.keys(config.brands)[0];
   const forbidden = () => json({ success: false, message: 'forbidden', code: 'scope' }, 403);
   if (!permits(client, `hook:${id}`, brandId)) return forbidden();

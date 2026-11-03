@@ -1,5 +1,5 @@
 import { createMac, encode, verifyMac, type IndexKey } from './crypto';
-import { authenticate, bearerToken, tokenSha256, type Defer, type KeyProvider } from '../clients';
+import { authenticate, bearerToken, licenseRequired, tokenSha256, type Defer, type KeyProvider } from '../clients';
 import type { Config } from './config/schema';
 import type { KyselyStore } from './store';
 import { parseIndexKeys } from './keyring';
@@ -9,7 +9,7 @@ export const PANEL_PROTOCOL = '2';
 export interface PanelClaims {
   actor: string; role: 'viewer' | 'operator' | 'admin'; issuedAt: number; expiresAt: number; stepUpAt: number | null;
 }
-export interface PanelPrincipal extends PanelClaims { scopes: string[]; brands: '*' | string[]; templates: '*' | string[] }
+export interface PanelPrincipal extends PanelClaims { scopes: string[]; brands: '*' | string[]; templates: '*' | string[]; denied?: 'license' }
 /** Signing inputs: one keyring entry, the Bearer token sent with the request, the API installation id, and an optional nonce (null omits it). */
 export interface PanelSigning { key: IndexKey; token: string; aud: string; nonce?: string | null }
 async function operation(req: Request): Promise<string> {
@@ -46,10 +46,13 @@ export function panelAllows(p: PanelClaims, role: PanelClaims['role'], stepUp = 
     (!stepUp || (p.stepUpAt !== null && p.stepUpAt <= now && now - p.stepUpAt <= 300000));
 }
 export interface PanelGate { audience: string | undefined; store: Pick<KyselyStore, 'consume'>; keys?: KeyProvider; defer?: Defer }
-/** The one internal API gate for Node and the Worker: client token, panel scope, assertion v2, then single use of its nonce. */
+/** The one internal API gate for Node and the Worker: client token, license, panel scope, assertion v2, then single use of its nonce. */
 export async function authorizePanel(req: Request, env: object, config: Pick<Config, 'legacyApiKey'>, gate: PanelGate): Promise<PanelPrincipal | Response> {
-  const client = await authenticate(req, env, config, gate.keys, gate.defer);
-  if (!client) return Response.json({ success: false }, { status: 401 });
+  const result = await authenticate(req, env, config, gate.keys, gate.defer);
+  if (!result) return Response.json({ success: false }, { status: 401 });
+  // Without a license a valid token reaches only the capabilities route, which reports the license state.
+  const denied = 'denied' in result, client = denied ? result.client : result;
+  if (denied && (req.method !== 'GET' || new URL(req.url).pathname !== '/internal/v2/capabilities')) return licenseRequired();
   const verified = client.scopes.includes('panel') ? await verifyPanelAssertion(req, env, gate.audience ?? '') : null;
   if (!verified) return Response.json({ success: false }, { status: 403 });
   if (verified.nonce !== undefined) {
@@ -58,5 +61,5 @@ export async function authorizePanel(req: Request, env: object, config: Pick<Con
     catch { return Response.json({ success: false }, { status: 503 }); }
     if (!fresh) return Response.json({ success: false, code: 'replayed' }, { status: 409 });
   }
-  return { ...verified.claims, scopes: client.scopes, brands: client.brands, templates: client.templates };
+  return { ...verified.claims, scopes: client.scopes, brands: client.brands, templates: client.templates, ...(denied ? { denied: 'license' as const } : {}) };
 }
