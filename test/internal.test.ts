@@ -11,7 +11,9 @@ import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
 import type { KyselyStore } from '../src/core/store';
 import { loadExtensions } from '../src/runtime/extensions';
-import { signPanelAssertion, type PanelClaims } from '../src/core/panel';
+import { PANEL_PROTOCOL, type PanelClaims } from '../src/core/panel';
+import { panelEnv, panelKey, signPanel } from './fixtures/panel';
+import { createMac } from '../src/core/crypto';
 import { tokenSha256 } from '../src/clients';
 import { blindIndex, refIndex } from '../src/core/crypto';
 import { parseConfig } from '../src/core/config/schema';
@@ -26,7 +28,7 @@ interface Payload { messages: { id: string; [key: string]: unknown }[]; cursor: 
 const token = 'msk_panel_' + 'a'.repeat(43), now = Date.now();
 const key = Buffer.alloc(32, 7).toString('base64url');
 const indices = [{ kid: 'new', key }, { kid: 'old', key: Buffer.alloc(32, 8).toString('base64url') }];
-const env = { PANEL_ASSERTION_KEY: key, INDEX_KEYS: JSON.stringify(indices) };
+const env = { ...panelEnv, INDEX_KEYS: JSON.stringify(indices) };
 const contentKeys = [{ ...generateKeyPairSync('x25519').publicKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' }];
 const claims: PanelClaims = { actor: 'user-1', role: 'admin', issuedAt: now, expiresAt: now + 60000, stepUpAt: now };
 for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, () => {
@@ -35,9 +37,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   let cfg: ReturnType<typeof parseConfig>;
   const rows = async (table: string) => (await sql<Record<string, unknown>>`select * from ${sql.table(table)}`.execute(store.db)).rows;
   const call = async (path = '/messages', options: { body?: unknown; claims?: Partial<PanelClaims>; headers?: Record<string, string | undefined>; method?: string } = {}) => {
-    const req = new Request('http://localhost/internal/v1' + path, { method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
-      headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' }, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
-    req.headers.set('x-panel-assertion', await signPanelAssertion(req, { ...claims, ...options.claims }, key));
+    const req = await signPanel(new Request('http://localhost/internal/v2' + path, { method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body) }), token, { ...claims, ...options.claims });
     for (const [k, v] of Object.entries(options.headers ?? {})) if (v !== undefined) req.headers.set(k, v);
     return await runtime.fetch(req, env) as Omit<Response, 'json'> & { json(): Promise<Payload> };
   };
@@ -72,9 +73,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     for (const options of [{ headers: { 'x-panel-assertion': '' } }, { headers: { 'x-panel-actor': 'user-2' } },
       { claims: { expiresAt: now - 1 } }, { claims: { issuedAt: now + 100000 } }, { claims: { expiresAt: now + 60001 } },
       { claims: { role: 'other' as PanelClaims['role'] } }]) expect((await call('/messages', options)).status).toBe(403);
-    const req = new Request('http://localhost/internal/v1/messages', { headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' } });
-    req.headers.set('x-panel-assertion', await signPanelAssertion(req, claims, key));
-    expect((await runtime.fetch(new Request('http://localhost/internal/v1/audit', req), env)).status).toBe(403);
+    const req = await signPanel(new Request('http://localhost/internal/v2/messages'), token, claims);
+    expect((await runtime.fetch(new Request('http://localhost/internal/v2/audit', req), env)).status).toBe(403);
     expect((await runtime.fetch(req, {})).status).toBe(403);
     expect((await createApp().fetch(req, {} as Env, {} as ExecutionContext)).status).toBe(404);
   });
@@ -83,9 +83,9 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     const pair = await accessKeyPair(), certs = certsFetch(async () => ({ keys: [await publicJwk(pair, 'k1')] }));
     const app = createApp({ store, keys: testKeys(cfg), access: createAccessVerifier(certs.fetcher) });
     const workerEnv = { ...env, ...accessEnv, INTERNAL_HOST: 'internal.example' } as unknown as Env, jwt = await signAccessJwt(pair.privateKey, Date.now());
-    const send = async (host: string, e: Env = workerEnv, auth = `Bearer ${token}`, access: string | null = jwt) => {
-      const req = new Request(`https://${host}/internal/v1/messages`, { headers: { authorization: auth, 'x-panel-actor': 'user-1', ...access === null ? {} : { 'cf-access-jwt-assertion': access } } });
-      req.headers.set('x-panel-assertion', await signPanelAssertion(req, claims, key));
+    const send = async (host: string, e: Env = workerEnv, auth = `Bearer ${token}`, access: string | null = jwt, version = 'v2') => {
+      const req = await signPanel(new Request(`https://${host}/internal/${version}/messages`, { headers: access === null ? {} : { 'cf-access-jwt-assertion': access } }), token, claims, { aud: 'internal.example' });
+      req.headers.set('authorization', auth);
       return app.fetch(req, e, {} as ExecutionContext);
     };
     for (const response of [await send('internal.example', workerEnv, `Bearer ${token}`, null),
@@ -99,9 +99,39 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect((await send('internal.example', workerEnv, 'Bearer invalid')).status).toBe(401);
     cfg.clients![0].scopes = ['send'];
     expect((await send('internal.example')).status).toBe(403); cfg.clients![0].scopes = ['panel'];
-    for (const response of [await send('localhost'), await send('internal.example', { ...workerEnv, PANEL_ASSERTION_KEY: undefined }),
+    expect((await send('internal.example', workerEnv, `Bearer ${token}`, jwt, 'v1')).status).toBe(404);
+    for (const response of [await send('localhost'), await send('internal.example', { ...workerEnv, PANEL_ASSERTION_KEYS: undefined }),
       await send('internal.example', { ...workerEnv, INTERNAL_HOST: undefined })]) expect(response.status).toBe(404);
     expect(await rows('audit')).toHaveLength(1);
+  });
+  it('binds assertion v2 to the token, audience, keyring and a single-use nonce', async () => {
+    const other = 'msk_panel2_' + 'b'.repeat(43), url = 'http://localhost/internal/v2/audit';
+    cfg.clients!.push({ id: 'panel2', tokenSha256: await tokenSha256(other), scopes: ['panel'], brands: '*', templates: '*' } as never);
+    const login = (signing: Parameters<typeof signPanel>[3] = {}, bearer = token) =>
+      signPanel(new Request(url, { method: 'POST', body: JSON.stringify({ action: 'panel.login' }) }), bearer, claims, signing);
+    const status = async (req: Request | Promise<Request>, e: object = env) => (await runtime.fetch(await req, e)).status;
+    expect(await status(login({ token }, other))).toBe(403);
+    expect(await status(login({ aud: 'other.example' }))).toBe(403);
+    expect(await status(login({ nonce: null }))).toBe(403);
+    expect(await status(login({ key: { kid: 'unknown', key: panelKey.key } }))).toBe(403);
+    expect(await status(login(), { ...env, PANEL_AUDIENCE: undefined })).toBe(403);
+    const unversioned = await login(); unversioned.headers.delete('x-panel-protocol');
+    expect(await status(unversioned)).toBe(403);
+    const nonce = Buffer.alloc(32, 1).toString('base64url');
+    expect(await status(login({ nonce }))).toBe(200);
+    const replay = await runtime.fetch(await login({ nonce }), env);
+    expect(replay.status).toBe(409); expect(await replay.json()).toMatchObject({ code: 'replayed' });
+    vi.spyOn(store, 'consume').mockRejectedValueOnce(new Error('down'));
+    expect(await status(login())).toBe(503);
+    expect((await rows('audit')).map(r => r.action)).toEqual(['panel.login']);
+    const next = { kid: 'p2', key: Buffer.alloc(32, 3).toString('base64url') }, both = { ...env, PANEL_ASSERTION_KEYS: JSON.stringify([next, panelKey]) };
+    for (const key of [next, panelKey]) expect(await status(login({ key }), both)).toBe(200);
+    expect(await status(login({ key: panelKey }), { ...env, PANEL_ASSERTION_KEYS: JSON.stringify([next]) })).toBe(403);
+    const v1 = new Request(url, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1', 'x-panel-protocol': PANEL_PROTOCOL }, body: '{"action":"panel.login"}' });
+    const payload = { ...claims, operation: await tokenSha256(`POST\n/internal/v2/audit\n${'{"action":"panel.login"}'}`) };
+    v1.headers.set('x-panel-assertion', btoa(JSON.stringify({ payload, tag: await createMac(payload, [{ kid: 'panel-v1', key: panelKey.key }]) })));
+    expect(await status(v1, { ...env, PANEL_ASSERTION_KEYS: JSON.stringify([{ kid: 'panel-v1', key: panelKey.key }]) })).toBe(403);
+    expect(await status(signPanel(new Request('http://localhost/internal/v1/messages'), token, claims))).toBe(404);
   });
   it('lists stable pages, filters and returns only the list projection', async () => {
     for (let i = 0; i < 5; i++) await seed(`msg_${i}`);
@@ -120,10 +150,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   });
   it.each(['/audit', '/subjects/export', '/subjects/erase'])('rejects oversized streamed bodies promptly without writes: %s', async path => {
     await seed();
-    const url = 'http://localhost/internal/v1' + path;
-    const headers = { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' };
-    const assertion = await signPanelAssertion(new Request(url, { method: 'POST', headers, body: '{}' }), claims, key);
-    const req = new Request(url, { method: 'POST', headers: { ...headers, 'x-panel-assertion': assertion }, body: 'x'.repeat(65537) });
+    const url = 'http://localhost/internal/v2' + path;
+    const req = new Request(url, { method: 'POST', headers: (await signPanel(new Request(url, { method: 'POST', body: '{}' }), token, claims)).headers, body: 'x'.repeat(65537) });
     expect(req.headers.has('content-length')).toBe(false);
     const batch = vi.spyOn(store, 'batch');
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -307,16 +335,15 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect(JSON.parse(String((await rows('audit')).find(row => row.action === 'privacy.erase')!.details))).toEqual({ count: 105 });
   });
   it('binds signed assertions to body and query and checks the signature', async () => {
-    const req = new Request('http://localhost/internal/v1/subjects/erase', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' }, body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) });
-    const assertion = await signPanelAssertion(req, claims, key); req.headers.set('x-panel-assertion', assertion);
+    const req = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST', body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) }), token, claims);
+    const assertion = req.headers.get('x-panel-assertion')!;
     const changed = new Request(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify({ email: 'two@example.com', reason: 'Requested by subject' }) });
     expect((await runtime.fetch(changed, env)).status).toBe(403);
     const parsed = JSON.parse(atob(assertion)); parsed.payload.actor = 'user-2'; req.headers.set('x-panel-actor', 'user-2');
     req.headers.set('x-panel-assertion', btoa(JSON.stringify(parsed)));
     expect((await runtime.fetch(req, env)).status).toBe(403);
-    const get = new Request('http://localhost/internal/v1/messages?brand=acme', { headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1' } });
-    get.headers.set('x-panel-assertion', await signPanelAssertion(get, claims, key));
-    expect((await runtime.fetch(new Request('http://localhost/internal/v1/messages?brand=demo', get), env)).status).toBe(403);
+    const get = await signPanel(new Request('http://localhost/internal/v2/messages?brand=acme'), token, claims);
+    expect((await runtime.fetch(new Request('http://localhost/internal/v2/messages?brand=demo', get), env)).status).toBe(403);
   });
   it('accepts bounded audit context and applies roles to panel changes', async () => {
     expect((await call('/audit', { body: { action: 'panel.integrity.alarm', details: { seq: 1, hash: 'a'.repeat(64) } } })).status).toBe(200);

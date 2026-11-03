@@ -15,6 +15,10 @@ All notable changes to mailstack are documented here.
   `purchase.completed` and `refund.issued`.
 - Source idempotency keys use a new `source:` namespace with brand/client scope;
   older adapter keys are not matched. Reconcile outstanding deliveries on upgrade.
+- Breaking (panel): the internal API moves to `/internal/v2/*` with assertion v2
+  (`PANEL_ASSERTION_KEYS` keyring, token and audience binding, single-use nonce for
+  mutations, `X-Panel-Protocol: 2`); `/internal/v1/*` and `PANEL_ASSERTION_KEY` are removed.
+  Node needs `PANEL_AUDIENCE`. Upgrade the panel together with the API.
 
 ## [1.0.0] - 2026-06-10
 

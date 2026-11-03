@@ -2,10 +2,10 @@
 
 Node serves these routes through the existing internal listener on port 8081.
 The public listener does not mount them. The Cloudflare Worker serves only
-`/internal/v1/*` (no extension routes), and only on `INTERNAL_HOST`: set
+`/internal/v2/*` (no extension routes), and only on `INTERNAL_HOST`: set
 `MAILSTACK_INTERNAL_ROUTE` in `.env` (a second custom domain; `npm run setup`
-also turns off `workers.dev` and preview URLs) and the `PANEL_ASSERTION_KEY`
-secret. Panel clients come from Mailstack Pro keys. Every other host, or a
+also turns off `workers.dev` and preview URLs) and the `PANEL_ASSERTION_KEYS`
+secret. `/internal/v1/*` was removed and returns 404 in both runtimes. Panel clients come from Mailstack Pro keys. Every other host, or a
 missing key, returns 404. Put the host behind Cloudflare Access with a service
 token; the panel sends it from `PANEL_API_ACCESS_ID_FILE` / `PANEL_API_ACCESS_SECRET_FILE`.
 The Worker also checks the `Cf-Access-Jwt-Assertion` header that Access adds:
@@ -23,32 +23,50 @@ panel holds private content keys. Responses use `Cache-Control: no-store`.
 ## Credentials and panel assertions
 
 Every call requires the existing `Authorization: Bearer <client token>` with
-`panel` scope and `X-Panel-Actor`. Invalid credentials return 401; missing scope,
-actor, assertion, role or step-up returns 403. Brand and template selections apply
+`panel` scope, `X-Panel-Actor` and `X-Panel-Protocol: 2`. Invalid credentials return 401; missing scope,
+actor, protocol, assertion, role or step-up returns 403. Brand and template selections apply
 to every message read, search, export and erase. Empty selections grant no access;
 use explicit `"*"` for all. A message outside the selections returns 404.
 
-The panel and API share `PANEL_ASSERTION_KEY`: a random 32-byte base64url value,
-separate from content/index keys and client tokens. Without it calls are denied.
-`signPanelAssertion(request, claims, key)` from `src/core/panel.ts` produces the
-`X-Panel-Assertion` header. The panel supplies claims from its verified session:
+The panel and API share the `PANEL_ASSERTION_KEYS` keyring: a JSON array
+`[{"kid": "p1", "key": "<32-byte base64url>"}]`, separate from content/index keys
+and client tokens. Without it calls are denied. The panel signs with one entry;
+the API accepts any listed `kid`. Rotate by adding the new key to the API, then
+switching the panel, then removing the old entry; a removed `kid` is refused.
+`signPanelAssertion(request, claims, { key, token, aud })` from `src/core/panel.ts`
+produces the `X-Panel-Assertion` header. The panel supplies claims from its verified session:
 
 ```ts
 { actor: 'user-1', role: 'operator', issuedAt: now,
   expiresAt: now + 60_000, stepUpAt: now }
 ```
 
-Times are epoch milliseconds. The maximum assertion TTL is 60 seconds; future
-issue times and elapsed expiry are refused. `stepUpAt` is null without a completed
-step-up, otherwise the time of the verified WebAuthn assertion. Sensitive actions
-require it within the last five minutes. The API verifies the HMAC, actor equality,
-role, times and SHA-256 operation binding over
-`method + '\n' + pathname + search + '\n' + exactBody` before routing.
+The signed payload is `{v: 2, kid, actor, role, issuedAt, expiresAt, stepUpAt,
+tokenHash, aud, nonce?, operation}`. Times are epoch milliseconds. The maximum
+assertion TTL is 60 seconds; future issue times and elapsed expiry are refused.
+`stepUpAt` is null without a completed step-up, otherwise the time of the verified
+WebAuthn assertion. Sensitive actions require it within the last five minutes.
+One gate, `authorizePanel`, serves `/internal/v2/*` and `/internal/ext/*` in both
+runtimes. Before routing it verifies the HMAC under the `kid`, actor equality,
+role, times, `v: 2` and the SHA-256 operation binding over
+`method + '\n' + pathname + search + '\n' + exactBody`, and additionally:
+
+- `tokenHash` is the SHA-256 hex of the Bearer token on the same request, so an
+  assertion cannot be replayed with another client token;
+- `aud` equals the API installation id: `INTERNAL_HOST` on the Worker,
+  `PANEL_AUDIENCE` on Node (Node refuses to start with `PANEL_ASSERTION_KEYS` but
+  without `PANEL_AUDIENCE`);
+- `nonce` (32 random bytes, base64url) is required for every method other than
+  GET/HEAD and is consumed atomically in `guards` as `panel-nonce:<sha256>` for
+  60 seconds. A second use returns `409 {code: "replayed"}`; storage failure 503.
+  The signer adds a nonce automatically to mutations.
+
 Create a new assertion for each operation, after serializing its body and query.
-Hosts are excluded so the same contract works through a local proxy. The signing
-key is held by the session service, never sent to a browser. Session revocation and
-role changes must stop assertion issuance; an already issued assertion can remain
-valid for at most 60 seconds. The core does not authenticate passkeys or sessions.
+Hosts are excluded from the operation so the same contract works through a local
+proxy; `aud` binds the installation. The signing key is held by the session service,
+never sent to a browser. Session revocation and role changes must stop assertion
+issuance; an already issued read assertion can remain valid for at most 60 seconds.
+The core does not authenticate passkeys or sessions.
 
 Extension handlers receive the verified principal as `ctx.panel`, including client
 scopes and selections. Event hooks receive no panel principal. P2/P6/P8 can use
@@ -81,23 +99,23 @@ verification or disclosing another selection's entries.
 
 ## Routes and response shapes
 
-- `GET /internal/v1/messages`: `{messages, cursor}`. List projection: `id`, `brand`,
+- `GET /internal/v2/messages`: `{messages, cursor}`. List projection: `id`, `brand`,
   `template`, `level`, `status`, `created_at`, `sent_at`, `addr_hints`, `subject_sealed`.
   Optional exact `brand`, `template`, `status`, `rcpt` and `ref`; inclusive epoch-ms
   `from` / `to`; `limit` 1–100 (default 50). Cursor is opaque base64 JSON over
   `[created_at, id]`, descending with an ID tiebreaker; reuse the same filters on
   subsequent pages. Invalid bounds/cursor return 400. Search covers all active
   index keys, including the recipient's index kid. Search terms never enter audit.
-- `GET /internal/v1/messages/:id`: metadata, sealed subject, sealed `recipients`
+- `GET /internal/v2/messages/:id`: metadata, sealed subject, sealed `recipients`
   and chronological `events` without evidence. Internal indexes/MACs are omitted.
-- `GET /internal/v1/messages/:id/content`: `{sealed, expires_at, level}` or 404.
-- `GET /internal/v1/messages/:id/evidence`: `{events, provider_response_sealed}`;
+- `GET /internal/v2/messages/:id/content`: `{sealed, expires_at, level}` or 404.
+- `GET /internal/v2/messages/:id/evidence`: `{events, provider_response_sealed}`;
   events contain only `id` and `evidence_sealed`.
-- `GET /internal/v1/messages/:id/resend-source`: `{id, brand, template,
+- `GET /internal/v2/messages/:id/resend-source`: `{id, brand, template,
   ref_sealed, replay}`; replay is `{sealed, expires_at}` or null. No MAC, index or
   signing/sending key is returned. This route prepares the panel-side read only;
   resend execution remains a separate task.
-- `POST /internal/v1/subjects/export` `{email, limit?, cursor?}`: `{messages, cursor}`, each with metadata,
+- `POST /internal/v2/subjects/export` `{email, limit?, cursor?}`: `{messages, cursor}`, each with metadata,
   recipients, timeline, sealed content/replay/ref and an `evidence` object
   containing sealed provider response and event evidence. All subject
   roles match: recipient, reply_to, submitter. Limit is an integer 1–50 (default
@@ -107,7 +125,7 @@ verification or disclosing another selection's entries.
   Each response buffers only one page; clients must collect all pages to complete
   an export. This is a live view: concurrent erasure/expiry may remove records and
   new messages may appear on later pages.
-- `POST /internal/v1/subjects/erase` `{email, reason}`: `{count}`. Reason is required
+- `POST /internal/v2/subjects/erase` `{email, reason}`: `{count}`. Reason is required
   (10–500 characters) but not persisted. Audit keeps only matched count and an
   eight-character index prefix. Deletes include expired messages and explicitly
   remove every child table in atomic batches of at most 50 messages. Batch failure
@@ -116,10 +134,10 @@ verification or disclosing another selection's entries.
   before core deletion begins; a cleanup error or deadline returns 503 without
   deleting core messages or children. Late SES
   events and SMTP completion cannot recreate deleted messages or children. Backups expire independently.
-- `GET /internal/v1/audit?after_seq&limit`: `{rows}`, ascending seq, limit 1–500
+- `GET /internal/v2/audit?after_seq&limit`: `{rows}`, ascending seq, limit 1–500
   (default 100), after_seq nonnegative (default 0).
-- `GET /internal/v1/audit/head`: `{seq, hash}`, genesis `{seq:0, hash:64 zeros}`.
-- `POST /internal/v1/audit`: `{action, target?, details?}` → appended audit row.
+- `GET /internal/v2/audit/head`: `{seq, hash}`, genesis `{seq:0, hash:64 zeros}`.
+- `POST /internal/v2/audit`: `{action, target?, details?}` → appended audit row.
   Actions: `panel.login`, `panel.logout`, `panel.integrity.alarm`,
   `panel.role.changed`, `panel.user.invited`, `panel.user.removed`. Optional target
   is `msg_<id>` or `user:<id>` with 1–128 alphanumeric/underscore/hyphen characters.

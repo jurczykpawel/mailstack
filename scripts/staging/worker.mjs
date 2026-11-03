@@ -11,7 +11,7 @@ const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const name = 'mailstack-staging', hostname = 'mailstack-test.techskills.academy';
 // A Worker cannot fetch its own custom domain (522), so Pro reads the fixture license endpoints from a second Worker.
 const licenseName = 'mailstack-staging-license', licenseHost = 'mailstack-license-test.techskills.academy';
-// With Pro the panel reads /internal/v1/* only on this host, which sits behind Cloudflare Access.
+// With Pro the panel reads /internal/v2/* only on this host, which sits behind Cloudflare Access.
 const internalHost = 'mailstack-internal-test.techskills.academy';
 const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
@@ -134,7 +134,8 @@ if (command.startsWith('hmac-')) {
     secrets.STAGING_SEND_TOKEN ??= `msk_st-send_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_PANEL_TOKEN ??= `msk_st-panel_${randomBytes(32).toString('base64url')}`;
-    secrets.PANEL_ASSERTION_KEY ??= randomBytes(32).toString('base64url');
+    secrets.PANEL_ASSERTION_KEYS ??= JSON.stringify([{ kid: 'st-panel-1', key: secrets.PANEL_ASSERTION_KEY ?? randomBytes(32).toString('base64url') }]);
+    delete secrets.PANEL_ASSERTION_KEY;
     cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
       jwksUrl: `https://${licenseHost}/_staging/jwks`, revocationUrl: `https://${licenseHost}/_staging/revoked` } }];
     cfg.clients = [

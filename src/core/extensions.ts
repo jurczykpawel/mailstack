@@ -19,8 +19,10 @@ export interface ExtensionContext {
   now: () => number;
   config: { brands: string[]; logging: Config['logging'] };
 }
+/** Route handlers always run after the core panel gate and receive its verified principal. */
+export type ExtensionRouteContext = ExtensionContext & { panel: PanelPrincipal };
 export interface ExtensionApp {
-  route(method: string, path: string, handler: (request: Request, ctx: ExtensionContext) => Response | Promise<Response>): void;
+  route(method: string, path: string, handler: (request: Request, ctx: ExtensionRouteContext) => Response | Promise<Response>): void;
 }
 export interface MessageDeletion {
   reason: 'erase' | 'retention';

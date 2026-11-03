@@ -7,7 +7,7 @@ const start = 1_800_000_000_000;
 let clock = start;
 
 const jwt = (payload: Record<string, unknown> = {}, header: Record<string, unknown> = {}, key = signer.privateKey) => signAccessJwt(key, clock, payload, header);
-const request = (token?: string) => new Request('https://internal.example/internal/v1/messages', { headers: token === undefined ? {} : { 'cf-access-jwt-assertion': token } });
+const request = (token?: string) => new Request('https://internal.example/internal/v2/messages', { headers: token === undefined ? {} : { 'cf-access-jwt-assertion': token } });
 
 function setup(body: () => unknown = () => ({ keys: [jwk] })) {
   clock = start;

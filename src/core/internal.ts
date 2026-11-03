@@ -18,7 +18,7 @@ function integer(value: string | null, fallback: number, max: number): number {
   return +value;
 }
 export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, beforeDelete?: BeforeMessageDelete): Promise<Response> {
-  const now = Date.now(), url = new URL(req.url), path = url.pathname.slice('/internal/v1'.length), q = url.searchParams;
+  const now = Date.now(), url = new URL(req.url), path = url.pathname.slice('/internal/v2'.length), q = url.searchParams;
   const run = async <T>(query: RawBuilder<T>) => (await query.execute(store.db)).rows;
   const selection = (column: string, values: '*' | string[]) => values === '*' ? sql`1=1` :
     values.length ? sql`${sql.ref(column)} in (${sql.join(values)})` : sql`0=1`;

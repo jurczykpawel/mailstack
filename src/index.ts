@@ -145,9 +145,9 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         return handleSourceHook(req, env, deps, sourceId);
       }
 
-      if (pathname.startsWith("/internal/v1/") && store && env.PANEL_ASSERTION_KEY && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
+      if (pathname.startsWith("/internal/v2/") && store && env.PANEL_ASSERTION_KEYS && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
         if (!await access(req, env)) return Response.json({ success: false }, { status: 403 });
-        const panel = await authorizePanel(req, env, config, deps.keys, deps.waitUntil);
+        const panel = await authorizePanel(req, env, config, { audience: env.INTERNAL_HOST, store, keys: deps.keys, defer: deps.waitUntil });
         return panel instanceof Response ? panel : internalFetch(req, env, store, config, panel);
       }
 

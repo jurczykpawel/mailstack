@@ -32,10 +32,11 @@ export async function tokenMatches(token: string, expected: string): Promise<boo
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(actual));
   return crypto.subtle.verify("HMAC", key, signature, encoder.encode(expected.toLowerCase()));
 }
+export const bearerToken = (req: Request): string | undefined => /^Bearer\s+(.+)$/i.exec(req.headers.get("authorization") ?? "")?.[1].trim();
 export async function authenticate(
   req: Request, env: object, config: Pick<Config, "legacyApiKey">, keys?: KeyProvider, defer?: Defer,
 ): Promise<Client | null> {
-  const token = /^Bearer\s+(.+)$/i.exec(req.headers.get("authorization") ?? "")?.[1].trim();
+  const token = bearerToken(req);
   if (!token) return null;
   const legacy = config.legacyApiKey;
   const secret = Reflect.get(env, legacy?.env ?? "API_KEY");
