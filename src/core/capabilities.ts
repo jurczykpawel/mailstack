@@ -13,7 +13,7 @@ export const LIMITS = { listPage: 100, exportPageMessages: 50, exportPageBytes: 
 /** Daily SQLite snapshots kept by the Node runtime. */
 export const NODE_SNAPSHOTS = 7;
 /** What the running host contributes: its platform and its extension host. */
-export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Promise<Pick<ExtensionHost, 'features' | 'resendSource'> & Partial<Pick<ExtensionHost, 'durableEvents'>>> }
+export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Promise<Pick<ExtensionHost, 'features' | 'resendSource'> & Partial<Pick<ExtensionHost, 'durableEvents' | 'refresh'>>> }
 type Feature = { state: 'enabled' } | { state: 'disabled' | 'unavailable'; reason: string };
 const FEATURES = ['panel', 'webhooks', 'resend.replay', 'resend.source', 'aws.status', 'aws.test'] as const;
 type Name = typeof FEATURES[number];
@@ -27,7 +27,9 @@ export const transitAudience = (env: object, host: CapabilityHost): string | und
   Reflect.get(env, host.platform === 'worker' ? 'INTERNAL_HOST' : 'PANEL_AUDIENCE');
 
 export async function capabilities(env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, host: CapabilityHost, now = Date.now()) {
-  const ext = await host.extensions(), loaded = ext.features();
+  const ext = await host.extensions();
+  await ext.refresh?.();
+  const loaded = ext.features();
   const pro = loaded.find(f => f.state === 'ready' && f.name === 'pro'), failed = loaded.find(f => f.state === 'unavailable');
   const options = pro && cfg.extensions.find(e => e.module === pro.module)?.options;
   const resend = new Set(effectivePolicies(cfg).map(p => p.policy.resend)), free = cfg.cloudflare?.plan === 'free';

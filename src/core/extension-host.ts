@@ -152,17 +152,23 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
   const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, durableEvents, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
-  return { emitEvent, durableEvents, resendSource, keys, beforeDelete, jobs, features: () => structuredClone(features),
+  /** A waiting extension becomes ready once its reconcile job finished (in any process or isolate). */
+  async function refresh(extension: string): Promise<ExtensionFeature | undefined> {
+    const wait = waiting.get(extension), feature = wait && features[wait.index];
+    if (feature?.state !== 'unavailable' || feature.reason !== 'reconcile' || !await reconcileDone(store, extension, configSha).catch(() => false)) return feature;
+    features[wait!.index] = wait!.ready; waiting.delete(extension);
+    return wait!.ready;
+  }
+  return { emitEvent, durableEvents, resendSource, keys, beforeDelete, jobs,
+    features: () => structuredClone(features),
+    /** Re-checks waiting extensions before `features()` is reported (capabilities). */
+    async refresh() { for (const extension of [...waiting.keys()]) await refresh(extension); },
     runRetention: (now: number) => runRetention(store, now, config, beforeDelete, consumers.map(e => e.name)),
     /** Dispatches `/internal/ext/*` after the caller's panel gate; unknown routes are 404. */
     async route(req: Request, env: object, panel: PanelPrincipal): Promise<Response> {
       const route = routes.get(`${req.method} ${new URL(req.url).pathname}`);
-      const wait = route && waiting.get(route.extension), feature = wait && features[wait.index];
-      if (wait && feature?.state === 'unavailable') {
-        if (feature.reason !== 'reconcile' || !await reconcileDone(store, route!.extension, configSha).catch(() => false))
-          return Response.json({ success: false, message: 'extension unavailable', code: 'extension_unavailable', reason: feature.reason }, { status: 503 });
-        features[wait.index] = wait.ready; waiting.delete(route!.extension);
-      }
+      const feature = route && await refresh(route.extension);
+      if (feature?.state === 'unavailable') return Response.json({ success: false, message: 'extension unavailable', code: 'extension_unavailable', reason: feature.reason }, { status: 503 });
       return route ? route.handler(req, { ...ctx, panel, db: route.db,
         ...(panel.brands === '*' && panel.templates === '*' ? { sesStatus: () => readSesStatus(store, config.events?.ses, String(Reflect.get(env, 'SES_REGION') ?? 'eu-west-1')) } : {}),
         ...(enabled && route.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });
