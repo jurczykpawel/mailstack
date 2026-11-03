@@ -145,11 +145,13 @@ if (command.startsWith('hmac-')) {
     secrets.PANEL_ASSERTION_KEYS ??= JSON.stringify([{ kid: 'st-panel-1', key: secrets.PANEL_ASSERTION_KEY ?? randomBytes(32).toString('base64url') }]);
     delete secrets.PANEL_ASSERTION_KEY;
     cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
-      jwksUrl: `https://${licenseHost}/_staging/jwks`, revocationUrl: `https://${licenseHost}/_staging/revoked` } }];
+      jwksUrl: `https://${licenseHost}/_staging/jwks`, revocationUrl: `https://${licenseHost}/_staging/revoked`,
+      // The panel's AWS page sends simulator scenarios in process (SES delivery only).
+      ...delivery === 'ses' ? { aws: { brands: [{ id: 'acme', test: true }] } } : {} } }];
     cfg.clients = [
       { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'] },
       { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
-      { id: 'st-panel', tokenSha256: digest(secrets.STAGING_PANEL_TOKEN), scopes: ['panel'], brands: '*', templates: '*' },
+      { id: 'st-panel', tokenSha256: digest(secrets.STAGING_PANEL_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
     ];
   }
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
