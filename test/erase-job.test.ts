@@ -13,11 +13,12 @@ import { keysOnly } from './fixtures/keys';
 import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import { tokenSha256 } from '../src/clients';
 import type { PanelPrincipal } from '../src/core/panel';
+import { sealed, transitEnv } from './fixtures/transit';
 import example from '../config/mailstack.example.json';
 
 vi.setConfig({ testTimeout: 120000 });
 const indexKey = { kid: 'k1', key: Buffer.alloc(32, 7).toString('base64url') };
-const env = { ...panelEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
+const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
 const token = 'msk_panel_' + 'b'.repeat(43), far = Date.now() + 86400000;
 const cfg = parseConfig(example);
 interface JobRow { id: string; state: string; cursor: string | null; result: string | null; run_after: number }
@@ -41,10 +42,11 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
   const principal = (over: Partial<PanelPrincipal> = {}): PanelPrincipal => ({ ...panelClaims(), scopes: ['panel'], brands: '*', templates: '*', ...over });
   const api = (path: string, body?: unknown, p = principal(), on = store) => internalFetch(new Request('http://localhost/internal/v2' + path,
     body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }), env, on, cfg, p, { platform: 'node', extensions: async () => ({ features: () => [], resendSource: undefined }) });
+  const erasure = async (email = 'one@example.com', reason = 'Requested by subject') => ({ reason, ...await sealed({ email }, 'subjects.erase') });
   const count = async (query: ReturnType<typeof sql<{ n: number }>>) => Number((await query.execute(store.db)).rows[0].n);
   const jobs = async () => (await sql<JobRow>`select * from jobs order by created_at`.execute(store.db)).rows;
-  const start = async (body: unknown = { email: 'one@example.com', reason: 'Requested by subject' }, p = principal(), path = '/subjects/erase') => {
-    const response = await api(path, body, p);
+  const start = async (body?: unknown, p = principal(), path = '/subjects/erase') => {
+    const response = await api(path, body ?? await erasure(), p);
     expect(response.status).toBe(202);
     return (await response.json() as { jobId: string }).jobId;
   };
@@ -141,7 +143,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
   it('requires an admin with a recent step-up to start an erasure', async () => {
     await seed(1);
     for (const p of [principal({ stepUpAt: null }), principal({ stepUpAt: Date.now() - 300001 }), principal({ role: 'operator' })])
-      expect((await api('/subjects/erase', { email: 'one@example.com', reason: 'Requested by subject' }, p)).status).toBe(403);
+      expect((await api('/subjects/erase', await erasure(), p)).status).toBe(403);
     expect(await jobs()).toEqual([]);
   });
 
@@ -212,7 +214,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
     const [keyed, importer] = keysOnly(config);
     const runtime = await loadExtensions(keyed, store, importer);
     const req = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
-      body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) }), token);
+      body: JSON.stringify(await erasure()) }), token);
     const again = req.clone();
     expect((await runtime.fetch(req, env)).status).toBe(202);
     const repeated = await runtime.fetch(again, env);

@@ -21,6 +21,7 @@ import { recordEvents } from '../src/core/store/events';
 import { handleSesEvent } from '../src/events/ses';
 import { notification, options as snsOptions, request as snsRequest } from './sns-fixture';
 import { createApp } from '../src/index';
+import { sealed, transitEnv } from './fixtures/transit';
 import { runJobs } from '../src/core/jobs';
 import type { Env } from '../src/types';
 import example from '../config/mailstack.example.json';
@@ -29,7 +30,9 @@ interface Payload { messages: { id: string; [key: string]: unknown }[]; cursor: 
 const token = 'msk_panel_' + 'a'.repeat(43), now = Date.now();
 const key = Buffer.alloc(32, 7).toString('base64url');
 const indices = [{ kid: 'new', key }, { kid: 'old', key: Buffer.alloc(32, 8).toString('base64url') }];
-const env = { ...panelEnv, INDEX_KEYS: JSON.stringify(indices) };
+const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify(indices) };
+const exp = async (extra: Record<string, unknown> = {}) => ({ ...extra, ...await sealed({ email: 'one@example.com' }, 'subjects.export') });
+const era = async (reason = 'Requested by subject', email = 'one@example.com') => ({ reason, ...await sealed({ email }, 'subjects.erase') });
 const contentKeys = [{ ...generateKeyPairSync('x25519').publicKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' }];
 const claims: PanelClaims = { actor: 'user-1', role: 'admin', issuedAt: now, expiresAt: now + 60000, stepUpAt: now };
 for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, () => {
@@ -45,7 +48,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   };
   // Erasure is accepted as a job (202); one drain finishes these small sets, so the job result is the outcome.
   const erase = async (claimsOverride: Partial<PanelClaims> = {}) => {
-    const response = await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' }, claims: claimsOverride });
+    const response = await call('/subjects/erase', { body: await era(), claims: claimsOverride });
     expect(response.status).toBe(202);
     const { jobId } = await response.json() as unknown as { jobId: string };
     await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete });
@@ -181,8 +184,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   });
   it('searches every active index key and keeps search inputs out of audit', async () => {
     await seed('msg_new'); await seed('msg_old', 'acme', 'notice', 'recipient', indices[1]);
-    for (const query of ['rcpt=one%40example.com', 'ref=order-1']) {
-      const response = await call('/messages?' + query);
+    for (const found of [{ rcpt: 'one@example.com' }, { ref: 'order-1' }]) {
+      const response = await call('/messages/search', { body: await sealed(found, 'log.search') });
       expect((await response.json()).messages).toHaveLength(2);
     }
     expect(JSON.stringify(await rows('audit'))).not.toContain('one@example.com');
@@ -200,7 +203,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect(source).toMatchObject({ ref_sealed: 'sealed-ref', replay: { sealed: 'sealed-replays' } });
     expect(JSON.stringify(source)).not.toContain('private-');
     expect((await rows('audit')).map(r => r.action)).toEqual(['log.read', 'content.read', 'evidence.export', 'resend.source']);
-    const exported = await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json();
+    const exported = await (await call('/subjects/export', { body: await exp() })).json();
     expect(exported.messages[0].evidence).toMatchObject({ provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] });
   });
   it('enforces the role matrix and recent step-up', async () => {
@@ -212,7 +215,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
         expect((await call('/messages/msg_1/' + route, { claims: { role } })).status).toBe(role === 'viewer' ? 403 : 200);
         expect((await call('/messages/msg_1/' + route, { claims: { role, stepUpAt: now - 300001 } })).status).toBe(403);
       }
-      expect((await call('/subjects/export', { body: { email: 'one@example.com' }, claims: { role } })).status).toBe(role === 'admin' ? 200 : 403);
+      expect((await call('/subjects/export', { body: await exp(), claims: { role } })).status).toBe(role === 'admin' ? 200 : 403);
     }
   });
   it('scopes every message path and subject operation by brand and template', async () => {
@@ -220,7 +223,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     cfg.clients![0].brands = ['acme']; cfg.clients![0].templates = ['notice'];
     expect((await (await call()).json()).messages.map((m: { id: string }) => m.id)).toEqual(['allowed']);
     for (const id of ['other-brand', 'other-template']) for (const suffix of ['', '/content', '/evidence', '/resend-source']) expect((await call('/messages/' + id + suffix)).status).toBe(404);
-    expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages.map((m: { id: string }) => m.id)).toEqual(['allowed']);
+    expect((await (await call('/subjects/export', { body: await exp() })).json()).messages.map((m: { id: string }) => m.id)).toEqual(['allowed']);
     expect((await call('/audit')).status).toBe(403); expect((await call('/audit/head')).status).toBe(403);
     expect((await call('/audit', { body: { action: 'panel.login' } })).status).toBe(403);
     expect((await erase()).count).toBe(1);
@@ -231,21 +234,21 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     await seed('expired', 'acme', 'notice', 'recipient', indices[0], now - 1);
     expect((await (await call()).json()).messages).toEqual([]);
     for (const suffix of ['', '/content', '/evidence', '/resend-source']) expect((await call('/messages/expired' + suffix)).status).toBe(404);
-    expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages).toEqual([]);
+    expect((await (await call('/subjects/export', { body: await exp() })).json()).messages).toEqual([]);
     await seed();
     for (const table of ['contents', 'replays']) await sql`update ${sql.table(table)} set expires_at=${now - 1}`.execute(store.db);
     await sql`update messages set content_expires_at=${now - 1}`.execute(store.db);
     expect((await call('/messages/msg_1/content')).status).toBe(404);
     expect(await (await call('/messages/msg_1/evidence')).json()).toMatchObject({ provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] });
     expect((await (await call('/messages/msg_1/resend-source')).json()).replay).toBeNull();
-    const exported = JSON.stringify(await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json());
+    const exported = JSON.stringify(await (await call('/subjects/export', { body: await exp() })).json());
     for (const value of ['sealed-contents', 'sealed-replays']) expect(exported).not.toContain(value);
     for (const value of ['sealed-provider', 'sealed-evidence']) expect(exported).toContain(value);
   });
   it('exports retained evidence after archive expiry', async () => {
     await seed();
     await sql`update messages set content_expires_at=${now - 1}`.execute(store.db);
-    const response = await call('/subjects/export', { body: { email: 'one@example.com' } });
+    const response = await call('/subjects/export', { body: await exp() });
     expect(response.status).toBe(200);
     expect((await response.json()).messages[0]).toMatchObject({ content: null, replay: null,
       evidence: { provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] } });
@@ -259,33 +262,33 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     await sql`update messages set created_at=${now - 2 * day}`.execute(store.db);
     expect((await call('/messages/msg_1/content')).status).toBe(404);
     expect(await (await call('/messages/msg_1/evidence')).json()).toMatchObject({ provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] });
-    const exported = await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json();
+    const exported = await (await call('/subjects/export', { body: await exp() })).json();
     expect(exported.messages[0]).toMatchObject({ content: null, replay: null, evidence: { provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] } });
     cfg.logging.ceilings.metaDays = 1;
     expect((await call('/messages/msg_1/evidence')).status).toBe(404);
-    expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages).toEqual([]);
+    expect((await (await call('/subjects/export', { body: await exp() })).json()).messages).toEqual([]);
   });
   it.each(['/messages/msg_1/evidence', '/subjects/export'])('requires audit for retained evidence after archive expiry: %s', async path => {
     await seed();
     await sql`update messages set content_expires_at=${now - 1}`.execute(store.db);
     const original = store.batch.bind(store);
     vi.spyOn(store, 'batch').mockImplementation(queries => { if (queries.some(q => q.sql.includes('insert into audit'))) throw new Error('unavailable'); return original(queries); });
-    const response = await call(path, { body: path === '/subjects/export' ? { email: 'one@example.com' } : undefined });
+    const response = await call(path, { body: path === '/subjects/export' ? await exp() : undefined });
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain('sealed-');
   });
-  it.each(['/messages', '/messages?rcpt=one%40example.com', '/messages?ref=order-1', '/messages/msg_1', '/messages/msg_1/content', '/messages/msg_1/evidence', '/messages/msg_1/resend-source', '/subjects/export', '/subjects/erase', '/audit'])('requires audit completion before returning data or changing rows: %s', async path => {
+  it.each(['/messages', '/messages/search', '/messages/msg_1', '/messages/msg_1/content', '/messages/msg_1/evidence', '/messages/msg_1/resend-source', '/subjects/export', '/subjects/erase', '/audit'])('requires audit completion before returning data or changing rows: %s', async path => {
     await seed();
     const original = store.batch.bind(store);
     vi.spyOn(store, 'batch').mockImplementation(queries => { if (queries.some(q => q.sql.includes('insert into audit'))) throw new Error('unavailable'); return original(queries); });
-    const body = path.startsWith('/subjects') ? { email: 'one@example.com', reason: 'Requested by subject' } : path === '/audit' ? { action: 'panel.login' } : undefined;
+    const body = path === '/subjects/export' ? await exp() : path === '/subjects/erase' ? await era() : path === '/messages/search' ? await sealed({ rcpt: 'one@example.com' }, 'log.search') : path === '/audit' ? { action: 'panel.login' } : undefined;
     const response = await call(path, { body });
     expect(response.status).toBe(503); expect(await response.text()).not.toContain('sealed-');
     expect(await rows('messages')).toHaveLength(1); expect(await rows('jobs')).toEqual([]);
   });
   it('exports all subject roles and erases children in bounded atomic batches', async () => {
     for (const [i, role] of ['recipient', 'reply_to', 'submitter'].entries()) await seed('msg_' + i, 'acme', 'notice', role, indices[i % 2]);
-    expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages).toHaveLength(3);
+    expect((await (await call('/subjects/export', { body: await exp() })).json()).messages).toHaveLength(3);
     expect(await erase()).toMatchObject({ count: 3 });
     for (const table of ['messages', 'recipients', 'subjects', 'contents', 'replays', 'events']) expect(await rows(table)).toEqual([]);
     expect(await recordEvents(store, [{ id: 'late', message_id: 'msg_0', recipient_pos: 0, source: 'ses-sns', source_event_id: 'late', type: 'delivered', occurred_at: now, received_at: now, auth: 'sns-sig-v2', summary: 'ok', evidence_sealed: 'sealed' }])).toBe(false);
@@ -327,7 +330,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     let cursor: string | null = null;
     const exported: string[] = [];
     do {
-      const page = await (await call('/subjects/export', { body: { email: 'one@example.com', limit: 20, cursor } })).json();
+      const page = await (await call('/subjects/export', { body: await exp({ limit: 20, cursor }) })).json();
       expect(page.messages.length).toBeLessThanOrEqual(20);
       exported.push(...page.messages.map(m => m.id)); cursor = page.cursor;
     } while (cursor);
@@ -337,7 +340,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect(messageReads).toHaveLength(6);
     expect(messageReads.every(query => /limit/.test(query))).toBe(true);
     for (const body of [{ limit: 0 }, { limit: 51 }, { limit: 1.5 }, { cursor: 1 }, { cursor: 'invalid!' }]) {
-      expect((await call('/subjects/export', { body: { email: 'one@example.com', ...body } })).status).toBe(400);
+      expect((await call('/subjects/export', { body: await exp({ ...body }) })).status).toBe(400);
     }
     expect(await erase()).toMatchObject({ count: 105 });
     for (const table of ['messages', 'subjects', 'contents', 'replays']) expect(await rows(table)).toEqual([]);
@@ -385,7 +388,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     const counts: number[] = [];
     for (const limit of [1, 50]) {
       const seen = countCalls();
-      const page = await (await call('/subjects/export', { body: { email: 'one@example.com', limit } })).json() as Payload & { manifest: Record<string, unknown> };
+      const page = await (await call('/subjects/export', { body: await exp({ limit }) })).json() as Payload & { manifest: Record<string, unknown> };
       expect(page.messages).toHaveLength(limit);
       expect(page.messages[0]).toMatchObject({ content: { sealed: 'sealed-contents' }, replay: { sealed: 'sealed-replays' }, ref_sealed: null,
         recipients: [{ pos: 0 }, { pos: 1 }], events: [{ type: 'sent' }], evidence: { provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] } });
@@ -400,7 +403,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     const ids: string[] = [], manifests: { complete: boolean; bytes: number }[] = [];
     let cursor: string | null = null;
     do {
-      const response = await call('/subjects/export', { body: { email: 'one@example.com', limit: 50, cursor } });
+      const response = await call('/subjects/export', { body: await exp({ limit: 50, cursor }) });
       expect(Number((await response.clone().text()).length)).toBeLessThanOrEqual(1048576);
       const page = await response.json() as Payload & { manifest: { complete: boolean; bytes: number; cursor: string | null } };
       expect(page.manifest.cursor).toBe(page.cursor); expect(page.manifest.complete).toBe(page.cursor === null);
@@ -412,18 +415,18 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   });
   it('still returns a single message larger than the page budget so the cursor advances', async () => {
     await bulk(2, 'x'.repeat(1200000));
-    const first = await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json() as Payload & { manifest: { complete: boolean } };
+    const first = await (await call('/subjects/export', { body: await exp() })).json() as Payload & { manifest: { complete: boolean } };
     expect(first.messages.map(m => m.id)).toEqual(['page_0000']); expect(first.manifest.complete).toBe(false);
-    const second = await (await call('/subjects/export', { body: { email: 'one@example.com', cursor: first.cursor } })).json();
+    const second = await (await call('/subjects/export', { body: await exp({ cursor: first.cursor }) })).json();
     expect(second.messages.map(m => m.id)).toEqual(['page_0001']); expect(second.cursor).toBeNull();
   });
   it.each([btoa('bad id!'), btoa('x'.repeat(129)), 'not base64!'])('rejects a malformed export cursor: %s', async cursor => {
-    expect((await call('/subjects/export', { body: { email: 'one@example.com', cursor } })).status).toBe(400);
+    expect((await call('/subjects/export', { body: await exp({ cursor }) })).status).toBe(400);
   });
   it('binds signed assertions to body and query and checks the signature', async () => {
-    const req = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST', body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) }), token, claims);
+    const req = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST', body: JSON.stringify(await era()) }), token, claims);
     const assertion = req.headers.get('x-panel-assertion')!;
-    const changed = new Request(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify({ email: 'two@example.com', reason: 'Requested by subject' }) });
+    const changed = new Request(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(await era('Requested by subject', 'two@example.com')) });
     expect((await runtime.fetch(changed, env)).status).toBe(403);
     const parsed = JSON.parse(atob(assertion)); parsed.payload.actor = 'user-2'; req.headers.set('x-panel-actor', 'user-2');
     req.headers.set('x-panel-assertion', btoa(JSON.stringify(parsed)));
