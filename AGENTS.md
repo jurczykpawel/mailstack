@@ -186,7 +186,9 @@ checks the full key first, then asks the provider. Pro returns null without a va
 license, so the full key never depends on licensing. `clients` without a key provider stops
 Node startup and `npm run setup`; a configured extension that fails to import or
 initialize is only marked unavailable (`createExtensionHost` in
-`src/core/extension-host.ts`), leaving the full key working (N7). The Worker gets Pro keys only from a build with
+`src/core/extension-host.ts`), leaving the full key working (N7). Extension schema comes from Kysely-builder
+`migrations` with a checksummed manifest and the `ext_migrations` ledger, plus `reconcile`
+with an `ext_reconcile` generation (`src/core/ext-migrations.ts`; README Extensions). The Worker gets Pro keys only from a build with
 `MAILSTACK_PRO_PATH` in `.env` (generated `src/core/pro.generated.ts`, license cache in D1,
 secret `MAILSTACK_LICENSE`, `proCommit` in `/health`); see README.
 Core still enforces the returned principal (`permits`, `recipientOverride`, `attachments`)

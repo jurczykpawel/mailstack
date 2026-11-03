@@ -33,6 +33,11 @@ export type BeforeMessageDelete = (selection: MessageDeletion) => Promise<void>;
 export interface Extension {
   name: string;
   capabilities?: ('resend')[];
+  /** Schema only, as Kysely schema-builder statements; compiled at setup (Worker) or start (Node) with a ledger row. */
+  migrations?: import('./ext-migrations').ExtensionMigration[];
+  /** Idempotent data reconciliation for configuration `configSha`, resumable from `cursor`; runs as a job. */
+  reconcile?(db: ExtensionDatabase, state: { configSha: string; cursor: string | null }): Promise<import('./ext-migrations').ReconcileStep>;
+  /** Legacy schema and data setup at host start, kept until extensions move to `migrations` and `reconcile`. */
   migrate?(db: ExtensionDatabase): Promise<void>;
   onBeforeDelete?(selection: MessageDeletion, ctx: ExtensionContext): void | Promise<void>;
   onEvent?(event: DomainEvent, ctx: ExtensionContext): void | Promise<void>;
