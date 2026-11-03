@@ -15,7 +15,7 @@ import { renderAndSend } from '../src/send';
 import { getTemplate } from '../src/templates';
 import { loadExtensions } from '../src/runtime/extensions';
 import { tokenSha256 } from '../src/clients';
-import { signPanelAssertion } from '../src/core/panel';
+import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import { idempotencyHash } from '../src/core/logging/writer';
 import { recordEvents, eventId } from '../src/core/store/events';
 import { runRetention } from '../src/core/retention';
@@ -222,18 +222,13 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     await call('masked');
     const [message] = await store.db.selectFrom('messages').selectAll().execute();
     const cfg = configuration('masked');
-    const token = 'msk_panel_' + 'a'.repeat(43), key = Buffer.alloc(32, 7).toString('base64url');
+    const token = 'msk_panel_' + 'a'.repeat(43);
     cfg.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', recipientOverride: false, attachments: false }];
     const [keyed, importer] = keysOnly(cfg);
     const runtime = await loadExtensions(keyed, store, importer);
-    const at = Date.now();
-    const request = new Request('http://localhost/internal/v1/subjects/erase', { method: 'POST',
-      headers: { authorization: 'Bearer ' + token, 'x-panel-actor': 'user-1' },
-      body: JSON.stringify({ email: 'buyer@acme.example', reason: 'Requested by subject' }) });
-    request.headers.set('x-panel-assertion', await signPanelAssertion(request, {
-      actor: 'user-1', role: 'admin', issuedAt: at, expiresAt: at + 60000, stepUpAt: at,
-    }, key));
-    expect(await (await runtime.fetch(request, { ...env, PANEL_ASSERTION_KEY: key })).json()).toEqual({ count: 1 });
+    const request = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
+      body: JSON.stringify({ email: 'buyer@acme.example', reason: 'Requested by subject' }) }), token, panelClaims());
+    expect(await (await runtime.fetch(request, { ...env, ...panelEnv })).json()).toEqual({ count: 1 });
     await store.setStatus(message.id, 'unknown');
     await store.markFailed(message.id, 'sealed');
     await store.markSent(message.id, { sentAt: now, providerMessageId: 'fixture', providerResponseSealed: 'sealed',

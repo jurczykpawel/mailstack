@@ -1321,7 +1321,7 @@ there is no persistent event queue in the core.
 The existing Node listener on port 8081 exposes the sealed log and privacy API.
 Panel calls require the configured panel client plus a signed, short-lived actor
 assertion; role and step-up checks run in the API. See the [internal API contract](docs/internal-api.md)
-for routes, role matrix, `PANEL_ASSERTION_KEY`, audit behavior and extension integration.
+for routes, role matrix, `PANEL_ASSERTION_KEYS`, `PANEL_AUDIENCE`, audit behavior and extension integration.
 
 ## Test environment
 

@@ -14,7 +14,7 @@ export interface Env extends KeyEnvironment {
   /** Mailstack Pro commit in a Worker built with MAILSTACK_PRO_PATH. */
   BUILD_PRO_COMMIT?: string;
   TRUSTED_PROXY?: string;
-  /** Hostname that alone serves /internal/v1/* on the Worker (with PANEL_ASSERTION_KEY). */
+  /** Hostname that alone serves /internal/v2/* on the Worker (with PANEL_ASSERTION_KEYS); also the assertion audience. */
   INTERNAL_HOST?: string;
   /** Cloudflare Access team host and application AUD; requests on INTERNAL_HOST need a valid Access JWT. */
   ACCESS_TEAM_DOMAIN?: string;
@@ -30,7 +30,10 @@ export interface Env extends KeyEnvironment {
   DB?: D1Database;
   CONTENT_PUBLIC_KEYS?: string;
   INDEX_KEYS?: string;
-  PANEL_ASSERTION_KEY?: string;
+  /** Panel assertion keyring `[{kid, key}]` (32-byte base64url keys); several entries allow rotation. */
+  PANEL_ASSERTION_KEYS?: string;
+  /** Node only: the assertion audience (API installation id) the panel signs for. */
+  PANEL_AUDIENCE?: string;
 }
 
 /** Visual + contact identity used to render a brand's email. */

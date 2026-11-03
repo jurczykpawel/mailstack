@@ -14,7 +14,7 @@ import { createSqliteStore } from '../src/core/store/sqlite';
 import { createApp } from '../src/index';
 import { handleSend } from '../src/send';
 import { handleSesEvent } from '../src/events/ses';
-import { signPanelAssertion } from '../src/core/panel';
+import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import { tokenSha256 } from '../src/clients';
 import { blindIndex } from '../src/core/crypto';
 import { options, notification, request, certificates, signed } from './sns-fixture';
@@ -27,12 +27,9 @@ const waitUntil = (task: Promise<unknown>) => { tasks.push(task); };
 const pair = generateKeyPairSync('x25519');
 const keys = [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' }];
 const indices = [{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }];
-const panelKey = Buffer.alloc(32, 9).toString('base64url');
-const panelHeaders = async (url: string, token: string, role: 'viewer' | 'admin' = 'admin') => {
-  const req = new Request(url); const now = Date.now();
-  return { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1', 'x-panel-assertion': await signPanelAssertion(req, { actor: 'user-1', role, issuedAt: now, expiresAt: now + 60000, stepUpAt: role === 'viewer' ? null : now }, panelKey) };
-};
-const env = { PANEL_ASSERTION_KEY: panelKey, API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys }), INDEX_KEYS: JSON.stringify(indices) } as Env;
+const panelHeaders = async (url: string, token: string, role: 'viewer' | 'admin' = 'admin') =>
+  Object.fromEntries((await signPanel(new Request(url), token, panelClaims(role))).headers);
+const env = { ...panelEnv, API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys }), INDEX_KEYS: JSON.stringify(indices) } as Env;
 const configured = () => parseConfig({ ...example, extensions: [{ module: 'demo-extension', options: { mode: 'test' } }] });
 const load = (extension: Extension) => loadExtensions(configured(), store, async () => ({ default: () => extension }));
 beforeEach(async () => { store = createSqliteStore(':memory:'); await store.migrate(); tasks.length = 0; });
@@ -90,6 +87,7 @@ it('mounts routes on the internal handler with panel credentials and actor', asy
   for (const headers of [{}, { authorization: 'Bearer test-key', 'x-panel-actor': 'user-1' }, { authorization: `Bearer ${token}` }] as Record<string, string>[]) {
     expect((await runtime.fetch(new Request(url, { headers }), env)).status).toBeGreaterThanOrEqual(400);
   }
+  expect((await runtime.fetch(new Request(url, { headers: { authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1', 'x-panel-protocol': '2' } }), env)).status).toBe(403);
   const req = new Request(url, { headers: await panelHeaders(url, token) });
   expect(await (await runtime.fetch(req, env)).json()).toEqual({ ok: true });
   expect((await createApp().fetch(req, env, { waitUntil } as ExecutionContext)).status).toBe(404);

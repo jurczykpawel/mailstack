@@ -11,12 +11,12 @@ import { loadExtensions } from '../src/runtime/extensions';
 import { parseConfig } from '../src/core/config/schema';
 import { blindIndex } from '../src/core/crypto';
 import { tokenSha256 } from '../src/clients';
-import { signPanelAssertion } from '../src/core/panel';
+import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import example from '../config/mailstack.example.json';
 
 const token = 'msk_panel_' + 'a'.repeat(43), key = Buffer.alloc(32, 7).toString('base64url');
 const indexKey = { kid: 'demo', key };
-const env = { PANEL_ASSERTION_KEY: key, INDEX_KEYS: JSON.stringify([indexKey]) };
+const env = { ...panelEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
 for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${driver}`, () => {
   let store: KyselyStore, mf: Miniflare | undefined;
   let cfg: ReturnType<typeof parseConfig>;
@@ -37,14 +37,9 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     }
   }
   async function erase(runtime: Awaited<ReturnType<typeof loadExtensions>>, role = 'admin') {
-    const now = Date.now();
-    const req = new Request('http://localhost/internal/v1/subjects/erase', { method: 'POST', headers: {
-      authorization: `Bearer ${token}`, 'x-panel-actor': 'user-1',
-    }, body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) });
-    req.headers.set('x-panel-assertion', await signPanelAssertion(req, {
-      actor: 'user-1', role: role as 'admin', issuedAt: now, expiresAt: now + 60000, stepUpAt: now,
-    }, key));
-    return runtime.fetch(req, env);
+    const req = new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
+      body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) });
+    return runtime.fetch(await signPanel(req, token, { ...panelClaims(), role: role as 'admin', stepUpAt: Date.now() }), env);
   }
   beforeAll(async () => {
     if (driver === 'sqlite') store = createSqliteStore(':memory:');

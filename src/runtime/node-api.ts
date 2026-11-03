@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../core/config';
 import { effectivePolicies } from '../core/config/schema';
-import { parseKeyring } from '../core/keyring';
+import { parseIndexKeys, parseKeyring } from '../core/keyring';
 import { createSqliteStore } from '../core/store/sqlite';
 import { backupSqlite } from '../core/store/backup';
 import { createApp } from '../index';
@@ -86,6 +86,7 @@ async function main() {
   const env: Env = { ...process.env, SES_REGION: process.env.SES_REGION ?? 'eu-west-1',
     SES_ACCESS_KEY_ID: process.env.SES_ACCESS_KEY_ID ?? '', SES_SECRET_ACCESS_KEY: process.env.SES_SECRET_ACCESS_KEY ?? '',
     TURNSTILE_SECRET: process.env.TURNSTILE_SECRET ?? '', ALTCHA_HMAC_KEY: process.env.ALTCHA_HMAC_KEY ?? '', API_KEY: process.env.API_KEY ?? '' };
+  if (env.PANEL_ASSERTION_KEYS) { parseIndexKeys(env.PANEL_ASSERTION_KEYS); if (!env.PANEL_AUDIENCE) throw new Error('PANEL_AUDIENCE required'); }
   if (env.CONTENT_PUBLIC_KEYS || env.INDEX_KEYS || effectivePolicies(config).some(p => p.policy.level !== 'none' && p.policy.requireLog)) parseKeyring(env);
   const provider = config.sender?.type ?? 'ses';
   if (provider === 'ses' && (!env.SES_ACCESS_KEY_ID || !env.SES_SECRET_ACCESS_KEY)) throw new Error('SES configuration required');

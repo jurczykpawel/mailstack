@@ -24,7 +24,7 @@ SES_REGION = "eu-west-1"
 SES_CONFIGURATION_SET = ${SES_CONFIGURATION_SET}
 # Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
 SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"
-# Host serving /internal/v1/* for the panel (MAILSTACK_INTERNAL_ROUTE); empty disables the internal API.
+# Host serving /internal/v2/* for the panel (MAILSTACK_INTERNAL_ROUTE) and the panel assertion audience; empty disables the internal API.
 INTERNAL_HOST = ${INTERNAL_HOST}
 # Cloudflare Access team host and application AUD; the internal host accepts only requests with a valid Access JWT.
 ACCESS_TEAM_DOMAIN = ${ACCESS_TEAM_DOMAIN}
@@ -39,4 +39,4 @@ migrations_dir = ".wrangler/migrations"
 
 # SECRETS — never in any file. Set with `wrangler secret put <NAME>`:
 #   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY, TURNSTILE_SECRET, API_KEY, ALTCHA_HMAC_KEY,
-#   PANEL_ASSERTION_KEY (with MAILSTACK_INTERNAL_ROUTE)
+#   PANEL_ASSERTION_KEYS (with MAILSTACK_INTERNAL_ROUTE; JSON [{kid, key}], several entries during rotation)
