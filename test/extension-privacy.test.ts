@@ -12,6 +12,7 @@ import { parseConfig } from '../src/core/config/schema';
 import { blindIndex } from '../src/core/crypto';
 import { tokenSha256 } from '../src/clients';
 import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
+import { runJobs } from '../src/core/jobs';
 import example from '../config/mailstack.example.json';
 
 const token = 'msk_panel_' + 'a'.repeat(43), key = Buffer.alloc(32, 7).toString('base64url');
@@ -36,10 +37,16 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
       await store.batch(queries.map(q => q.compile(store.db)));
     }
   }
+  // Accepted erasure runs as a job: 200 with its result once one drain finished it, 503 while cleanup keeps it pending.
   async function erase(runtime: Awaited<ReturnType<typeof loadExtensions>>, role = 'admin') {
     const req = new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
       body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) });
-    return runtime.fetch(await signPanel(req, token, { ...panelClaims(), role: role as 'admin', stepUpAt: Date.now() }), env);
+    const response = await runtime.fetch(await signPanel(req, token, { ...panelClaims(), role: role as 'admin', stepUpAt: Date.now() }), env);
+    if (response.status !== 202) return response;
+    const { jobId } = await response.json() as { jobId: string };
+    await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete });
+    const [job] = (await sql<{ state: string; result: string }>`select state,result from jobs where id=${jobId}`.execute(store.db)).rows;
+    return job.state === 'done' ? Response.json(JSON.parse(job.result)) : Response.json({ success: false }, { status: 503 });
   }
   beforeAll(async () => {
     if (driver === 'sqlite') store = createSqliteStore(':memory:');
@@ -50,19 +57,19 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     await store.migrate();
   });
   beforeEach(async () => {
-    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'guards', 'resend_jobs']) await sql`delete from ${sql.table(table)}`.execute(store.db);
+    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'guards', 'resend_jobs', 'jobs']) await sql`delete from ${sql.table(table)}`.execute(store.db);
     cfg = parseConfig({ ...example, extensions: [{ module: 'demo-extension' }], clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
   afterAll(async () => { await store.db.destroy(); await mf?.dispose(); });
 
   it('awaits one cleanup per selected message across all subject roles and batches', async () => {
-    await seed(51);
+    await seed(501);
     const seen: string[] = [];
     const runtime = await load({ name: 'demo', onBeforeDelete: async (selection, ctx) => {
       expect(selection.reason).toBe('erase');
       expect(Object.keys(ctx).sort()).toEqual(['appendAudit', 'config', 'db', 'now']);
-      expect(await rows('messages')).toHaveLength(51);
+      expect(await rows('messages')).toHaveLength(501);
       for (const message of selection.messages) {
         expect(message).toEqual({ id: expect.any(String), brand: 'acme', template: 'notice' });
         seen.push(message.id);
@@ -71,19 +78,24 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     } });
     const response = await erase(runtime);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ count: 51 });
-    expect(seen).toHaveLength(51); expect(new Set(seen).size).toBe(51);
+    expect(await response.json()).toMatchObject({ count: 501 });
+    expect(seen).toHaveLength(501); expect(new Set(seen).size).toBe(501);
     for (const table of ['messages', 'subjects', 'contents']) expect(await rows(table)).toEqual([]);
-  });
-  it('keeps all core rows when a later cleanup batch fails', async () => {
-    await seed(51);
+  }, 30000);
+  it('keeps the finished portion and all rows of the portion whose cleanup fails', async () => {
+    await seed(501);
     const onBeforeDelete = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('unavailable'));
     const runtime = await load({ name: 'demo', onBeforeDelete });
     const response = await erase(runtime);
     expect(response.status).toBe(503); expect(await response.json()).toEqual({ success: false });
-    for (const table of ['messages', 'subjects', 'contents']) expect(await rows(table)).toHaveLength(51);
+    for (const table of ['messages', 'subjects']) expect(await rows(table)).toHaveLength(501);
+    expect(await rows('contents')).toEqual([{ message_id: 'msg_0500', sealed: 'sealed', expires_at: expect.any(Number) }]);
+    expect((await rows('messages')).filter(m => m.meta_expires_at === 0)).toHaveLength(500);
     expect(onBeforeDelete).toHaveBeenCalledTimes(2);
-  });
+    const [job] = await rows('jobs');
+    expect(job).toMatchObject({ state: 'pending', cursor: JSON.stringify({ phase: 1, after: 'msg_0499', count: 500 }) });
+    expect(Number(job.run_after)).toBeGreaterThan(Date.now());
+  }, 30000);
   it.each([200, 400, 403])('returns unavailable for a numeric cleanup result: %s', async result => {
     await seed();
     const runtime = await load({ name: 'demo', onBeforeDelete: () => { throw result; } });

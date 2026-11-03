@@ -161,12 +161,12 @@ export async function loadExtensions(config: Config, store: KyselyStore,
   const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
-  return { emitEvent, resendSource, keys, runRetention: (now: number) => runRetention(store, now, config, beforeDelete), async fetch(req: Request, env: object): Promise<Response> {
+  return { emitEvent, resendSource, keys, beforeDelete, runRetention: (now: number) => runRetention(store, now, config, beforeDelete), async fetch(req: Request, env: object): Promise<Response> {
     const { pathname } = new URL(req.url);
     if (!pathname.startsWith('/internal/v2/') && !pathname.startsWith('/internal/ext/')) return new Response(null, { status: 404 });
     const panel = await authorizePanel(req, env, config, { audience: String(Reflect.get(env, 'PANEL_AUDIENCE') ?? ''), store, keys });
     if (panel instanceof Response) return panel;
-    if (pathname.startsWith('/internal/v2/')) return internalFetch(req, env, store, config, panel, beforeDelete);
+    if (pathname.startsWith('/internal/v2/')) return internalFetch(req, env, store, config, panel);
     const key = `${req.method} ${pathname}`, handler = routes.get(key), route = routeContexts.get(key);
     return handler ? handler(req, { ...ctx, panel, db: route!.db,
       ...(panel.brands === '*' && panel.templates === '*' ? { sesStatus: () => readSesStatus(store, config.events?.ses, String(Reflect.get(env, 'SES_REGION') ?? 'eu-west-1')) } : {}),

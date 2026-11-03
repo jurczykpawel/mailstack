@@ -3,6 +3,7 @@ import type { KyselyStore } from './store';
 import type { Notifier } from './ports';
 import { createBudget, type Budget, type Trigger } from './budget';
 import { JOB_KINDS } from './job-kinds';
+import type { BeforeMessageDelete } from './extensions';
 
 export const LEASE_MS = 30000;
 const DELAYS = [60000, 600000, 3600000, 21600000], MAX_ATTEMPTS = DELAYS.length + 1;
@@ -11,21 +12,22 @@ export interface Job { id: string; kind: string; cursor: string | null; payload:
 /** One portion of work; `writes` commit atomically with the new cursor or the result, and only under a valid token. */
 export type Step = ({ cursor: string } | { result: unknown }) & { writes?: CompiledQuery[] };
 /** `reserveMs`: the longest a single step may take; no step starts with less budget left (default 3 s). */
-export interface JobKind { reserveMs?: number; step(job: Job, ctx: { store: KyselyStore; now: number }): Promise<Step> }
-interface Options { now?: () => number; kinds?: Record<string, JobKind> }
+export interface JobContext { store: KyselyStore; now: number; beforeDelete?: BeforeMessageDelete }
+export interface JobKind { reserveMs?: number; step(job: Job, ctx: JobContext): Promise<Step> }
+interface Options { now?: () => number; kinds?: Record<string, JobKind>; beforeDelete?: BeforeMessageDelete }
 interface Claimed { id: string; kind: string; cursor: string | null; payload: string; attempts: number }
 
-/** The insert to commit in the same batch as the work that requested the job. */
-export function enqueueJob(store: KyselyStore, kind: string, payload: unknown, now: number): { id: string; query: CompiledQuery } {
-  const id = 'job_' + crypto.randomUUID().replaceAll('-', '');
+/** The insert to commit in the same batch as the work that requested the job; `when` makes it conditional on that work. */
+export const newJobId = () => 'job_' + crypto.randomUUID().replaceAll('-', '');
+export function enqueueJob(store: KyselyStore, kind: string, payload: unknown, now: number, when: RawBuilder<unknown> = sql`1`, id = newJobId()): { id: string; query: CompiledQuery } {
   return { id, query: sql`insert into jobs(id,kind,state,payload,run_after,created_at,updated_at)
-    values (${id},${kind},'pending',${JSON.stringify(payload)},${now},${now},${now})`.compile(store.db) };
+    select ${id},${kind},'pending',${JSON.stringify(payload)},${now},${now},${now} where ${when}`.compile(store.db) };
 }
 
 const due = (t: number) => sql`((state = 'pending' and run_after <= ${t}) or (state = 'running' and lease_until <= ${t}))`;
 
 /** Claims due jobs, oldest first, until the budget or the queue runs out; returns the number claimed. */
-export async function drain(store: KyselyStore, budget: Budget, { now = Date.now, kinds = JOB_KINDS }: Options = {}): Promise<number> {
+export async function drain(store: KyselyStore, budget: Budget, { now = Date.now, kinds = JOB_KINDS, beforeDelete }: Options = {}): Promise<number> {
   let claimed = 0;
   while (budget.take()) {
     const token = crypto.randomUUID(), t = now();
@@ -35,12 +37,12 @@ export async function drain(store: KyselyStore, budget: Budget, { now = Date.now
       returning id, kind, cursor, payload, attempts`.execute(store.db)).rows;
     if (!row) break;
     claimed++;
-    if (await run(store, budget, row, token, Object.hasOwn(kinds, row.kind) ? kinds[row.kind] : undefined, now) === 'out_of_budget') break;
+    if (await run(store, budget, row, token, Object.hasOwn(kinds, row.kind) ? kinds[row.kind] : undefined, now, beforeDelete) === 'out_of_budget') break;
   }
   return claimed;
 }
 
-async function run(store: KyselyStore, budget: Budget, row: Claimed, token: string, kind: JobKind | undefined, now: () => number) {
+async function run(store: KyselyStore, budget: Budget, row: Claimed, token: string, kind: JobKind | undefined, now: () => number, beforeDelete?: BeforeMessageDelete) {
   // The only ownership check: once the token is gone the fence copies the row onto itself (duplicate key),
   // which aborts the whole batch, so a late executor writes neither its result nor its step writes.
   const fence = sql`insert into jobs select * from jobs where id = ${row.id} and token is not ${token}`;
@@ -58,7 +60,7 @@ async function run(store: KyselyStore, budget: Budget, row: Claimed, token: stri
   try {
     const payload = JSON.parse(row.payload);
     while (budget.has(kind.reserveMs ?? 3000)) {
-      const step = await kind.step({ id: row.id, kind: row.kind, cursor, payload }, { store, now: now() });
+      const step = await kind.step({ id: row.id, kind: row.kind, cursor, payload }, { store, now: now(), beforeDelete });
       if ('result' in step) return await finish('done', step.result, step.writes);
       await commit(sql`update jobs set cursor = ${step.cursor}, attempts = 1, lease_until = ${now() + LEASE_MS},
         updated_at = ${now()} where ${owned}`, step.writes);
