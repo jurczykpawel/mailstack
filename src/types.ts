@@ -16,6 +16,9 @@ export interface Env extends KeyEnvironment {
   TRUSTED_PROXY?: string;
   /** Hostname that alone serves /internal/v1/* on the Worker (with PANEL_ASSERTION_KEY). */
   INTERNAL_HOST?: string;
+  /** Cloudflare Access team host and application AUD; requests on INTERNAL_HOST need a valid Access JWT. */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
   /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
   SELLF_DEFAULT_BRAND?: string;
   // secrets (set via `wrangler secret put`)

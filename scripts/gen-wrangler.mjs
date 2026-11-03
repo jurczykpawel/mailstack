@@ -7,7 +7,8 @@
  * fall back to harmless placeholders, so `typecheck`/`test`/`dev` still work without
  * an .env — only a real `deploy` needs the real values.
  *
- * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional).
+ * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional);
+ * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD.
  */
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { INITIAL_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
@@ -27,6 +28,9 @@ const sellfBrand = (env.SELLF_DEFAULT_BRAND || "acme").trim();
 
 const internal = (env.MAILSTACK_INTERNAL_ROUTE || "").trim();
 if (internal && !route) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ROUTE");
+const team = (env.MAILSTACK_ACCESS_TEAM_DOMAIN || "").trim(), aud = (env.MAILSTACK_ACCESS_AUD || "").trim();
+if (internal && !(team && aud)) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD");
+if (team && !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) throw new Error("MAILSTACK_ACCESS_TEAM_DOMAIN must be <team>.cloudflareaccess.com");
 // With a custom domain the workers.dev and preview URLs stay off, so only the listed hosts reach the Worker.
 const routesBlock = route
   ? `workers_dev = false\npreview_urls = false\nroutes = [\n${[route, internal].filter(Boolean).map((pattern) => `  { pattern = "${pattern}", custom_domain = true },\n`).join("")}]`
@@ -39,7 +43,9 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replaceAll("${MAILSTACK_D1_ID}", d1Id)
   .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)
   .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand)
-  .replace("${INTERNAL_HOST}", JSON.stringify(internal));
+  .replace("${INTERNAL_HOST}", JSON.stringify(internal))
+  .replace("${ACCESS_TEAM_DOMAIN}", JSON.stringify(team))
+  .replace("${ACCESS_AUD}", JSON.stringify(aud));
 
 mkdirSync(resolve(root, ".wrangler/migrations"), { recursive: true });
 writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SCHEMA);
