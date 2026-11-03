@@ -187,6 +187,22 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     await expect(handle.selectNoFrom(eb => eb.val(1).as('count')).execute()).rejects.toThrow('Unsupported extension');
     expect(execute).not.toHaveBeenCalled();
   });
+  it('accepts json_each lists as one parameter and keeps their arguments inside the sandbox', async () => {
+    await seed();
+    let db!: ExtensionDatabase;
+    await load({ name: 'demo', migrate: async handle => {
+      db = handle;
+      await db.schema.createTable('ext_demo_ids').ifNotExists().addColumn('id', 'text', c => c.primaryKey()).execute();
+    } });
+    const ids = Array.from({ length: 500 }, (_, i) => `msg_${i}`);
+    await db.insertInto('ext_demo_ids').columns(['id']).expression(db.selectFrom(eb => eb.fn('json_each', [eb.val(JSON.stringify(ids))]).as('j')).select('value').where('value', 'is not', null))
+      .onConflict(c => c.column('id').doNothing()).execute();
+    expect(await rows('ext_demo_ids')).toHaveLength(500);
+    const execute = vi.spyOn(store.db, 'executeQuery');
+    await expect(db.selectFrom(eb => eb.fn('json_each', [eb.selectFrom('messages').select('id')]).as('j')).select('value').execute()).rejects.toThrow();
+    await expect(db.selectFrom(eb => eb.fn('json_tree', [eb.val('[]')]).as('j')).select('value').execute()).rejects.toThrow('Unsupported extension');
+    expect(execute).not.toHaveBeenCalled();
+  });
   it.each(['select', 'update', 'delete'] as const)('requires distinct namespaces before %s operations', async operation => {
     await sql`create table if not exists ext_demo_other_items(id text)`.execute(store.db);
     await sql`delete from ext_demo_other_items`.execute(store.db);

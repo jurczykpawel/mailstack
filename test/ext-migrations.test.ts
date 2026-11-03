@@ -138,6 +138,10 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension migrations: 
     expect(await (await get(pending)).json()).toMatchObject({ code: 'extension_unavailable', reason: 'reconcile' });
     await runJobs(store, 'cron');
     expect(seen).toEqual([null, 'half']);
+    // Capabilities refresh before any route call: the finished job is reported without waiting for a request.
+    expect(pending.features()[0].state).toBe('unavailable');
+    await pending.refresh();
+    expect(pending.features()[0].state).toBe('ready');
     expect((await get(pending)).status).toBe(200);
     expect(pending.features()[0].state).toBe('ready');
     expect((await host(extension([v1], { reconcile }))).features()[0].state).toBe('ready');

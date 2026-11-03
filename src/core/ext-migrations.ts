@@ -13,7 +13,7 @@ const extensionNodes = new Set(`Identifier SchemableIdentifier SelectQuery Selec
   .split(/\s+/).map(name => name + 'Node'));
 const extensionFunctions = new Set(`abs avg coalesce count group_concat hex ifnull length lower ltrim max min nullif
   replace round rtrim substr substring sum total trim typeof upper json json_array json_object json_extract json_type
-  json_valid json_quote json_set json_insert json_replace json_remove json_group_array json_group_object`.split(/\s+/));
+  json_valid json_quote json_set json_insert json_replace json_remove json_group_array json_group_object json_each`.split(/\s+/));
 function extensionToken(kind: string, key: string, value: string): boolean {
   if (kind === 'IdentifierNode' && key === 'name') return /^[a-zA-Z0-9_]+$/.test(value);
   if (['FunctionNode', 'AggregateFunctionNode'].includes(kind) && key === 'func') return extensionFunctions.has(value);
@@ -33,6 +33,8 @@ function extensionToken(kind: string, key: string, value: string): boolean {
 function extensionRelation(node: unknown): void {
   const value = node as { kind?: string; node?: unknown } | undefined;
   if (value?.kind === 'AliasNode') return extensionRelation(value.node);
+  // `json_each(?)` passes an id list as one parameter (D1: 100 per statement, A 3.5.4).
+  if (value?.kind === 'FunctionNode' && (value as { func?: unknown }).func === 'json_each') return;
   if (value?.kind !== 'TableNode' && value?.kind !== 'SelectQueryNode') throw new Error('Unsupported extension relation');
 }
 function extensionNode(node: OperationNode, prefix: string): void {
