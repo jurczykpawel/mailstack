@@ -21,14 +21,14 @@ it.each([[202, 1], [200, 0], [409, 0]])('starts background jobs only after accep
   expect(waitUntil).toHaveBeenCalledTimes(kicks);
   await Promise.all(waitUntil.mock.calls.map(([task]) => task));
   // The drain gets the extension host's cleanup, so erase jobs on the Worker run extension `onBeforeDelete`.
-  expect(vi.mocked(runJobs).mock.calls).toEqual(kicks ? [[store, 'request', { beforeDelete: expect.any(Function), consumers: expect.any(Map) }]] : []);
+  expect(vi.mocked(runJobs).mock.calls).toEqual(kicks ? [[store, 'request', { beforeDelete: expect.any(Function), consumers: expect.any(Map), kinds: expect.objectContaining({ erase: expect.anything() }) }]] : []);
 });
 
 it('passes the extension cleanup to the minute cron drain', async () => {
   const waitUntil = vi.fn();
   createApp().scheduled({ cron: '* * * * *', scheduledTime: 0 } as ScheduledController, { DB: {} } as unknown as Env, { waitUntil } as unknown as ExecutionContext);
   await waitUntil.mock.calls[0][0];
-  expect(vi.mocked(runJobs).mock.calls).toEqual([[expect.anything(), 'cron', { notifier: undefined, beforeDelete: expect.any(Function), consumers: expect.any(Map) }]]);
+  expect(vi.mocked(runJobs).mock.calls).toEqual([[expect.anything(), 'cron', { notifier: undefined, beforeDelete: expect.any(Function), consumers: expect.any(Map), kinds: expect.objectContaining({ erase: expect.anything() }) }]]);
 });
 
 it('declares the minute job cron and the hourly retention cron the Worker dispatches on', () => {

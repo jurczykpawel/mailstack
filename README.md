@@ -1300,7 +1300,17 @@ makes both unavailable. All hooks are optional:
   configuration and returns `{ cursor }` or `{ done: true }`. It runs as an
   `ext.reconcile` job; a new configuration starts a new `ext_reconcile` generation and
   older generations no longer record progress. Until it finishes the extension is
-  `unavailable: reconcile`. It must be idempotent.
+  `unavailable: reconcile`. It must be idempotent. An optional `reconcileKey` string
+  (for example the ids of a keyring) joins the configuration digest, so changing it
+  alone starts a new generation.
+- `jobs: { <kind>: { run, ready?, dead?, reserveMs? } }` registers core background jobs
+  `ext:<name>:<kind>`. Queue one with `db.enqueue(kind, key, payload)` inside
+  `db.batch([...])`: one live job per key; a finished one is revived. The core holds the
+  lease (30 s), the token fence and the backoff (1 min, 10 min, 1 h, 6 h). `run` makes one
+  attempt and returns sandboxed `writes`, committed only under a valid token, plus
+  `retry: true` to count it as failed; after the fifth failure or lost claim the job is
+  `dead` and the `dead` writes commit. `ready()` is asked before a job is claimed: false
+  leaves it pending without an attempt. Jobs whose extension is not loaded stay pending.
 - `migrate(db)` (legacy, until extensions move to `migrations`/`reconcile`) runs before listening. Use Kysely schema/query builders and tables
   beginning with `ext_<name>_`; referenced tables must use the same prefix. Raw SQL,
   schema-qualified tables and dropping indexes are not supported. Index names also

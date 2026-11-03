@@ -106,8 +106,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
     await seed(1200);
     await start();
     let t = Date.now(), calls = 0, inBatch = false;
-    // The invocation stops after three store calls: the claim, the first portion's select and its batch.
-    const tick = () => { if (++calls > 3) throw new Error('interrupted'); };
+    // The invocation stops after four store calls: the peek, the claim, the first portion's select and its batch.
+    const tick = () => { if (++calls > 4) throw new Error('interrupted'); };
     const executor = store.db.getExecutor(), execute = executor.executeQuery.bind(executor), batch = store.batch.bind(store);
     vi.spyOn(executor, 'executeQuery').mockImplementation(async (...args) => { if (!inBatch) tick(); return execute(...args); });
     vi.spyOn(store, 'batch').mockImplementation(async queries => { tick(); inBatch = true; try { return await batch(queries); } finally { inBatch = false; } });

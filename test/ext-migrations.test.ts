@@ -157,14 +157,14 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension migrations: 
       from ext_reconcile`.execute(store.db).then(r => r.rows[0]);
     const newer = await state();
     expect(Number(newer.generation)).toBe(2);
-    expect(await reconcileStep({ id: oldJob.id, kind: 'ext.reconcile', cursor: null, payload: JSON.parse(oldJob.payload) }, { store, now: 1 }))
+    expect(await reconcileStep({ id: oldJob.id, kind: 'ext.reconcile', cursor: null, attempt: 1, payload: JSON.parse(oldJob.payload) }, { store, now: 1 }))
       .toEqual({ result: { superseded: true } });
     // An isolate still holding the old configuration refuses the newer generation's job instead of completing it.
     reconcilers.set('demo', { configSha: 'old', run: async () => ({ done: true }) });
-    await expect(reconcileStep({ id: 'j', kind: 'ext.reconcile', cursor: null, payload: { extension: 'demo', generation: 2 } }, { store, now: 1 })).rejects.toThrow();
+    await expect(reconcileStep({ id: 'j', kind: 'ext.reconcile', cursor: null, attempt: 1, payload: { extension: 'demo', generation: 2 } }, { store, now: 1 })).rejects.toThrow();
     // A new configuration arrives while generation 2 is running: its completion no longer applies (WHERE generation).
     reconcilers.set('demo', { configSha: newer.config_sha, run: async () => { await startReconcile(store, 'demo', 'c', 5); return { done: true }; } });
-    const step = await reconcileStep({ id: 'j', kind: 'ext.reconcile', cursor: null, payload: { extension: 'demo', generation: 2 } }, { store, now: 1 });
+    const step = await reconcileStep({ id: 'j', kind: 'ext.reconcile', cursor: null, attempt: 1, payload: { extension: 'demo', generation: 2 } }, { store, now: 1 });
     expect(await store.batch(step.writes!)).toEqual([0]);
     expect(await state()).toMatchObject({ config_sha: 'c', done_at: null });
     expect(Number((await state()).generation)).toBe(3);

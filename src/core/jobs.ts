@@ -9,15 +9,18 @@ import { scheduleFanout, type EventConsumer } from './events';
 export const LEASE_MS = 30000;
 const DELAYS = [60000, 600000, 3600000, 21600000], MAX_ATTEMPTS = DELAYS.length + 1;
 
-export interface Job { id: string; kind: string; cursor: string | null; payload: unknown }
+/** `attempt`: claims since the last saved progress (1 on the first claim). */
+export interface Job { id: string; kind: string; cursor: string | null; payload: unknown; attempt: number }
 /** One portion of work; `writes` commit atomically with the new cursor or the result, and only under a valid token. */
-export type Step = ({ cursor: string } | { result: unknown }) & { writes?: CompiledQuery[] };
+export type Step = ({ cursor: string } | { result: unknown } | { retry: true }) & { writes?: CompiledQuery[] };
 /** `reserveMs`: the longest a single step may take; no step starts with less budget left (default 3 s). */
 export interface JobContext { store: KyselyStore; now: number; beforeDelete?: BeforeMessageDelete; consumers?: Map<string, EventConsumer> }
-export interface JobKind { reserveMs?: number; step(job: Job, ctx: JobContext): Promise<Step> }
+/** `retry` commits its writes and reschedules like a failure; `ready` is asked before a job of the kind is claimed (false
+ * leaves it pending without an attempt); `dead` writes commit whenever the job ends dead (failures or lost claims). */
+export interface JobKind { reserveMs?: number; ready?(): Promise<boolean>; dead?(job: Job): CompiledQuery[]; step(job: Job, ctx: JobContext): Promise<Step> }
 /** What the extension host contributes to background work. */
-export type JobHooks = Pick<JobContext, 'beforeDelete' | 'consumers'>;
-interface Options extends JobHooks { now?: () => number; kinds?: Record<string, JobKind> }
+export type JobHooks = Pick<JobContext, 'beforeDelete' | 'consumers'> & { kinds?: Record<string, JobKind> };
+interface Options extends JobHooks { now?: () => number }
 interface Claimed { id: string; kind: string; cursor: string | null; payload: string; attempts: number }
 
 /** The insert to commit in the same batch as the work that requested the job; `when` makes it conditional on that work. */
@@ -27,20 +30,35 @@ export function enqueueJob(store: KyselyStore, kind: string, payload: unknown, n
     select ${id},${kind},'pending',${JSON.stringify(payload)},${now},${now},${now} where ${when}`.compile(store.db) };
 }
 
+/** One live job per id: inserts it, or revives a finished one (`done`/`dead`); a pending or running job is left alone. */
+export function ensureJob(store: Pick<KyselyStore, 'db'>, kind: string, id: string, payload: unknown, now: number): CompiledQuery {
+  return sql`insert into jobs(id,kind,state,payload,run_after,created_at,updated_at) values (${id},${kind},'pending',${JSON.stringify(payload)},${now},${now},${now})
+    on conflict(id) do update set state = 'pending', cursor = null, payload = excluded.payload, attempts = 0, token = null, lease_until = null,
+    run_after = excluded.run_after, updated_at = excluded.updated_at, done_at = null, result = null where jobs.state in ('done', 'dead')`.compile(store.db);
+}
+
 const due = (t: number) => sql`((state = 'pending' and run_after <= ${t}) or (state = 'running' and lease_until <= ${t}))`;
 
 /** Claims due jobs, oldest first, until the budget or the queue runs out; returns the number claimed. */
 export async function drain(store: KyselyStore, budget: Budget, { now = Date.now, kinds = JOB_KINDS, ...hooks }: Options = {}): Promise<number> {
   let claimed = 0;
+  // Kinds not ready in this call, and extension kinds without a handler here (another isolate or a later start runs them).
+  const held = new Set<string>(), kind = (name: string) => Object.hasOwn(kinds, name) ? kinds[name] : undefined;
   while (budget.take()) {
     const token = crypto.randomUUID(), t = now();
+    const next = sql`select id, kind from jobs where ${due(t)} and kind not in (select value from json_each(${JSON.stringify([...held])}))
+      order by run_after, created_at, id limit 1`;
+    const [peek] = (await sql<{ kind: string }>`${next}`.execute(store.db)).rows;
+    if (!peek) break;
+    const ready = kind(peek.kind)?.ready;
+    if (!kind(peek.kind) && peek.kind.startsWith('ext:') || ready && !await ready().catch(() => false)) { held.add(peek.kind); continue; }
     const [row] = (await sql<Claimed>`update jobs
       set state = 'running', token = ${token}, lease_until = ${t + LEASE_MS}, attempts = attempts + 1, updated_at = ${t}
-      where id = (select id from jobs where ${due(t)} order by run_after, created_at, id limit 1) and ${due(t)}
+      where id = (select id from (${next})) and ${due(t)}
       returning id, kind, cursor, payload, attempts`.execute(store.db)).rows;
     if (!row) break;
     claimed++;
-    if (await run(store, budget, row, token, Object.hasOwn(kinds, row.kind) ? kinds[row.kind] : undefined, now, hooks) === 'out_of_budget') break;
+    if (await run(store, budget, row, token, kind(row.kind), now, hooks) === 'out_of_budget') break;
   }
   return claimed;
 }
@@ -52,19 +70,23 @@ async function run(store: KyselyStore, budget: Budget, row: Claimed, token: stri
   const owned = sql`id = ${row.id}`;
   const commit = (update: RawBuilder<unknown>, writes: CompiledQuery[] = []) =>
     store.batch([fence.compile(store.db), ...writes, update.compile(store.db)]);
-  const finish = (state: 'done' | 'dead', result: unknown, writes?: CompiledQuery[]) => commit(sql`update jobs set state = ${state},
-    token = null, lease_until = null, done_at = ${now()}, updated_at = ${now()}, result = ${JSON.stringify(result ?? null)} where ${owned}`, writes);
-  const release = (extra: RawBuilder<unknown>) =>
-    commit(sql`update jobs set state = 'pending', token = null, lease_until = null, updated_at = ${now()}, ${extra} where ${owned}`);
-  if (!kind) return finish('dead', { error: 'unknown_kind' });
-  if (row.attempts > MAX_ATTEMPTS) return finish('dead', { error: 'attempts' });
+  const job = (): Job => ({ id: row.id, kind: row.kind, cursor, payload: JSON.parse(row.payload), attempt: attempts });
+  const finish = (state: 'done' | 'dead', result: unknown, writes: CompiledQuery[] = []) => commit(sql`update jobs set state = ${state},
+    token = null, lease_until = null, done_at = ${now()}, updated_at = ${now()}, result = ${JSON.stringify(result ?? null)} where ${owned}`,
+    state === 'dead' && kind?.dead ? [...writes, ...kind.dead(job())] : writes);
+  const release = (extra: RawBuilder<unknown>, writes?: CompiledQuery[]) =>
+    commit(sql`update jobs set state = 'pending', token = null, lease_until = null, updated_at = ${now()}, ${extra} where ${owned}`, writes);
+  const failed = (writes?: CompiledQuery[]) => attempts >= MAX_ATTEMPTS ? finish('dead', { error: 'handler_failed' }, writes)
+    : release(sql`run_after = ${now() + DELAYS[attempts - 1]}`, writes);
   // `attempts` counts claims since the last saved progress, so long jobs spread over many calls never run out.
   let { cursor, attempts } = row;
+  if (!kind) return finish('dead', { error: 'unknown_kind' });
+  if (attempts > MAX_ATTEMPTS) return finish('dead', { error: 'attempts' });
   try {
-    const payload = JSON.parse(row.payload);
     while (budget.has(kind.reserveMs ?? 3000)) {
-      const step = await kind.step({ id: row.id, kind: row.kind, cursor, payload }, { store, now: now(), ...hooks });
+      const step = await kind.step(job(), { store, now: now(), ...hooks });
       if ('result' in step) return await finish('done', step.result, step.writes);
+      if ('retry' in step) return await failed(step.writes);
       await commit(sql`update jobs set cursor = ${step.cursor}, attempts = 1, lease_until = ${now() + LEASE_MS},
         updated_at = ${now()} where ${owned}`, step.writes);
       cursor = step.cursor; attempts = 1;
@@ -73,8 +95,7 @@ async function run(store: KyselyStore, budget: Budget, row: Claimed, token: stri
     return 'out_of_budget';
   } catch {
     // A lost token makes these writes fail too; the lease then hands the job to whoever holds it now.
-    await (attempts >= MAX_ATTEMPTS ? finish('dead', { error: 'handler_failed' })
-      : release(sql`run_after = ${now() + DELAYS[attempts - 1]}`)).catch(() => {});
+    await failed().catch(() => {});
   }
 }
 
