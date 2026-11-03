@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { keysOnly, testKeys } from './fixtures/keys';
+import { accessEnv, accessKeyPair, certsFetch, publicJwk, signAccessJwt } from './fixtures/access';
+import { createAccessVerifier } from '../src/core/access';
 
 vi.setConfig({ testTimeout: 30000 });
 import { generateKeyPairSync } from 'node:crypto';
@@ -78,12 +80,18 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   });
   it('serves the same gate on the Worker only on the internal host', async () => {
     await seed();
-    const app = createApp({ store, keys: testKeys(cfg) }), workerEnv = { ...env, INTERNAL_HOST: 'internal.example' } as unknown as Env;
-    const send = async (host: string, e: Env = workerEnv, auth = `Bearer ${token}`) => {
-      const req = new Request(`https://${host}/internal/v1/messages`, { headers: { authorization: auth, 'x-panel-actor': 'user-1' } });
+    const pair = await accessKeyPair(), certs = certsFetch(async () => ({ keys: [await publicJwk(pair, 'k1')] }));
+    const app = createApp({ store, keys: testKeys(cfg), access: createAccessVerifier(certs.fetcher) });
+    const workerEnv = { ...env, ...accessEnv, INTERNAL_HOST: 'internal.example' } as unknown as Env, jwt = await signAccessJwt(pair.privateKey, Date.now());
+    const send = async (host: string, e: Env = workerEnv, auth = `Bearer ${token}`, access: string | null = jwt) => {
+      const req = new Request(`https://${host}/internal/v1/messages`, { headers: { authorization: auth, 'x-panel-actor': 'user-1', ...access === null ? {} : { 'cf-access-jwt-assertion': access } } });
       req.headers.set('x-panel-assertion', await signPanelAssertion(req, claims, key));
       return app.fetch(req, e, {} as ExecutionContext);
     };
+    for (const response of [await send('internal.example', workerEnv, `Bearer ${token}`, null),
+      await send('internal.example', workerEnv, `Bearer ${token}`, await signAccessJwt(pair.privateKey, Date.now(), { aud: ['other'] })),
+      await send('internal.example', { ...workerEnv, ACCESS_AUD: undefined } as unknown as Env)]) expect(response.status).toBe(403);
+    expect(await rows('audit')).toHaveLength(0);
     const ok = await send('internal.example');
     expect(ok.status).toBe(200);
     expect((await ok.json() as Payload).messages.map(m => m.id)).toEqual(['msg_1']);

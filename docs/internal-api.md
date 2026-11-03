@@ -8,6 +8,15 @@ also turns off `workers.dev` and preview URLs) and the `PANEL_ASSERTION_KEY`
 secret. Panel clients come from Mailstack Pro keys. Every other host, or a
 missing key, returns 404. Put the host behind Cloudflare Access with a service
 token; the panel sends it from `PANEL_API_ACCESS_ID_FILE` / `PANEL_API_ACCESS_SECRET_FILE`.
+The Worker also checks the `Cf-Access-Jwt-Assertion` header that Access adds:
+set `MAILSTACK_ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) and
+`MAILSTACK_ACCESS_AUD` (the Application Audience tag of that Access application)
+in `.env`; `npm run setup` refuses `MAILSTACK_INTERNAL_ROUTE` without both. The
+token must be RS256-signed by a current team key (`/cdn-cgi/access/certs`,
+matched by `kid`) with the team issuer, the AUD in `aud`, an unexpired `exp`
+and a `nbf` at most 60 seconds ahead. Otherwise, or when the keys cannot be
+fetched, the Worker returns 403 before checking panel credentials (no audit row).
+Keys are cached for an hour per isolate.
 Both runtimes use the same `authorizePanel` gate in `src/core/panel.ts`. The API returns sealed values; only the
 panel holds private content keys. Responses use `Cache-Control: no-store`.
 

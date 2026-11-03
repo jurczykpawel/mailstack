@@ -18,6 +18,7 @@ import { LOGO_PNG_BASE64 } from "./assets/logo";
 import { proKeys } from "./core/pro.generated";
 import { internalFetch } from "./core/internal";
 import { authorizePanel } from "./core/panel";
+import { createAccessVerifier, type AccessVerifier } from "./core/access";
 import type { KeyProvider } from "./clients";
 
 const verifySns = createVerifier();
@@ -58,7 +59,8 @@ export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionCo
   ctx.waitUntil(runRetention(createD1Store(env.DB), event.scheduledTime, config));
 }
 
-export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore } = {}, pro = proKeys) {
+export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore; access?: AccessVerifier } = {}, pro = proKeys) {
+  const access = overrides.access ?? createAccessVerifier();
   // Built once per isolate on first use (needs env); a failure leaves only the full key.
   let keys: Promise<KeyProvider | undefined> | undefined;
   return {
@@ -144,6 +146,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       }
 
       if (pathname.startsWith("/internal/v1/") && store && env.PANEL_ASSERTION_KEY && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
+        if (!await access(req, env)) return Response.json({ success: false }, { status: 403 });
         const panel = await authorizePanel(req, env, config, deps.keys, deps.waitUntil);
         return panel instanceof Response ? panel : internalFetch(req, env, store, config, panel);
       }

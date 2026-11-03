@@ -489,7 +489,8 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
    Optional `MAILSTACK_INTERNAL_ROUTE` adds a second domain serving only `/internal/v1/*`
-   for the panel (needs Pro keys and `PANEL_ASSERTION_KEY`; keep it behind Cloudflare Access).
+   for the panel (needs Pro keys, `PANEL_ASSERTION_KEY`, Cloudflare Access in front and
+   `MAILSTACK_ACCESS_TEAM_DOMAIN` + `MAILSTACK_ACCESS_AUD` so the Worker checks the Access JWT).
    A configured route disables `workers.dev`. See [internal API](docs/internal-api.md).
 6. **Frontends:** point each site's form at `POST /v1/send` with the right `brand`, and add
    the Cloudflare Turnstile widget so a `cf-turnstile-response` token is included.

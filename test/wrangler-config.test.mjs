@@ -14,15 +14,20 @@ it('passes the optional SES configuration set through generated vars', () => {
   } finally { writeFileSync('wrangler.toml', previous); }
 });
 it('adds the internal host as a second custom domain and disables workers.dev', () => {
-  const env = { ...process.env, MAILSTACK_ROUTE: 'mail.example.com', MAILSTACK_INTERNAL_ROUTE: 'internal.example.com', MAILSTACK_D1_ID: 'PLACEHOLDER_D1_ID' };
+  const env = { ...process.env, MAILSTACK_ROUTE: 'mail.example.com', MAILSTACK_INTERNAL_ROUTE: 'internal.example.com', MAILSTACK_D1_ID: 'PLACEHOLDER_D1_ID',
+    MAILSTACK_ACCESS_TEAM_DOMAIN: 'team.cloudflareaccess.com', MAILSTACK_ACCESS_AUD: 'a'.repeat(64) };
   const previous = readFileSync('wrangler.toml', 'utf8');
   try {
     execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env, stdio: 'pipe' });
     const out = readFileSync('wrangler.toml', 'utf8');
     for (const line of ['workers_dev = false', 'preview_urls = false', 'INTERNAL_HOST = "internal.example.com"',
-      '{ pattern = "mail.example.com", custom_domain = true }', '{ pattern = "internal.example.com", custom_domain = true }']) expect(out).toContain(line);
-    expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_ROUTE: '' }, stdio: 'pipe' })).toThrow();
-    execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_INTERNAL_ROUTE: '' }, stdio: 'pipe' });
-    expect(readFileSync('wrangler.toml', 'utf8')).toContain('INTERNAL_HOST = ""');
+      '{ pattern = "mail.example.com", custom_domain = true }', '{ pattern = "internal.example.com", custom_domain = true }',
+      'ACCESS_TEAM_DOMAIN = "team.cloudflareaccess.com"', `ACCESS_AUD = "${'a'.repeat(64)}"`]) expect(out).toContain(line);
+    for (const change of [{ MAILSTACK_ROUTE: '' }, { MAILSTACK_ACCESS_TEAM_DOMAIN: '' }, { MAILSTACK_ACCESS_AUD: ' ' },
+      { MAILSTACK_ACCESS_TEAM_DOMAIN: 'https://team.cloudflareaccess.com' }, { MAILSTACK_ACCESS_TEAM_DOMAIN: 'evil.example.com' }]) {
+      expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...change }, stdio: 'pipe' })).toThrow();
+    }
+    execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_INTERNAL_ROUTE: '', MAILSTACK_ACCESS_TEAM_DOMAIN: '', MAILSTACK_ACCESS_AUD: '' }, stdio: 'pipe' });
+    for (const line of ['INTERNAL_HOST = ""', 'ACCESS_TEAM_DOMAIN = ""', 'ACCESS_AUD = ""']) expect(readFileSync('wrangler.toml', 'utf8')).toContain(line);
   } finally { writeFileSync('wrangler.toml', previous); }
 });
