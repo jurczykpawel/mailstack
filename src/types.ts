@@ -32,6 +32,8 @@ export interface Env extends KeyEnvironment {
   INDEX_KEYS?: string;
   /** Panel assertion keyring `[{kid, key}]` (32-byte base64url keys); several entries allow rotation. */
   PANEL_ASSERTION_KEYS?: string;
+  /** Private X25519 transit keyring `{keys: [JWK]}`; its public halves are published by capabilities. */
+  TRANSIT_KEYS?: string;
   /** Node only: the assertion audience (API installation id) the panel signs for. */
   PANEL_AUDIENCE?: string;
 }

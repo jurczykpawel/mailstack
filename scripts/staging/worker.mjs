@@ -126,6 +126,8 @@ if (command.startsWith('hmac-')) {
     INDEX_KEYS: JSON.stringify([{ kid: 'staging-index', key: randomBytes(32).toString('base64url') }]),
   };
   secrets.API_KEY ??= randomBytes(32).toString('base64url');
+  // Transit keyring: the Worker opens panel envelopes with it; capabilities publishes the public half.
+  secrets.TRANSIT_KEYS ??= JSON.stringify({ keys: [{ ...generateKeyPairSync('x25519').privateKey.export({ format: 'jwk' }), kid: 'staging-transit' }] });
   delete secrets.SEND_TOKEN; delete secrets.HOOK_TOKEN;
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
   if (pro) {

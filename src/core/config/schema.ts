@@ -46,6 +46,8 @@ const shape = z.strictObject({
     options: z.record(z.string(), z.unknown()).optional(),
   })).default([]),
   sender: z.strictObject({ type: z.enum(["ses", "smtp"]) }).optional(),
+  // Workers plan declared by the operator; Free switches off the features it cannot carry (A 5).
+  cloudflare: z.strictObject({ plan: z.enum(["paid", "free"]) }).optional(),
   sources: z.record(sourceId, sourceSchema).default(() => ({ sellf: sourceSchema.parse(sellfPreset) })),
   version: z.literal(1), brands: z.record(z.string(), brand),
   logging: z.strictObject({

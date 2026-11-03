@@ -10,8 +10,9 @@ import type { Config } from './config/schema';
 import type { MessageRow } from './store/messages';
 import { enqueueJob, newJobId } from './jobs';
 import { selection, type EraseScope } from './erase';
+import { capabilities, LIMITS, type CapabilityHost } from './capabilities';
 
-const PAGE_BYTES = 1024 * 1024 - 8192; // 1 MiB page including the manifest envelope
+const PAGE_BYTES = LIMITS.exportPageBytes - 8192; // 1 MiB page including the manifest envelope
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
 const fail = (status: number) => { throw status; };
 function integer(value: string | null, fallback: number, max: number): number {
@@ -22,7 +23,7 @@ function integer(value: string | null, fallback: number, max: number): number {
 const narrow = (own: '*' | string[], other: '*' | string[]) => own === '*' ? other : other === '*' ? own : own.filter(v => other.includes(v));
 const covers = (own: '*' | string[], other: '*' | string[]) => own === '*' || (other !== '*' && other.every(v => own.includes(v)));
 const names = (v: unknown) => v === '*' || (Array.isArray(v) && v.length <= 100 && v.every(n => typeof n === 'string' && n.length <= 128));
-export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal): Promise<Response> {
+export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, host: CapabilityHost): Promise<Response> {
   const now = Date.now(), url = new URL(req.url), path = url.pathname.slice('/internal/v2'.length), q = url.searchParams;
   const run = async <T>(query: RawBuilder<T>) => (await query.execute(store.db)).rows;
   const scope = sql`(${selection('m.brand', panel.brands)}) and (${selection('m.template', panel.templates)})`;
@@ -73,8 +74,9 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
   try {
     requireRole('viewer');
     if (req.url.length > 8192) return fail(400);
+    if (path === '/capabilities' && req.method === 'GET') return response(await capabilities(env, store, cfg, panel, host, now));
     if (path === '/messages' && req.method === 'GET') {
-      const limit = integer(q.get('limit'), 50, 100); if (!limit) fail(400);
+      const limit = integer(q.get('limit'), 50, LIMITS.listPage); if (!limit) fail(400);
       const from = integer(q.get('from'), 0, Number.MAX_SAFE_INTEGER), to = integer(q.get('to'), Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
       if (from > to) fail(400);
       const filters = [scope, live, sql`m.created_at >= ${from} and m.created_at <= ${to}`];
@@ -158,7 +160,7 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       }
       const limit = input.limit === undefined ? 25 : input.limit;
       let after = '';
-      if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) return fail(400);
+      if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > LIMITS.exportPageMessages) return fail(400);
       if (input.cursor !== undefined && input.cursor !== null) {
         try {
           if (typeof input.cursor !== 'string' || input.cursor.length > 256) return fail(400);

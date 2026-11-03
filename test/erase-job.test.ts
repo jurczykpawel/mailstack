@@ -40,7 +40,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
   let store: KyselyStore, mf: Miniflare | undefined, binding: D1Database;
   const principal = (over: Partial<PanelPrincipal> = {}): PanelPrincipal => ({ ...panelClaims(), scopes: ['panel'], brands: '*', templates: '*', ...over });
   const api = (path: string, body?: unknown, p = principal(), on = store) => internalFetch(new Request('http://localhost/internal/v2' + path,
-    body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }), env, on, cfg, p);
+    body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }), env, on, cfg, p, { platform: 'node', extensions: async () => ({ features: () => [], resendSource: undefined }) });
   const count = async (query: ReturnType<typeof sql<{ n: number }>>) => Number((await query.execute(store.db)).rows[0].n);
   const jobs = async () => (await sql<JobRow>`select * from jobs order by created_at`.execute(store.db)).rows;
   const start = async (body: unknown = { email: 'one@example.com', reason: 'Requested by subject' }, p = principal(), path = '/subjects/erase') => {
