@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { sql } from 'kysely';
@@ -26,7 +26,10 @@ let store: ReturnType<typeof createD1Store>;
 beforeAll(async () => {
   const dir = mkdtempSync('.ses-keys-test-');
   try {
-    const output = execFileSync(process.execPath, ['scripts/keys.mjs', 'init', join(dir, 'content.json')], { encoding: 'utf8' });
+    const keys = (...args: string[]) => execFileSync(process.execPath, ['scripts/keys.mjs', 'init', join(dir, 'content.json'), ...args], { encoding: 'utf8', stdio: 'pipe' });
+    expect(keys).toThrow();
+    copyFileSync(join(dir, 'content.json'), join(dir, 'offline.json'));
+    const output = keys('--backup-verified', join(dir, 'offline.json'));
     const bindings = Object.fromEntries(output.trim().split('\n').map(line => {
       const at = line.indexOf('=');
       return [line.slice(0, at), line.slice(at + 2, -1)];

@@ -50,3 +50,10 @@ export function parseKeyring(env: KeyEnvironment): Keyring {
     };
   } catch { throw new Error('Invalid key configuration'); }
 }
+
+/** Order-independent fingerprint of a content keyring (public parts only); shown by the key CLI and the panel. */
+export async function keyringFingerprint(keys: readonly { kid: string; x?: string }[]): Promise<string> {
+  const pairs = keys.map(k => [k.kid, k.x]).sort(([a], [b]) => (a! < b! ? -1 : 1));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(pairs))));
+  return Array.from(digest.subarray(0, 16), b => b.toString(16).padStart(2, '0')).join('').match(/.{4}/g)!.join('-');
+}

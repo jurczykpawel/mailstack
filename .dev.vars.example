@@ -15,3 +15,9 @@ API_KEY=replace_with_a_long_random_token
 # Generate: openssl rand -base64 32  — store the real value in Vaultwarden Infra.
 # Set as a Worker secret in prod: wrangler secret put ALTCHA_HMAC_KEY
 ALTCHA_HMAC_KEY=replace_with_altcha_hmac_key_placeholder
+
+# Logging keys printed by `npm run keys -- init <private-file>` after the offline copy is
+# verified (README: Content and index keys). Uncomment and paste the printed JSON values.
+# CONTENT_PUBLIC_KEYS={"keys":[...]}
+# INDEX_KEYS=[...]
+# TRANSIT_KEYS={"keys":[...]}   # private X25519 JWK set for the transit envelope, API secret only

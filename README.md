@@ -262,12 +262,14 @@ npx wrangler secret put API_KEY                 # a long random password (for ap
 npx wrangler secret put ALTCHA_HMAC_KEY         # needed for ALTCHA brands
 npx wrangler secret put CONTENT_PUBLIC_KEYS     # JSON JWK set printed by npm run keys
 npx wrangler secret put INDEX_KEYS              # JSON index-key array printed by npm run keys
+npx wrangler secret put TRANSIT_KEYS            # JSON private transit-key set printed by npm run keys
 ```
 Generate logging keys with `npm run keys -- init secrets/panel-private.json` after
-creating a private `secrets` directory (see [keys](#content-and-index-keys)). Paste only
-the JSON values of the public/index assignments into the corresponding Worker secrets;
-keep the private file separate. Local Worker development needs both JSON values in
-`.dev.vars` as well.
+creating a private `secrets` directory (see [keys](#content-and-index-keys)). **Mandatory:**
+the tool prints nothing deployable until it has read and verified an offline copy of the
+private file. Paste only the JSON values of the three assignments into the corresponding
+Worker secrets; keep the private file separate. Local Worker development needs the same
+JSON values in `.dev.vars` as well.
 
 Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
 
@@ -847,7 +849,10 @@ provider responses and event evidence. The CLI requires Node.js 24+.
 mkdir -p secrets
 chmod 700 secrets
 npm run --silent keys -- init secrets/panel-content-keys.json
-# Copy the two printed assignments into .env; the private JWK stays in the 0600 file.
+# Copy the file to offline storage (USB drive, password manager attachment), then
+# type the path of that copy at the prompt. Without a terminal, run instead:
+npm run --silent keys -- init secrets/panel-content-keys.json --backup-verified /Volumes/OFFLINE/panel-content-keys.json
+# Copy the three printed assignments into .env; the private JWK stays in the 0600 file.
 # Load the existing assignments from the private .env before rotating:
 set -a
 . ./.env
@@ -855,6 +860,22 @@ set +a
 npm run --silent keys -- rotate-index
 # Replace INDEX_KEYS in .env with the printed assignment, including older keys.
 ```
+
+**Offline copy (mandatory step).** The private file is the only key that opens archived
+content; no server holds it. If every copy is lost, the content of the whole history is
+permanently unreadable; nobody, including the maintainers, can recover it. `init` therefore
+writes the private file and then requires the path of a separate offline copy. It reads
+the copy, compares its keyring fingerprint with the private file and opens a test value
+sealed to every public key. A missing, corrupted or different copy, or the private file
+itself, exits with a nonzero code and prints no keys to deploy. On success stderr shows
+the keyring fingerprint (`xxxx-xxxx-…`, `keyringFingerprint` in `src/core/keyring.ts`,
+also used when the panel imports a keyring). Rerunning `init <file> --backup-verified <copy>` on an existing
+file prints the same public keys with new index and transit keys, so use it only before
+the first deployment.
+
+`TRANSIT_KEYS` is a private X25519 JWK set (`{"keys":[...]}`) for the browser-to-API
+transit envelope. It is an API secret only; the API publishes its public part. It does
+not open archived content.
 
 `CONTENT_PUBLIC_KEYS` and the private file use JWK sets (`{"keys":[...]}`). `INDEX_KEYS`
 is a JSON array of `{kid,key}`, where `key` is a base64url-encoded 32-byte key. In both
