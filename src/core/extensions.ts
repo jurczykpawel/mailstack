@@ -1,5 +1,5 @@
 import type { PanelPrincipal } from './panel';
-import type { Kysely } from 'kysely';
+import type { CompiledQuery, Kysely } from 'kysely';
 import type { AuditEntry, AuditRow } from './audit';
 import type { Config } from './config/schema';
 import type { KeyProvider } from '../clients';
@@ -9,7 +9,8 @@ export interface DomainEvent {
   type: 'message.sent' | 'message.send_failed' | 'message.unknown' | 'message.delivered' | 'message.bounced' | 'message.complained' | 'form.submitted';
   at: number; brand: string; template: string; status: string; ref?: string; messageId: string;
 }
-export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>>;
+/** Sandboxed to `ext_<name>_*`; `batch` validates every element, then runs them atomically (any rejection refuses the whole batch). */
+export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>> & { batch(queries: { compile(): CompiledQuery }[]): Promise<number[]> };
 export interface ExtensionContext {
   panel?: PanelPrincipal;
   sesStatus?: () => Promise<import('./store/ses-status').SesStatusV1>;

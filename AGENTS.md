@@ -184,7 +184,9 @@ live in Mailstack Pro (`mailstack-pro/src/keys.ts`, CLI `node scripts/client.ts 
 Pro registers a `KeyProvider` through the extension `keys(config)` hook; `authenticate`
 checks the full key first, then asks the provider. Pro returns null without a valid
 license, so the full key never depends on licensing. `clients` without a key provider stops
-Node startup and `npm run setup`. The Worker gets Pro keys only from a build with
+Node startup and `npm run setup`; a configured extension that fails to import or
+initialize is only marked unavailable (`createExtensionHost` in
+`src/core/extension-host.ts`), leaving the full key working (N7). The Worker gets Pro keys only from a build with
 `MAILSTACK_PRO_PATH` in `.env` (generated `src/core/pro.generated.ts`, license cache in D1,
 secret `MAILSTACK_LICENSE`, `proCommit` in `/health`); see README.
 Core still enforces the returned principal (`permits`, `recipientOverride`, `attachments`)
@@ -499,11 +501,12 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
 
 ```
 src/
-  index.ts             router (health, /v1/send + CORS preflight, /v1/hooks/sellf, brand logo asset)
+  index.ts             router (health, /v1/send + CORS preflight, /v1/hooks/sellf, /internal/v2 + /internal/ext on INTERNAL_HOST, brand logo asset)
   send.ts              POST /v1/send handler: modes, validation, template select, anti-relay, auto-reply; shared renderAndSend + bearer helpers
   sources.ts           generic POST /v1/hooks/<id> engine; Sellf preset in docs/sources/sellf.json
   turnstile.ts         Turnstile siteverify (injectable)
   ses.ts               Amazon SES v2 send via aws4fetch (injectable)
+  core/extension-host.ts runtime-neutral extension host (ExtensionDb sandbox + batch, routes, onEvent, beforeDelete, features)
   core/config/         strict schema, Node/Worker loaders, brand lookups, generated bundle
   templates.ts         back-compat shim (re-exports escapeHtml/humanizeLabel/renderEmail)
   templates/
