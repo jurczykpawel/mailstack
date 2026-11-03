@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, linkSync, mkdtempSync, readFileSync, rmSync, 
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { open, seal } from '../src/core/crypto/index.ts';
-import { keyringFingerprint, parsePrivateKeys } from '../src/core/keyring.ts';
+import { keyringFingerprint, parseTransitKeys } from '../src/core/keyring.ts';
 
 const directories = [];
 afterEach(() => { for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -48,9 +48,9 @@ it('writes the private file but prints nothing until an offline copy is verified
   expect(publicKeys.keys.map(k => [k.kid, k.x, k.d])).toEqual([[privateKeys.keys[0].kid, privateKeys.keys[0].x, undefined]]);
   expect(result.stdout).not.toContain(privateKeys.keys[0].d);
   expect(Buffer.from(env.INDEX_KEYS[0].key, 'base64url')).toHaveLength(32);
-  const transit = parsePrivateKeys(JSON.stringify(env.TRANSIT_KEYS));
-  expect(transit).toHaveLength(1);
-  expect(transit[0].x).not.toBe(privateKeys.keys[0].x);
+  const transit = await parseTransitKeys(JSON.stringify(env.TRANSIT_KEYS));
+  expect(transit.publicKeys).toHaveLength(1);
+  expect(transit.publicKeys[0].x).not.toBe(privateKeys.keys[0].x);
   const context = { brand: 'acme', messageId: 'cli', purpose: 'content' };
   expect(await open(await seal({ ok: true }, context, publicKeys.keys), context, privateKeys.keys)).toEqual({ ok: true });
   const second = run(['init', path]);
