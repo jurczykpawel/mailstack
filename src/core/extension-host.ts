@@ -8,7 +8,8 @@ import { DummyDriver, Kysely } from 'kysely';
 import type { CompiledQuery, DatabaseConnection } from 'kysely';
 import { applyMigrations, compileMigrations, reconcileDone, reconcilers, sandboxed, schemaReady, sha256Hex, sqliteDialect, startReconcile } from './ext-migrations';
 import { runRetention } from './retention';
-import { runJobs, type JobHooks } from './jobs';
+import { ensureJob, runJobs, type JobHooks, type JobKind } from './jobs';
+import { JOB_KINDS } from './job-kinds';
 import type { EventConsumer } from './events';
 import type { PanelPrincipal } from './panel';
 import { requireKeyProvider, type KeyProvider } from '../clients';
@@ -31,7 +32,7 @@ async function bounded(task: () => unknown, required = false): Promise<void> {
   finally { clearTimeout(timer); }
 }
 /** Kysely limited to `ext_<name>_*`; `batch` checks every element before one atomic store batch. */
-function extensionDb(store: KyselyStore, prefix: string): ExtensionDatabase {
+function extensionDb(store: KyselyStore, prefix: string, kinds: string[] = []): ExtensionDatabase {
   class ExtensionDriver extends DummyDriver {
     override async acquireConnection(): Promise<DatabaseConnection> {
       return {
@@ -42,7 +43,17 @@ function extensionDb(store: KyselyStore, prefix: string): ExtensionDatabase {
     override async beginTransaction() { throw new Error('Unsupported extension transaction'); }
   }
   const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect: sqliteDialect(new ExtensionDriver()) });
-  return Object.assign(db, { batch: async (queries: { compile(): CompiledQuery }[]) => store.batch(queries.map(q => sandboxed(q.compile(), prefix))) });
+  const jobs = new WeakSet<CompiledQuery>();
+  function enqueue(kind: string, key: string, payload: unknown) {
+    const name = `ext:${prefix.slice(4, -1)}:${kind}`;
+    if (!kinds.includes(kind) || !/^[\w.:-]{1,128}$/.test(key)) throw new Error('Invalid extension job');
+    const query = ensureJob(store, name, `${name}:${key}`, payload, Date.now());
+    jobs.add(query);
+    return { compile: () => query };
+  }
+  return Object.assign(db, { enqueue, batch: async (queries: { compile(): CompiledQuery }[]) => store.batch(queries.map(q => {
+    const query = q.compile(); return jobs.has(query) ? query : sandboxed(query, prefix);
+  })) });
 }
 type Route = { handler: Parameters<ExtensionApp['route']>[2]; db: ExtensionDatabase; resend: boolean; extension: string };
 type Ready = { module: string; state: 'ready'; name: string; capabilities: string[] };
@@ -95,10 +106,11 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
     if (!features.length) requireKeyProvider(config, keys);
   }
   // Schema and reconcile readiness (W7, N6): routes of a waiting extension answer 503 until it is ready.
-  const configSha = await sha256Hex(JSON.stringify(config)), waiting = new Map<string, { index: number; ready: Ready }>();
+  const waiting = new Map<string, { index: number; ready: Ready; configSha: string }>(), kinds: Record<string, JobKind> = {};
   for (const [index, extension] of loaded) {
     try {
-      const db = extensionDb(store, `ext_${extension.name}_`), own = new Map<string, Route>();
+      const db = extensionDb(store, `ext_${extension.name}_`, Object.keys(extension.jobs ?? {})), own = new Map<string, Route>();
+      const configSha = await sha256Hex(JSON.stringify(config) + (extension.reconcileKey ? '\n' + extension.reconcileKey : ''));
       const manifest = await compileMigrations(extension.name, extension.migrations);
       let state: 'ready' | 'schema' | 'reconcile' = 'ready';
       try {
@@ -119,10 +131,15 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       } });
       for (const [key, route] of own) routes.set(key, route);
       const ready: Ready = { module: config.extensions[index].module, state: 'ready', name: extension.name, capabilities: [...extension.capabilities ?? []] };
-      if (state !== 'schema') { contexts.set(extension, { ...ctx, db }); extensions.push(extension); }
+      const extCtx = { ...ctx, db }, compile = (writes: { compile(): CompiledQuery }[] = []) => writes.map(q => sandboxed(q.compile(), `ext_${extension.name}_`));
+      if (state !== 'schema') { contexts.set(extension, extCtx); extensions.push(extension); }
+      // Without its schema an extension's jobs stay pending: unregistered `ext:` kinds are never claimed.
+      if (state !== 'schema') for (const [name, job] of Object.entries(extension.jobs ?? {})) kinds[`ext:${extension.name}:${name}`] = { reserveMs: job.reserveMs, ready: job.ready,
+        dead: ({ payload }) => compile(job.dead?.({ payload }, extCtx)),
+        async step({ payload, attempt }) { const r = await job.run({ payload, attempt }, extCtx); return { ...r.retry ? { retry: true } : { result: null }, writes: compile(r.writes) }; } };
       if (state !== 'ready') {
         console.error(`mailstack: $.extensions.${index}.module: extension ${state} not ready`);
-        waiting.set(extension.name, { index: features.length, ready });
+        waiting.set(extension.name, { index: features.length, ready, configSha });
       }
       // Extensions waiting for schema or reconcile still consume: their events wait in `domain_events` (A 3.3.3).
       if (extension.onEvent) consumers.push(extension);
@@ -137,7 +154,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
   };
-  const jobs: JobHooks = { beforeDelete, consumers: fanout };
+  const jobs: JobHooks = { beforeDelete, consumers: fanout, kinds: { ...JOB_KINDS, ...kinds } };
   const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]): Promise<unknown> => {
     const { type, at, brand, template, status, ref, messageId, durable } = input;
     if (durable) return options.kickJobs && fanout.size ? runJobs(store, 'request', jobs).catch(() => {}) : Promise.resolve();
@@ -155,7 +172,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
   /** A waiting extension becomes ready once its reconcile job finished (in any process or isolate). */
   async function refresh(extension: string): Promise<ExtensionFeature | undefined> {
     const wait = waiting.get(extension), feature = wait && features[wait.index];
-    if (feature?.state !== 'unavailable' || feature.reason !== 'reconcile' || !await reconcileDone(store, extension, configSha).catch(() => false)) return feature;
+    if (feature?.state !== 'unavailable' || feature.reason !== 'reconcile' || !await reconcileDone(store, extension, wait!.configSha).catch(() => false)) return feature;
     features[wait!.index] = wait!.ready; waiting.delete(extension);
     return wait!.ready;
   }

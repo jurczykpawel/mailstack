@@ -174,6 +174,43 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
     expect((await rows())[0]).toMatchObject({ state: 'dead', result: '{"error":"attempts"}' });
   });
 
+  it('asks a kind for readiness before claiming and leaves it pending without an attempt', async () => {
+    const ready = vi.fn(async () => false), step = vi.fn(async () => ({ result: 'ok' }));
+    const held = await add('ext:demo:send'); await add('ok');
+    const run = () => drain(store, createBudget('request', clock), { now: clock, kinds: { 'ext:demo:send': { ready, step }, ok: { step } } });
+    expect(await run()).toBe(1);
+    expect(ready).toHaveBeenCalledTimes(1); expect(step).toHaveBeenCalledTimes(1);
+    expect((await rows()).find(r => r.id === held)).toMatchObject({ state: 'pending', attempts: 0, token: null });
+    ready.mockResolvedValue(true); await run();
+    expect((await rows()).find(r => r.id === held)).toMatchObject({ state: 'done', attempts: 1 });
+  });
+
+  it('leaves extension jobs without a handler pending instead of dead', async () => {
+    const id = await add('ext:other:send');
+    expect(await drain(store, createBudget('request', clock), { now: clock, kinds: {} })).toBe(0);
+    expect((await rows()).find(r => r.id === id)).toMatchObject({ state: 'pending', attempts: 0 });
+  });
+
+  it('commits retry writes with the backoff and the dead writes after the last failure', async () => {
+    await sql`create table if not exists demo_marks(id integer primary key autoincrement, note text)`.execute(store.db);
+    await sql`delete from demo_marks`.execute(store.db);
+    const mark = (note: string) => sql`insert into demo_marks(note) values (${note})`.compile(store.db);
+    const kind: JobKind = { async step(job) { return { retry: true, writes: [mark('try ' + job.attempt)] }; }, dead: () => [mark('dead')] };
+    await add('flaky');
+    for (const delay of [60000, 600000, 3600000, 21600000, 0]) {
+      await drain(store, createBudget('request', clock), { now: clock, kinds: { flaky: kind } });
+      if (delay) expect((await rows())[0]).toMatchObject({ state: 'pending', run_after: t + delay });
+      t += delay;
+    }
+    expect((await rows())[0]).toMatchObject({ state: 'dead', result: '{"error":"handler_failed"}' });
+    expect((await sql<{ note: string }>`select note from demo_marks order by id`.execute(store.db)).rows.map(r => r.note)).toEqual(['try 1', 'try 2', 'try 3', 'try 4', 'try 5', 'dead']);
+    await sql`delete from demo_marks`.execute(store.db);
+    const id = await add('crash');
+    await sql`update jobs set state = 'running', token = 'gone', attempts = 5, lease_until = ${t} where id = ${id}`.execute(store.db);
+    await drain(store, createBudget('request', clock), { now: clock, kinds: { crash: { step: vi.fn(), dead: () => [mark('lost')] } } });
+    expect((await sql<{ note: string }>`select note from demo_marks`.execute(store.db)).rows).toEqual([{ note: 'lost' }]);
+  });
+
   it('reports backlog stats', async () => {
     for (const [kind, runAfter, state, doneAt] of [['dead-old', t, 'dead', t - 86400001], ['dead-new', t, 'dead', t - 3600000],
       ['due', t - 900000, 'pending', null], ['held', t - 1000, 'running', null], ['future', t + 5000, 'pending', null]] as const) {

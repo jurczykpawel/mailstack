@@ -13,8 +13,18 @@ export interface DomainEvent {
 }
 /** `ack` once every delivery of the event is stored; `partial` names the last stored endpoint when more remain. */
 export type EventAck = { ack: true } | { partial: string };
-/** Sandboxed to `ext_<name>_*`; `batch` validates every element, then runs them atomically (any rejection refuses the whole batch). */
-export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>> & { batch(queries: { compile(): CompiledQuery }[]): Promise<number[]> };
+type Query = { compile(): CompiledQuery };
+/** Sandboxed to `ext_<name>_*`; `batch` validates every element, then runs them atomically (any rejection refuses the whole batch).
+ * `enqueue` makes sure one live job exists for (`kind`, `key`): a finished one is revived, a live one is left alone; for `batch`. */
+export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>> & { batch(queries: Query[]): Promise<number[]>; enqueue(kind: string, key: string, payload: unknown): Query };
+/** A core job of an extension (A 3.4.2): lease, token fence and retries stay in the core. `run` is one attempt; its writes commit
+ * only under a valid token. `retry` reschedules after 1 min, 10 min, 1 h, 6 h; the fifth failure or lost claim commits `dead`. */
+export interface ExtensionJob {
+  ready?(): Promise<boolean>;
+  reserveMs?: number;
+  run(job: { payload: unknown; attempt: number }, ctx: ExtensionContext): Promise<{ retry?: boolean; writes?: Query[] }>;
+  dead?(job: { payload: unknown }, ctx: ExtensionContext): Query[];
+}
 export interface ExtensionContext {
   panel?: PanelPrincipal;
   sesStatus?: () => Promise<import('./store/ses-status').SesStatusV1>;
@@ -51,6 +61,10 @@ export interface Extension {
   onEvent?(event: DomainEvent, ctx: ExtensionContext, resume?: string | null): void | EventAck | Promise<void | EventAck>;
   /** The consumer forwards `ref` digests: durable events then store SHA-256 of `ref` (otherwise the column stays empty). */
   eventRef?: boolean;
+  /** Job kinds, registered as `ext:<name>:<kind>`. */
+  jobs?: Record<string, ExtensionJob>;
+  /** Joined to the configuration digest: a change starts a new `reconcile` generation (e.g. a rotated keyring). */
+  reconcileKey?: string;
   routes?(app: ExtensionApp): void | Promise<void>;
   /** Supplies API keys beyond the core's single full key; receives the validated core configuration. */
   keys?(config: Config): KeyProvider | Promise<KeyProvider>;
