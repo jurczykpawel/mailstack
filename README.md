@@ -401,7 +401,7 @@ Check your providers before deployment; mailstack itself is MIT-licensed.
 ## Updating it later
 After editing the configuration, validate it with `npm run mailstack -- config check "$MAILSTACK_CONFIG"`.
 Restart the Docker service with `docker compose up --build -d --force-recreate`, or use
-the guarded Worker deploy from a clean release checkout. Keep runtime images and backups current.
+the guarded Worker deploy from a clean release checkout. Keep runtime images and backups current; see [docs/backup.md](docs/backup.md) for encrypted offsite copies and restore.
 
 ## Troubleshooting
 - **Email not arriving?** You're probably still in SES "sandbox" — verify the recipient address
