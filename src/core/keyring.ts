@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import type { ContentKey, IndexKey } from './crypto';
+import { decode, encode } from './crypto/index.ts';
+import type { ContentKey, IndexKey } from './crypto/index.ts';
+import type { TransitPublicKey } from './transit.ts';
 
 export interface KeyEnvironment { CONTENT_PUBLIC_KEYS?: string; INDEX_KEYS?: string }
 export interface Keyring { contentKeys: ContentKey[]; indexKeys: IndexKey[] }
@@ -18,6 +20,22 @@ const indexSet = z.array(indexKey).nonempty().refine(unique);
 export function parsePrivateKeys(value: string): ContentKey[] {
   try { return privateSet.parse(JSON.parse(value)).keys; }
   catch { throw new Error('Invalid key configuration'); }
+}
+const PKCS8_X25519 = [0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x22, 0x04, 0x20];
+
+// TRANSIT_KEYS: private X25519 JWK set; the public half is recomputed from `d` so a mismatched `x` cannot be published.
+export async function parseTransitKeys(value: string | undefined): Promise<{ privateKeys: ContentKey[]; publicKeys: TransitPublicKey[] }> {
+  try {
+    const privateKeys = parsePrivateKeys(value!);
+    const publicKeys = await Promise.all(privateKeys.map(async (key) => {
+      const pkcs8 = new Uint8Array([...PKCS8_X25519, ...new Uint8Array(decode(key.d!))]);
+      const derived = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'X25519' }, true, ['deriveBits']);
+      const { x } = await crypto.subtle.exportKey('jwk', derived) as JsonWebKey;
+      if (!x || encode(decode(x)) !== key.x) throw new Error();
+      return { kid: key.kid, x };
+    }));
+    return { privateKeys, publicKeys };
+  } catch { throw new Error('Invalid key configuration'); }
 }
 export function parseIndexKeys(value: string): IndexKey[] {
   try { return indexSet.parse(JSON.parse(value)); }
