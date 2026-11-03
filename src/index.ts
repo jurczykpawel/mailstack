@@ -16,6 +16,8 @@ import { verifyTurnstile } from "./turnstile";
 import { createChallenge, createNonce, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
 import { proKeys } from "./core/pro.generated";
+import { internalFetch } from "./core/internal";
+import { authorizePanel } from "./core/panel";
 import type { KeyProvider } from "./clients";
 
 const verifySns = createVerifier();
@@ -139,6 +141,11 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       const sourceId = /^\/v1\/hooks\/([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(pathname)?.[1];
       if (sourceId && req.method === "POST" && config.sources && Object.hasOwn(config.sources, sourceId)) {
         return handleSourceHook(req, env, deps, sourceId);
+      }
+
+      if (pathname.startsWith("/internal/v1/") && store && env.PANEL_ASSERTION_KEY && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
+        const panel = await authorizePanel(req, env, config, deps.keys, deps.waitUntil);
+        return panel instanceof Response ? panel : internalFetch(req, env, store, config, panel);
       }
 
       if (pathname === "/v1/events/ses" && req.method === "POST") {

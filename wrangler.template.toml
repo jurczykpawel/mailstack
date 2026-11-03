@@ -1,7 +1,7 @@
 # Template for wrangler.toml — committed. DO NOT put real ids/domains/secrets here.
 # `npm run setup` (and predev/predeploy) generates wrangler.toml from this file by
 # substituting env vars from your gitignored .env (see .env.example):
-#   MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE
+#   MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE, MAILSTACK_INTERNAL_ROUTE
 name = "mailstack"
 main = "src/index.ts"
 compatibility_date = "2026-06-01"
@@ -23,6 +23,8 @@ SES_REGION = "eu-west-1"
 SES_CONFIGURATION_SET = ${SES_CONFIGURATION_SET}
 # Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
 SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"
+# Host serving /internal/v1/* for the panel (MAILSTACK_INTERNAL_ROUTE); empty disables the internal API.
+INTERNAL_HOST = ${INTERNAL_HOST}
 
 [[d1_databases]]
 binding = "DB"
@@ -32,4 +34,5 @@ preview_database_id = "${MAILSTACK_D1_PREVIEW_ID}"
 migrations_dir = ".wrangler/migrations"
 
 # SECRETS — never in any file. Set with `wrangler secret put <NAME>`:
-#   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY, TURNSTILE_SECRET, API_KEY, ALTCHA_HMAC_KEY
+#   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY, TURNSTILE_SECRET, API_KEY, ALTCHA_HMAC_KEY,
+#   PANEL_ASSERTION_KEY (with MAILSTACK_INTERNAL_ROUTE)

@@ -463,6 +463,7 @@ npx wrangler secret put API_KEY                # long random bearer for trusted 
 npx wrangler secret put ALTCHA_HMAC_KEY        # ALTCHA brands
 npx wrangler secret put CONTENT_PUBLIC_KEYS    # public JWK set from npm run keys
 npx wrangler secret put INDEX_KEYS             # index-key array from npm run keys
+npx wrangler secret put PANEL_ASSERTION_KEY    # only with MAILSTACK_INTERNAL_ROUTE (panel)
 ```
 
 For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill placeholders
@@ -487,6 +488,9 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
    Worker deploy workflow is deferred. See README for release tags and local Compose.
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
+   Optional `MAILSTACK_INTERNAL_ROUTE` adds a second domain serving only `/internal/v1/*`
+   for the panel (needs Pro keys and `PANEL_ASSERTION_KEY`; keep it behind Cloudflare Access).
+   A configured route disables `workers.dev`. See [internal API](docs/internal-api.md).
 6. **Frontends:** point each site's form at `POST /v1/send` with the right `brand`, and add
    the Cloudflare Turnstile widget so a `cf-turnstile-response` token is included.
 

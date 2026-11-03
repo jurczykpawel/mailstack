@@ -10,8 +10,8 @@ import { DummyDriver, isColumnDataType, isOperator, Kysely, SqliteAdapter, Sqlit
 import type { CompiledQuery, DatabaseConnection, OperationNode, TableNode } from 'kysely';
 import { runRetention } from '../core/retention';
 import { internalFetch } from '../core/internal';
-import { verifyPanelAssertion } from '../core/panel';
-import { authenticate, requireKeyProvider, type KeyProvider } from '../clients';
+import { authorizePanel } from '../core/panel';
+import { requireKeyProvider, type KeyProvider } from '../clients';
 import { appendAudit } from '../core/audit';
 import { eventId } from '../core/store/events';
 import type { KyselyStore } from '../core/store';
@@ -162,12 +162,8 @@ export async function loadExtensions(config: Config, store: KyselyStore,
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
   return { emitEvent, resendSource, keys, runRetention: (now: number) => runRetention(store, now, config, beforeDelete), async fetch(req: Request, env: object): Promise<Response> {
-    const client = await authenticate(req, env, config, keys);
-    if (!client) return Response.json({ success: false }, { status: 401 });
-    if (!client.scopes.includes('panel')) return Response.json({ success: false }, { status: 403 });
-    const claims = await verifyPanelAssertion(req, env);
-    if (!claims) return Response.json({ success: false }, { status: 403 });
-    const panel = { ...claims, scopes: client.scopes, brands: client.brands, templates: client.templates };
+    const panel = await authorizePanel(req, env, config, keys);
+    if (panel instanceof Response) return panel;
     if (new URL(req.url).pathname.startsWith('/internal/v1/')) return internalFetch(req, env, store, config, panel, beforeDelete);
     const key = `${req.method} ${new URL(req.url).pathname}`, handler = routes.get(key), route = routeContexts.get(key);
     return handler ? handler(req, { ...ctx, panel, db: route!.db,

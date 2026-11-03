@@ -1,5 +1,6 @@
 import { createMac, verifyMac } from './crypto';
-import { tokenSha256 } from '../clients';
+import { authenticate, tokenSha256, type Defer, type KeyProvider } from '../clients';
+import type { Config } from './config/schema';
 import { boundedText } from './http';
 
 export interface PanelClaims {
@@ -34,4 +35,11 @@ export async function verifyPanelAssertion(req: Request, env: object, now = Date
 export function panelAllows(p: PanelClaims, role: PanelClaims['role'], stepUp = false, now = Date.now()): boolean {
   return ['viewer', 'operator', 'admin'].indexOf(p.role) >= ['viewer', 'operator', 'admin'].indexOf(role) &&
     (!stepUp || (p.stepUpAt !== null && p.stepUpAt <= now && now - p.stepUpAt <= 300000));
+}
+/** Shared internal API gate for Node and the Worker: client token, panel scope, then the signed assertion. */
+export async function authorizePanel(req: Request, env: object, config: Pick<Config, 'legacyApiKey'>, keys?: KeyProvider, defer?: Defer): Promise<PanelPrincipal | Response> {
+  const client = await authenticate(req, env, config, keys, defer);
+  if (!client) return Response.json({ success: false }, { status: 401 });
+  const claims = client.scopes.includes('panel') ? await verifyPanelAssertion(req, env) : null;
+  return claims ? { ...claims, scopes: client.scopes, brands: client.brands, templates: client.templates } : Response.json({ success: false }, { status: 403 });
 }

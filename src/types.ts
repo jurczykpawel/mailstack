@@ -14,6 +14,8 @@ export interface Env extends KeyEnvironment {
   /** Mailstack Pro commit in a Worker built with MAILSTACK_PRO_PATH. */
   BUILD_PRO_COMMIT?: string;
   TRUSTED_PROXY?: string;
+  /** Hostname that alone serves /internal/v1/* on the Worker (with PANEL_ASSERTION_KEY). */
+  INTERNAL_HOST?: string;
   /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
   SELLF_DEFAULT_BRAND?: string;
   // secrets (set via `wrangler secret put`)

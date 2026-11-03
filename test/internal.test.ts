@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { keysOnly } from './fixtures/keys';
+import { keysOnly, testKeys } from './fixtures/keys';
 
 vi.setConfig({ testTimeout: 30000 });
 import { generateKeyPairSync } from 'node:crypto';
@@ -75,6 +75,25 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect((await runtime.fetch(new Request('http://localhost/internal/v1/audit', req), env)).status).toBe(403);
     expect((await runtime.fetch(req, {})).status).toBe(403);
     expect((await createApp().fetch(req, {} as Env, {} as ExecutionContext)).status).toBe(404);
+  });
+  it('serves the same gate on the Worker only on the internal host', async () => {
+    await seed();
+    const app = createApp({ store, keys: testKeys(cfg) }), workerEnv = { ...env, INTERNAL_HOST: 'internal.example' } as unknown as Env;
+    const send = async (host: string, e: Env = workerEnv, auth = `Bearer ${token}`) => {
+      const req = new Request(`https://${host}/internal/v1/messages`, { headers: { authorization: auth, 'x-panel-actor': 'user-1' } });
+      req.headers.set('x-panel-assertion', await signPanelAssertion(req, claims, key));
+      return app.fetch(req, e, {} as ExecutionContext);
+    };
+    const ok = await send('internal.example');
+    expect(ok.status).toBe(200);
+    expect((await ok.json() as Payload).messages.map(m => m.id)).toEqual(['msg_1']);
+    expect((await rows('audit')).map(r => r.action)).toEqual(['log.list']);
+    expect((await send('internal.example', workerEnv, 'Bearer invalid')).status).toBe(401);
+    cfg.clients![0].scopes = ['send'];
+    expect((await send('internal.example')).status).toBe(403); cfg.clients![0].scopes = ['panel'];
+    for (const response of [await send('localhost'), await send('internal.example', { ...workerEnv, PANEL_ASSERTION_KEY: undefined }),
+      await send('internal.example', { ...workerEnv, INTERNAL_HOST: undefined })]) expect(response.status).toBe(404);
+    expect(await rows('audit')).toHaveLength(1);
   });
   it('lists stable pages, filters and returns only the list projection', async () => {
     for (let i = 0; i < 5; i++) await seed(`msg_${i}`);

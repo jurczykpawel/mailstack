@@ -48,7 +48,7 @@ it('deploys isolated resources with a record for each write', () => {
   const { child, dir } = run('deploy');
   expect(child.status, child.stderr).toBe(0);
   const records = readdirSync(dir).filter(value => value.startsWith('mutation-')).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
-  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-database', 'upload-worker', 'set-cron', 'attach-domain']);
+  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-database', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
   expect(records.every(value => value.identical)).toBe(true);
   expect(child.stdout).not.toContain('synthetic');
   const [commit] = readdirSync(join(dir, 'source'));

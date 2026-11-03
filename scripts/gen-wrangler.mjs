@@ -7,7 +7,7 @@
  * fall back to harmless placeholders, so `typecheck`/`test`/`dev` still work without
  * an .env — only a real `deploy` needs the real values.
  *
- * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE (optional).
+ * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional).
  */
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { INITIAL_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
@@ -25,8 +25,11 @@ const d1Preview = env.MAILSTACK_D1_PREVIEW_ID || "PLACEHOLDER_D1_PREVIEW_ID";
 const route = (env.MAILSTACK_ROUTE || "").trim();
 const sellfBrand = (env.SELLF_DEFAULT_BRAND || "acme").trim();
 
+const internal = (env.MAILSTACK_INTERNAL_ROUTE || "").trim();
+if (internal && !route) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ROUTE");
+// With a custom domain the workers.dev and preview URLs stay off, so only the listed hosts reach the Worker.
 const routesBlock = route
-  ? `routes = [\n  { pattern = "${route}", custom_domain = true },\n]`
+  ? `workers_dev = false\npreview_urls = false\nroutes = [\n${[route, internal].filter(Boolean).map((pattern) => `  { pattern = "${pattern}", custom_domain = true },\n`).join("")}]`
   : "# No custom domain set (MAILSTACK_ROUTE empty) — using the default *.workers.dev URL.";
 
 const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
@@ -35,7 +38,8 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("${BUILD_CONFIG_SHA}", BUILD_CONFIG_SHA)
   .replaceAll("${MAILSTACK_D1_ID}", d1Id)
   .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)
-  .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand);
+  .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand)
+  .replace("${INTERNAL_HOST}", JSON.stringify(internal));
 
 mkdirSync(resolve(root, ".wrangler/migrations"), { recursive: true });
 writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SCHEMA);
