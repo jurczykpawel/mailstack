@@ -1,5 +1,9 @@
 import type { JobKind } from './jobs';
 import { ERASE_JOB } from './erase';
+import { reconcileStep } from './ext-migrations';
 
 /** The only registry of background job kinds; a job whose kind is missing here ends `dead`. */
-export const JOB_KINDS: Record<string, JobKind> = { erase: ERASE_JOB };
+export const JOB_KINDS: Record<string, JobKind> = {
+  erase: ERASE_JOB,
+  'ext.reconcile': { step: (job, ctx) => reconcileStep(job, ctx) },
+};

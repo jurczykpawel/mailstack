@@ -4,8 +4,9 @@ import { createResendService } from './resend';
 import { verifyTurnstile } from '../turnstile';
 import { verifyAltcha } from '../altcha';
 import type { Env, SendDeps } from '../types';
-import { DummyDriver, isColumnDataType, isOperator, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler } from 'kysely';
-import type { CompiledQuery, DatabaseConnection, OperationNode, RootOperationNode, TableNode } from 'kysely';
+import { DummyDriver, Kysely } from 'kysely';
+import type { CompiledQuery, DatabaseConnection } from 'kysely';
+import { applyMigrations, compileMigrations, reconcileDone, reconcilers, sandboxed, schemaReady, sha256Hex, sqliteDialect, startReconcile } from './ext-migrations';
 import { runRetention } from './retention';
 import type { PanelPrincipal } from './panel';
 import { requireKeyProvider, type KeyProvider } from '../clients';
@@ -15,65 +16,6 @@ import type { KyselyStore } from './store';
 import type { Config } from './config/schema';
 import type { EmitEvent, Extension, ExtensionApp, ExtensionContext, ExtensionDatabase, BeforeMessageDelete } from './extensions';
 
-const extensionNodes = new Set(`Identifier SchemableIdentifier SelectQuery Selection Reference Column Table Alias From SelectAll
-  And Or Parens Value ValueList PrimitiveValueList Join Operator Where InsertQuery DeleteQuery Returning CreateTable
-  ColumnDefinition AddColumn DropTable DataType OrderBy OrderByItem GroupBy GroupByItem UpdateQuery ColumnUpdate Limit
-  Offset OnConflict CreateIndex List References PrimaryKeyConstraint UniqueConstraint CheckConstraint ForeignKeyConstraint
-  With CommonTableExpression Having AlterTable ModifyColumn DropColumn RenameColumn AlterColumn AddConstraint DropConstraint
-  Generated DefaultValue On Values CommonTableExpressionName SelectModifier DefaultInsertValue AggregateFunction Over
-  PartitionBy PartitionByItem SetOperation BinaryOperation UnaryOperation Using Function Case When Tuple Cast OrAction Collate`
-  .split(/\s+/).map(name => name + 'Node'));
-const extensionFunctions = new Set(`abs avg coalesce count group_concat hex ifnull length lower ltrim max min nullif
-  replace round rtrim substr substring sum total trim typeof upper json json_array json_object json_extract json_type
-  json_valid json_quote json_set json_insert json_replace json_remove json_group_array json_group_object`.split(/\s+/));
-function extensionToken(kind: string, key: string, value: string): boolean {
-  if (kind === 'IdentifierNode' && key === 'name') return /^[a-zA-Z0-9_]+$/.test(value);
-  if (['FunctionNode', 'AggregateFunctionNode'].includes(kind) && key === 'func') return extensionFunctions.has(value);
-  if (kind === 'DataTypeNode' && key === 'dataType') return !!isColumnDataType(value);
-  if (kind === 'OperatorNode' && key === 'operator') return isOperator(value);
-  if (['ReferencesNode', 'ForeignKeyConstraintNode'].includes(kind) && ['onDelete', 'onUpdate'].includes(key))
-    return ['no action', 'restrict', 'cascade', 'set null', 'set default'].includes(value);
-  if (kind === 'CreateTableNode' && key === 'onCommit') return ['preserve rows', 'delete rows', 'drop'].includes(value);
-  if (kind === 'OrderByItemNode' && key === 'nulls') return ['first', 'last'].includes(value);
-  if (kind === 'JoinNode' && key === 'joinType') return ['InnerJoin', 'LeftJoin', 'RightJoin', 'FullJoin', 'CrossJoin'].includes(value);
-  if (kind === 'SetOperationNode' && key === 'operator') return ['union', 'intersect', 'except'].includes(value);
-  if (kind === 'OrActionNode' && key === 'action') return ['abort', 'fail', 'ignore', 'replace', 'rollback'].includes(value);
-  if (kind === 'DropConstraintNode' && key === 'modifier') return ['cascade', 'restrict'].includes(value);
-  if (kind === 'SelectModifierNode' && key === 'modifier') return value === 'Distinct';
-  return false;
-}
-function extensionRelation(node: unknown): void {
-  const value = node as { kind?: string; node?: unknown } | undefined;
-  if (value?.kind === 'AliasNode') return extensionRelation(value.node);
-  if (value?.kind !== 'TableNode' && value?.kind !== 'SelectQueryNode') throw new Error('Unsupported extension relation');
-}
-function extensionNode(node: OperationNode, prefix: string): void {
-  const value = node as unknown as Record<string, unknown>;
-  if (!extensionNodes.has(node.kind)) throw new Error('Unsupported extension statement');
-  if (node.kind === 'ValueNode' || node.kind === 'PrimitiveValueListNode') return;
-  if (node.kind === 'TableNode') {
-    const table = (node as TableNode).table;
-    if (table?.kind !== 'SchemableIdentifierNode' || table.identifier?.kind !== 'IdentifierNode') throw new Error('Unsupported extension table');
-    if (table.schema || typeof table.identifier.name !== 'string' || !table.identifier.name.startsWith(prefix)) throw new Error('Invalid migration table');
-  }
-  if (node.kind === 'FromNode' || node.kind === 'UsingNode') {
-    for (const table of (value.froms ?? value.tables) as unknown[]) extensionRelation(table);
-  }
-  for (const key of ['table', 'into', 'renameTo']) {
-    if (value[key] && ['InsertQueryNode', 'UpdateQueryNode', 'JoinNode', 'ReferencesNode', 'CreateTableNode',
-      'AlterTableNode', 'DropTableNode', 'CreateIndexNode'].includes(node.kind)) extensionRelation(value[key]);
-  }
-  for (const [key, child] of Object.entries(value)) {
-    if (key === 'kind') continue;
-    for (const item of Array.isArray(child) ? child : [child]) {
-      if (typeof item === 'string' && !extensionToken(node.kind, key, item)) throw new Error('Unsupported extension token');
-      if (item && typeof item === 'object') {
-        if (!('kind' in item)) throw new Error('Unsupported extension field');
-        extensionNode(item as OperationNode, prefix);
-      }
-    }
-  }
-}
 async function bounded(task: () => unknown, required = false): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -86,15 +28,6 @@ async function bounded(task: () => unknown, required = false): Promise<void> {
   }
   finally { clearTimeout(timer); }
 }
-const statements = ['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'SelectQueryNode'];
-/** Validates one statement against the extension prefix and recompiles it from the checked tree. */
-function sandboxed(query: CompiledQuery, prefix: string): CompiledQuery {
-  const node = structuredClone(query.query) as RootOperationNode;
-  if (!statements.includes(node.kind)) throw new Error('Unsupported extension query');
-  extensionNode(node, prefix);
-  if ('name' in node && node.name && 'name' in node.name && !String(node.name.name).startsWith(prefix)) throw new Error('Invalid migration index');
-  return new SqliteQueryCompiler().compileQuery(node, query.queryId);
-}
 /** Kysely limited to `ext_<name>_*`; `batch` checks every element before one atomic store batch. */
 function extensionDb(store: KyselyStore, prefix: string): ExtensionDatabase {
   class ExtensionDriver extends DummyDriver {
@@ -106,14 +39,12 @@ function extensionDb(store: KyselyStore, prefix: string): ExtensionDatabase {
     }
     override async beginTransaction() { throw new Error('Unsupported extension transaction'); }
   }
-  const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect: {
-    createDriver: () => new ExtensionDriver(), createAdapter: () => new SqliteAdapter(),
-    createQueryCompiler: () => new SqliteQueryCompiler(), createIntrospector: db => new SqliteIntrospector(db),
-  } });
+  const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect: sqliteDialect(new ExtensionDriver()) });
   return Object.assign(db, { batch: async (queries: { compile(): CompiledQuery }[]) => store.batch(queries.map(q => sandboxed(q.compile(), prefix))) });
 }
-type Route = { handler: Parameters<ExtensionApp['route']>[2]; db: ExtensionDatabase; resend: boolean };
-export type ExtensionFeature = { module: string; state: 'ready'; name: string; capabilities: string[] } | { module: string; state: 'unavailable'; reason: 'initialization' };
+type Route = { handler: Parameters<ExtensionApp['route']>[2]; db: ExtensionDatabase; resend: boolean; extension: string };
+type Ready = { module: string; state: 'ready'; name: string; capabilities: string[] };
+export type ExtensionFeature = Ready | { module: string; state: 'unavailable'; reason: 'initialization' | 'schema' | 'reconcile' };
 export type ExtensionHost = Awaited<ReturnType<typeof createExtensionHost>>;
 /**
  * Runtime-neutral extension host. `importer` is the only host-specific part (Node: dynamic import, Worker: static
@@ -122,7 +53,7 @@ export type ExtensionHost = Awaited<ReturnType<typeof createExtensionHost>>;
  */
 export async function createExtensionHost(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }>,
-  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider } = {}) {
+  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean } = {}) {
   const extensions: Extension[] = [], routes = new Map<string, Route>(), contexts = new Map<Extension, ExtensionContext>();
   const features: ExtensionFeature[] = [];
   const ctx: Omit<ExtensionContext, 'db'> = { now: Date.now,
@@ -145,7 +76,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
         throw new Error('Overlapping extension');
       }
       if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
-      for (const key of ['migrate', 'routes', 'onEvent', 'onBeforeDelete', 'keys'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
+      for (const key of ['migrate', 'reconcile', 'routes', 'onEvent', 'onBeforeDelete', 'keys'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
       loaded.push([index, extension]);
     } catch { unavailable(index); }
   }
@@ -161,19 +92,37 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
     // A failed extension may have been the key provider; only the full key remains then (N7).
     if (!features.length) requireKeyProvider(config, keys);
   }
+  // Schema and reconcile readiness (W7, N6): routes of a waiting extension answer 503 until it is ready.
+  const configSha = await sha256Hex(JSON.stringify(config)), waiting = new Map<string, { index: number; ready: Ready }>();
   for (const [index, extension] of loaded) {
     try {
       const db = extensionDb(store, `ext_${extension.name}_`), own = new Map<string, Route>();
-      await extension.migrate?.(db);
+      const manifest = await compileMigrations(extension.name, extension.migrations);
+      let state: 'ready' | 'schema' | 'reconcile' = 'ready';
+      try {
+        if (options.applyMigrations) await applyMigrations(store, manifest);
+        if (!await schemaReady(store, manifest)) state = 'schema';
+        else if (extension.reconcile) {
+          reconcilers.set(extension.name, { configSha, run: cursor => extension.reconcile!(db, { configSha, cursor }) });
+          await startReconcile(store, extension.name, configSha, Date.now());
+          if (!await reconcileDone(store, extension.name, configSha)) state = 'reconcile';
+        }
+      } catch { state = 'schema'; }
+      if (state !== 'schema') await extension.migrate?.(db);
       await extension.routes?.({ route(method, path, handler) {
         if (!/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]*$/.test(path)) throw new Error('Invalid extension route');
         const key = `${method.toUpperCase()} /internal/ext/${extension.name}${path}`;
         if (routes.has(key) || own.has(key)) throw new Error('Duplicate extension route');
-        own.set(key, { handler, db, resend: extension.capabilities?.includes('resend') ?? false });
+        own.set(key, { handler, db, resend: extension.capabilities?.includes('resend') ?? false, extension: extension.name });
       } });
       for (const [key, route] of own) routes.set(key, route);
-      contexts.set(extension, { ...ctx, db }); extensions.push(extension);
-      features.push({ module: config.extensions[index].module, state: 'ready', name: extension.name, capabilities: [...extension.capabilities ?? []] });
+      const ready: Ready = { module: config.extensions[index].module, state: 'ready', name: extension.name, capabilities: [...extension.capabilities ?? []] };
+      if (state !== 'schema') { contexts.set(extension, { ...ctx, db }); extensions.push(extension); }
+      if (state !== 'ready') {
+        console.error(`mailstack: $.extensions.${index}.module: extension ${state} not ready`);
+        waiting.set(extension.name, { index: features.length, ready });
+      }
+      features.push(state === 'ready' ? ready : { module: ready.module, state: 'unavailable', reason: state });
     } catch { unavailable(index); }
   }
   const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]) => {
@@ -197,6 +146,12 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
     /** Dispatches `/internal/ext/*` after the caller's panel gate; unknown routes are 404. */
     async route(req: Request, env: object, panel: PanelPrincipal): Promise<Response> {
       const route = routes.get(`${req.method} ${new URL(req.url).pathname}`);
+      const wait = route && waiting.get(route.extension), feature = wait && features[wait.index];
+      if (wait && feature?.state === 'unavailable') {
+        if (feature.reason !== 'reconcile' || !await reconcileDone(store, route!.extension, configSha).catch(() => false))
+          return Response.json({ success: false, message: 'extension unavailable', code: 'extension_unavailable', reason: feature.reason }, { status: 503 });
+        features[wait.index] = wait.ready; waiting.delete(route!.extension);
+      }
       return route ? route.handler(req, { ...ctx, panel, db: route.db,
         ...(panel.brands === '*' && panel.templates === '*' ? { sesStatus: () => readSesStatus(store, config.events?.ses, String(Reflect.get(env, 'SES_REGION') ?? 'eu-west-1')) } : {}),
         ...(enabled && route.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });
