@@ -200,9 +200,10 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
         };
         await queries[operation].execute();
       });
-      await expect(loadExtensions(cfg, store, async module => ({ default: {
+      const runtime = await loadExtensions(cfg, store, async module => ({ default: {
         ...(module === cfg.extensions[0].module ? { keys: testKeys } : {}), name: module.replace('-extension', ''), migrate,
-      } }))).rejects.toThrow('extension initialization failed');
+      } }));
+      expect(runtime.features().map(f => f.state)).toEqual(['unavailable', 'unavailable']);
       expect(migrate).not.toHaveBeenCalled();
       expect(await rows('ext_demo_other_items')).toEqual([{ id: 'other' }]);
     }
@@ -278,7 +279,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     expect(await rows('messages')).toHaveLength(1);
   });
   it('validates the cleanup hook when loading the extension', async () => {
-    await expect(loadExtensions(cfg, store, async () => ({ default: { name: 'demo', onBeforeDelete: true } }))).rejects.toThrow('$.extensions.0');
+    expect((await loadExtensions(cfg, store, async () => ({ default: { name: 'demo', onBeforeDelete: true } }))).features()[0].state).toBe('unavailable');
   });
   it('returns unavailable when cleanup reaches its deadline', async () => {
     await seed();

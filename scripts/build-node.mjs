@@ -6,6 +6,6 @@ await build({ entryPoints: ['src/runtime/node-api.ts'], outfile: 'dist/node-api.
     build.onResolve({ filter: /\/assets\/logo$/ }, () => ({ path: resolve('src/assets/logo.example.ts') }));
     // Node loads Mailstack Pro as a runtime extension, never the Worker build.
     build.onResolve({ filter: /\/pro\.generated$/ }, () => ({ path: 'pro', namespace: 'node' }));
-    build.onLoad({ filter: /.*/, namespace: 'node' }, () => ({ contents: 'export const proKeys = undefined;', loader: 'js' }));
+    build.onLoad({ filter: /.*/, namespace: 'node' }, () => ({ contents: 'export const proKeys = undefined; export const proExtension = undefined;', loader: 'js' }));
   } }],
 });

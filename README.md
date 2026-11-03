@@ -1274,12 +1274,16 @@ other than the full key (Mailstack Pro uses it for scoped clients).
 `module` is an installed package name (optionally a package subpath) or an absolute
 file path, such as `/opt/mailstack/addon.mjs`. Relative paths are rejected. A module
 exports an `Extension` as its default export, or a default factory receiving
-`options` and returning an `Extension` (a promise is supported). Import or
-initialization errors stop startup and identify `$.extensions.<index>.module`
-without printing module values or exception details.
+`options` and returning an `Extension` (a promise is supported). An import or
+initialization error (including a failed `migrate`, `routes` or `keys` hook, or
+names sharing a table prefix) marks that extension unavailable: it gets no routes,
+events or cleanup calls, a generic log line names `$.extensions.<index>.module`
+without module values or exception details, and sending with the full key
+continues. Configuration errors (`$.clients`, two key providers) still stop startup.
 
 The contracts live in `src/core/extensions.ts`. Extension names match
-`[a-z][a-z0-9_]{0,39}` and must be unique. All hooks are optional:
+`[a-z][a-z0-9_]{0,39}`; a name that equals or prefixes another (`demo`, `demo_x`)
+makes both unavailable. All hooks are optional:
 
 - `migrate(db)` runs before listening. Use Kysely schema/query builders and tables
   beginning with `ext_<name>_`; referenced tables must use the same prefix. Raw SQL,
@@ -1296,13 +1300,18 @@ The contracts live in `src/core/extensions.ts`. Extension names match
   Address, subject and message content are absent. Keep correlation refs opaque.
 - `routes(app)` registers exact paths with
   `app.route('GET', '/ping', (request, ctx) => Response.json({ ok: true }))`.
-  They are mounted only on Node's internal port **8081**, at
-  `/internal/ext/<name>/ping`. Requests require a configured `panel` client bearer
+  They are mounted on Node's internal port **8081** and on the Worker's
+  `INTERNAL_HOST` (after the Access check), at `/internal/ext/<name>/ping`; the
+  public host answers 404. The Worker has no dynamic import: it loads only the
+  `mailstack-pro` entry, from the Pro build's `workerExtension` export bundled by
+  `npm run setup` with `MAILSTACK_PRO_PATH`. Requests require a configured `panel` client bearer
   token, `X-Panel-Actor`, and a signed `X-Panel-Assertion` as described in the
   [internal API contract](docs/internal-api.md). Do not publish this port externally.
   Extensions must append an audit entry before content reads or state mutations.
 
-`ctx` provides a Kysely `db` handle, `appendAudit(entry)`, `now()` (epoch
+`ctx` provides a Kysely `db` handle (with `db.batch([...builders])`: every
+element is checked against the prefix before one atomic store batch, so a single
+invalid element refuses the whole batch), `appendAudit(entry)`, `now()` (epoch
 milliseconds), and `config` containing brand ids and logging policies only.
 Route handlers also receive the verified `ctx.panel` principal and must apply its
 scopes, selections, role and step-up requirements.
