@@ -11,7 +11,7 @@
  * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD.
  */
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { INITIAL_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
+import { INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
 import { BUILD_CONFIG_SHA } from "../src/core/config/bundled.ts";
 import { proSchema } from "../src/core/pro.generated.ts";
 import { resolve, dirname } from "node:path";
@@ -50,6 +50,7 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
 mkdirSync(resolve(root, ".wrangler/migrations"), { recursive: true });
 writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SCHEMA);
 writeFileSync(resolve(root, ".wrangler/migrations/0002_ses_status.sql"), SES_STATUS_SCHEMA);
+writeFileSync(resolve(root, ".wrangler/migrations/0004_jobs.sql"), JOBS_SCHEMA);
 const pro = resolve(root, ".wrangler/migrations/0003_pro_license_cache.sql");
 if (proSchema) writeFileSync(pro, proSchema); else rmSync(pro, { force: true });
 writeFileSync(resolve(root, "wrangler.toml"), out);

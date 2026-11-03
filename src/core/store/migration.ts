@@ -125,3 +125,23 @@ CREATE TABLE IF NOT EXISTS ses_status (
   last_received_type TEXT
 );
 `;
+
+export const JOBS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS jobs (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('pending','running','done','dead')),
+  cursor      TEXT,
+  payload     TEXT NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  token       TEXT,
+  lease_until INTEGER,
+  run_after   INTEGER NOT NULL,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  done_at     INTEGER,
+  result      TEXT
+);
+CREATE INDEX IF NOT EXISTS jobs_due ON jobs(state, run_after);
+CREATE INDEX IF NOT EXISTS jobs_done ON jobs(done_at) WHERE done_at IS NOT NULL;
+`;

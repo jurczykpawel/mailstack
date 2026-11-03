@@ -5,6 +5,7 @@ import { createVerifier } from "./events/sns";
 import type { KyselyStore } from "./core/store";
 import { createD1Store } from "./core/store/d1";
 import { runRetention } from "./core/retention";
+import { runJobs } from "./core/jobs";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
@@ -55,8 +56,10 @@ function handlePreflight(req: Request, url: URL): Response {
 }
 
 export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
-  if (!env.DB) throw new Error("Retention storage unavailable");
-  ctx.waitUntil(runRetention(createD1Store(env.DB), event.scheduledTime, config));
+  if (!env.DB) throw new Error("Scheduled storage unavailable");
+  const store = createD1Store(env.DB);
+  if (event.cron === "17 * * * *") ctx.waitUntil(runRetention(store, event.scheduledTime, config));
+  else if (event.cron === "* * * * *") ctx.waitUntil(runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined }));
 }
 
 export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore; access?: AccessVerifier } = {}, pro = proKeys) {
@@ -148,7 +151,11 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       if (pathname.startsWith("/internal/v2/") && store && env.PANEL_ASSERTION_KEYS && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
         if (!await access(req, env)) return Response.json({ success: false }, { status: 403 });
         const panel = await authorizePanel(req, env, config, { audience: env.INTERNAL_HOST, store, keys: deps.keys, defer: deps.waitUntil });
-        return panel instanceof Response ? panel : internalFetch(req, env, store, config, panel);
+        if (panel instanceof Response) return panel;
+        const response = await internalFetch(req, env, store, config, panel);
+        // 202 = work stored as a job; start it now instead of waiting for the minute cron.
+        if (response.status === 202) deps.waitUntil?.(runJobs(store, "request"));
+        return response;
       }
 
       if (pathname === "/v1/events/ses" && req.method === "POST") {

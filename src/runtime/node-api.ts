@@ -11,6 +11,9 @@ import { effectivePolicies } from '../core/config/schema';
 import { parseIndexKeys, parseKeyring } from '../core/keyring';
 import { createSqliteStore } from '../core/store/sqlite';
 import { backupSqlite } from '../core/store/backup';
+import { runJobs } from '../core/jobs';
+import type { Trigger } from '../core/budget';
+import { createNtfyNotifier } from '../adapters/notify/ntfy';
 import { createApp } from '../index';
 import { sendEmail } from '../ses';
 import { smtpFromEnv } from '../adapters/sender/smtp';
@@ -44,6 +47,17 @@ export async function startScheduler(retention: () => Promise<unknown>, backup: 
   const initial = setTimeout(() => run(true), 30000);
   const timer = setInterval(() => run(true), 3600000);
   return async () => { clearTimeout(initial); clearInterval(timer); await running; };
+}
+/** Node trigger: a drain every second, with the cron budget and the stall alarm once a minute. */
+export function startJobClock(run: (trigger: Trigger) => Promise<unknown>) {
+  let running: Promise<void> | undefined, cronAt = Date.now();
+  const timer = setInterval(() => {
+    if (running) return;
+    const trigger = Date.now() - cronAt >= 60000 ? 'cron' : 'request';
+    if (trigger === 'cron') cronAt = Date.now();
+    running = run(trigger).then(() => {}, () => console.error('Background jobs failed')).finally(() => { running = undefined; });
+  }, 1000);
+  return async () => { clearInterval(timer); await running; };
 }
 export async function startServer(handler: Fetch, env: Env, port = 8080) {
   const proxy = env.TRUSTED_PROXY;
@@ -98,7 +112,10 @@ async function main() {
     await store.migrate();
     const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider });
     const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource, keys: extensions.keys });
-    const stop = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
+    const stopMaintenance = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
+    const notifier = env.NTFY_URL ? createNtfyNotifier(env) : undefined;
+    const stopJobs = startJobClock(trigger => runJobs(store, trigger, { notifier }));
+    const stop = () => Promise.all([stopMaintenance(), stopJobs()]);
     const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
       .catch(async error => { await stop(); throw error; });
     const internal = await startServer((req, env) => extensions.fetch(req, env), env, 8081)
