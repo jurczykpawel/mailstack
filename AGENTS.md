@@ -471,7 +471,7 @@ local relay acceptance; downstream delivery events and DSN polling are not inclu
 Use [Docker installation](README.md#run-with-docker-node--sqlite) for Node/SQLite.
 Keys are managed with [npm run keys](README.md#content-and-index-keys); the API receives
 public content keys and index keys, while private content keys stay outside its volume.
-Retention runs hourly (Worker minute 17 UTC; Node first after 30 seconds). Node makes
+Retention runs hourly (Worker: the single minute cron, minute 17 UTC runs only retention and other minutes only jobs; Node first after 30 seconds). Node makes
 startup/daily SQLite snapshots and keeps seven. See [retention and snapshots](README.md#retention-and-snapshots)
 and [ntfy alerts](README.md#ntfy-alerts) for storage lifecycle and notification setup.
 

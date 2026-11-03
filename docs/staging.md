@@ -26,7 +26,7 @@ State defaults to `~/.config/mailstack-staging/worker` (directory 0700, files 06
 
 Deployment uses a recorded immutable commit from `main`; application sources are extracted from that commit into protected state before bundling. To select a newer main commit, explicitly set `MAILSTACK_STAGING_COMMIT` to that commit. The standalone staging composition supplies configuration, synthetic license endpoints and a disabled delivery adapter. It does not change the core sender.
 
-The cron runs retention at minute 17 of each hour. Content retention is one day, metadata seven days. A full destructive Worker reset is:
+The single minute cron runs retention at minute 17 of each hour and background jobs in all other minutes. Content retention is one day, metadata seven days. A full destructive Worker reset is:
 
 ```sh
 scripts/staging/worker.sh destroy
@@ -131,7 +131,7 @@ scripts/staging/worker.sh deploy
 
 The deploy adds a webhook endpoint `st-receiver` (event `message.sent`, brand `acme`) pointing at the staging receiver run `m8`. Gate E5: `MAILSTACK_STAGING_EGRESS_URL=https://mailstack-test.techskills.academy MAILSTACK_STAGING_EGRESS_KEY=<STAGING_RECEIVER_KEY> MAILSTACK_STAGING_DENIED=mailpit.automagicznie.pl,65.108.2.217,2a01:4f9:6a:5210::293 npx vitest run test/staging-egress.test.ts`.
 
-The account is on Workers Free and already uses all five Cron Triggers; the staging Worker keeps only `17 * * * *`. Without the minute cron, background jobs run only when a request that records a durable event starts the job runner (`kickJobs`); retries after a failure wait for the next such request. Whether a new delivery completes in that same pass has not been measured on staging.
+The account is on Workers Free with a limit of five Cron Triggers, all in use; each Mailstack Worker, staging included, takes exactly one (`* * * * *`). Minute 17 UTC runs only retention (no job drain in that minute), every other minute only the job drain, so the two never add up in one invocation.
 
 ### Simulator-only SES delivery
 

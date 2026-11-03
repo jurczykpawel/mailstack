@@ -69,9 +69,10 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
     scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
       if (!env.DB) throw new Error("Scheduled storage unavailable");
       const store = createD1Store(env.DB);
-      if (event.cron === "17 * * * *") ctx.waitUntil(extensions(store).then(h => h.runRetention(event.scheduledTime)));
+      // One minute cron (Free plan allows five per account): minute 17 UTC runs only retention, every other minute only jobs.
+      if (new Date(event.scheduledTime).getUTCMinutes() === 17) ctx.waitUntil(extensions(store).then(h => h.runRetention(event.scheduledTime)));
       // The host registers this isolate's reconcile handlers before the jobs drain.
-      else if (event.cron === "* * * * *") ctx.waitUntil(extensions(store).then(h =>
+      else ctx.waitUntil(extensions(store).then(h =>
         runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, ...h.jobs })));
     },
     async fetch(

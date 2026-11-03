@@ -14,7 +14,7 @@ __ROUTES__
 
 [triggers]
 # Minute: background jobs (src/core/jobs.ts). Hour at :17: retention, with the larger hourly CPU limit.
-crons = ["* * * * *", "17 * * * *"]
+crons = ["* * * * *"]
 
 [build]
 command = "node scripts/bundle-config.ts --verify"

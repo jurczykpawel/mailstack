@@ -253,20 +253,21 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
     expect((await rows()).map(r => r.kind).sort()).toEqual(['open', 'recent']);
   });
 
-  if (driver === 'd1') it('splits scheduled work by cron', async () => {
+  if (driver === 'd1') it('splits scheduled work by minute of the single cron', async () => {
     await add('unregistered');
     await store.consume('expired', t);
-    const fire = async (cron: string) => {
+    const fire = async (scheduledTime: number) => {
       const pending: Promise<unknown>[] = [];
-      worker.scheduled({ cron, scheduledTime: t } as ScheduledController, { DB: binding } as Env,
+      worker.scheduled({ cron: '* * * * *', scheduledTime } as ScheduledController, { DB: binding } as Env,
         { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); }, passThroughOnException() {} } as ExecutionContext);
       await Promise.all(pending);
     };
-    await fire('17 * * * *');
+    const minute17 = Date.UTC(2026, 10, 3, 9, 17, 5);
+    await fire(minute17);
     expect((await rows())[0].state).toBe('pending');
     expect((await sql`select * from guards`.execute(store.db)).rows).toEqual([]);
     await store.consume('expired', t);
-    await fire('* * * * *');
+    await fire(Date.UTC(2026, 10, 3, 9, 18, 5));
     expect((await rows())[0]).toMatchObject({ state: 'dead', result: '{"error":"unknown_kind"}' });
     expect((await sql`select * from guards`.execute(store.db)).rows).toHaveLength(1);
   });
