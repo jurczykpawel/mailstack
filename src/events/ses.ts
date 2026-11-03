@@ -104,7 +104,7 @@ export async function handleSesEvent(req: Request, deps: EventDeps): Promise<Res
         const task = Promise.resolve().then(async () => {
           const projected = await deps.store!.db.selectFrom('messages').select(['template', 'status']).where('id', '=', message.id).executeTakeFirst();
           if (projected) deps.emitEvent!({ type: domainType, at: now, brand: message.brand, template: projected.template,
-            status: projected.status, messageId: message.id }, deps.waitUntil);
+            status: projected.status, messageId: message.id, durable: !!durable }, deps.waitUntil);
         }).catch(() => { console.error('mailstack: extension event failed'); });
         if (deps.waitUntil) deps.waitUntil(task);
       }

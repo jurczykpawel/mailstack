@@ -456,7 +456,16 @@ Configure exact `events.ses.topicArns` and `accountIds`, the runtime keyring and
 When an extension defines `onEvent`, each delivery transition and each new SES event of a
 message row is also written to `domain_events` in the same atomic batch as the status
 change (unique `cause` per transition or SNS notification; `ref_digest` only for
-consumers with `eventRef`). Without a consumer or at level `none` nothing extra is written. Node SMTP records
+consumers with `eventRef`). Without a consumer or at level `none` nothing extra is written.
+Stored events reach `onEvent` only through the `fanout` job (one per extension, cursor in
+`ext_event_cursor`; Worker kicks it after the send, Node's job clock within a second); only
+events without a row (level `none`, unavailable storage) are delivered once from memory.
+`onEvent(event, ctx, resume)` returns `{ack: true}` after storing every delivery, or
+`{partial: <last endpoint>}` to be called again with `resume`; an exception, 5-second
+timeout or other result keeps the cursor. Retention deletes events confirmed by every
+consumer after 24 h and unconfirmed ones after 7 days, recording `ext_event_gaps` and
+moving the cursor (`capabilities.jobs.events_dropped`); erasure deletes the subject's
+events. `capabilities.features.events` reports `durable` or the reason. Node SMTP records
 local relay acceptance; downstream delivery events and DSN polling are not included.
 
 Use [Docker installation](README.md#run-with-docker-node--sqlite) for Node/SQLite.

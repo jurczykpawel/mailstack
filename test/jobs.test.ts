@@ -180,7 +180,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
       await add(kind);
       await sql`update jobs set state = ${state}, run_after = ${runAfter}, done_at = ${doneAt} where kind = ${kind}`.execute(store.db);
     }
-    expect(await jobStats(store, t)).toEqual({ pending: 3, oldest_pending_age_s: 900, dead_24h: 1 });
+    expect(await jobStats(store, t)).toEqual({ pending: 3, oldest_pending_age_s: 900, dead_24h: 1, events_dropped: 0 });
   });
 
   it('alerts on a stuck queue from cron at most once per hour', async () => {

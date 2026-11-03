@@ -8,6 +8,8 @@ import { DummyDriver, Kysely } from 'kysely';
 import type { CompiledQuery, DatabaseConnection } from 'kysely';
 import { applyMigrations, compileMigrations, reconcileDone, reconcilers, sandboxed, schemaReady, sha256Hex, sqliteDialect, startReconcile } from './ext-migrations';
 import { runRetention } from './retention';
+import { runJobs, type JobHooks } from './jobs';
+import type { EventConsumer } from './events';
 import type { PanelPrincipal } from './panel';
 import { requireKeyProvider, type KeyProvider } from '../clients';
 import { appendAudit } from './audit';
@@ -53,7 +55,7 @@ export type ExtensionHost = Awaited<ReturnType<typeof createExtensionHost>>;
  */
 export async function createExtensionHost(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }>,
-  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean } = {}) {
+  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean; kickJobs?: boolean } = {}) {
   const extensions: Extension[] = [], consumers: Extension[] = [], routes = new Map<string, Route>(), contexts = new Map<Extension, ExtensionContext>();
   const features: ExtensionFeature[] = [];
   const ctx: Omit<ExtensionContext, 'db'> = { now: Date.now,
@@ -127,17 +129,22 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       features.push(state === 'ready' ? ready : { module: ready.module, state: 'unavailable', reason: state });
     } catch { unavailable(index); }
   }
-  const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]) => {
-    const { type, at, brand, template, status, ref, messageId } = input;
-    const event = { id: eventId(at), type, at, brand, template, status, messageId, ...(ref === undefined ? {} : { ref }) };
-    const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
-    if (waitUntil) { try { waitUntil(task); } catch {} }
-    return task;
-  };
+  // Durable events reach consumers only through the fan-out job (Worker: kicked by the emit; Node: its job clock).
+  const fanout = new Map<string, EventConsumer>(consumers.filter(e => contexts.has(e)).map(e =>
+    [e.name, (event, resume) => Promise.resolve(e.onEvent!(structuredClone(event), contexts.get(e)!, resume))]));
   const beforeDelete: BeforeMessageDelete = async selection => {
     for (const extension of extensions) if (extension.onBeforeDelete) {
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
+  };
+  const jobs: JobHooks = { beforeDelete, consumers: fanout };
+  const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]): Promise<unknown> => {
+    const { type, at, brand, template, status, ref, messageId, durable } = input;
+    if (durable) return options.kickJobs && fanout.size ? runJobs(store, 'request', jobs).catch(() => {}) : Promise.resolve();
+    const event = { id: eventId(at), type, at, brand, template, status, messageId, ...(ref === undefined ? {} : { ref }) };
+    const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
+    if (waitUntil) { try { waitUntil(task); } catch {} }
+    return task;
   };
   const events = consumers.length ? { ref: consumers.some(e => e.eventRef === true) } : undefined;
   const durableEvents = async () => events;
@@ -145,8 +152,8 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
   const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, durableEvents, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
-  return { emitEvent, durableEvents, resendSource, keys, beforeDelete, features: () => structuredClone(features),
-    runRetention: (now: number) => runRetention(store, now, config, beforeDelete),
+  return { emitEvent, durableEvents, resendSource, keys, beforeDelete, jobs, features: () => structuredClone(features),
+    runRetention: (now: number) => runRetention(store, now, config, beforeDelete, consumers.map(e => e.name)),
     /** Dispatches `/internal/ext/*` after the caller's panel gate; unknown routes are 404. */
     async route(req: Request, env: object, panel: PanelPrincipal): Promise<Response> {
       const route = routes.get(`${req.method} ${new URL(req.url).pathname}`);
