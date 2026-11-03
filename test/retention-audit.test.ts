@@ -187,7 +187,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`maintenance: ${driver}
   if (driver === 'd1') it('runs scheduled maintenance through waitUntil', async () => {
     await store.consume('old', now);
     const pending: Promise<unknown>[] = [];
-    worker.scheduled({ scheduledTime: now } as ScheduledController, { DB: binding } as Env,
+    worker.scheduled({ cron: '17 * * * *', scheduledTime: now } as ScheduledController, { DB: binding } as Env,
       { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); }, passThroughOnException() {} } as ExecutionContext);
     await Promise.all(pending);
     expect(await count('guards')).toBe(0);
