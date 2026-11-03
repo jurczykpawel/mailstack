@@ -67,11 +67,12 @@ describe('capabilities', () => {
     expect(body.principal).toEqual({ role: 'admin', brands: ['acme'], templates: '*' });
     expect(body.limits).toEqual({ listPage: 100, exportPageMessages: 50, exportPageBytes: 1048576 });
     expect(body.backupWindowDays).toBe(7);
-    expect(body.jobs).toEqual({ pending: 0, oldest_pending_age_s: 0, dead_24h: 0 });
+    expect(body.jobs).toEqual({ pending: 0, oldest_pending_age_s: 0, dead_24h: 0, events_dropped: 0 });
     expect(body.transitKeys).toEqual([{ kid: 't1', x: transit.keys[0].x }]);
     expect(JSON.stringify(body)).not.toContain(String(transit.keys[0].d));
     expect(body.features).toEqual({ panel: { state: 'enabled' }, webhooks: { state: 'enabled' }, 'resend.replay': { state: 'enabled' },
-      'resend.source': { state: 'disabled', reason: 'not_configured' }, 'aws.status': { state: 'disabled', reason: 'role' }, 'aws.test': { state: 'disabled', reason: 'role' } });
+      'resend.source': { state: 'disabled', reason: 'not_configured' }, 'aws.status': { state: 'disabled', reason: 'role' }, 'aws.test': { state: 'disabled', reason: 'role' },
+      events: { durable: false, reason: 'not_configured' } });
     expect((await caps('viewer')).features).toMatchObject({ webhooks: { reason: 'role' }, 'resend.replay': { reason: 'role' } });
   });
 
@@ -93,7 +94,8 @@ describe('capabilities', () => {
     licensed = false;
     const body = await caps();
     expect(body.license).toEqual({ state: 'invalid' });
-    expect(Object.values(body.features)).toEqual(Array(6).fill({ state: 'disabled', reason: 'license' }));
+    const { events: _, ...pro } = body.features;
+    expect(Object.values(pro)).toEqual(Array(6).fill({ state: 'disabled', reason: 'license' }));
     for (const [path, method] of [['/internal/v2/messages', 'GET'], ['/internal/v2/audit/head', 'GET'], ['/internal/ext/pro/webhooks', 'GET'],
       ['/internal/v2/capabilities', 'POST'], ['/internal/v2/subjects/export', 'POST']]) {
       const response = await call(path, 'admin', panelToken, method);
@@ -125,6 +127,14 @@ describe('capabilities', () => {
     runtime = await loadExtensions({ ...cfg, extensions: [{ module: 'keys' }, { module: 'broken' }] }, store,
       async module => { if (module === 'broken') throw new Error('boom'); return { default: { name: 'keys', keys: licenseKeys } }; });
     expect((await caps()).features.webhooks).toEqual({ state: 'unavailable', reason: 'initialization' });
+  });
+
+  it('reports durable events only with a consumer, and names the level-none scopes that stay in memory', async () => {
+    const host = (logging = example.logging) => capabilities(env, store, parseConfig({ ...example, logging }), { ...panelClaims(), scopes: ['panel'], brands: '*', templates: '*' },
+      { platform: 'node', extensions: async () => ({ features: () => [], resendSource: undefined, durableEvents: async () => ({ ref: false }) }) });
+    expect((await host()).features.events).toEqual({ durable: true });
+    const none = await host({ ...example.logging, brands: { demo: { templates: { notice: { level: 'none' } } } } });
+    expect(none.features.events).toEqual({ durable: false, reason: 'policy:level_none', scopes: [{ brand: 'demo', template: 'notice' }] });
   });
 
   it('serves capabilities on the Worker internal host', async () => {

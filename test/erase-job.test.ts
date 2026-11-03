@@ -61,12 +61,14 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
       sql`insert into contents select id,'sealed',${far} from (${ids})`,
       sql`insert into replays select id,'sealed',${far} from (${ids})`,
       sql`insert into events(id,message_id,source,source_event_id,type,occurred_at,received_at,auth) select 'e' || id,id,'local','e' || id,'sent',${createdAt},${createdAt},'local' from (${ids})`,
+      sql`insert into domain_events(id,cause,type,message_id,brand,template,status,at) select 'd' || id,'msg:' || id,'message.sent',id,${brand},'notice','sent',${createdAt} from (${ids})`,
     ].map(q => q.compile(store.db)));
   }
   const remaining = (prefix = 'm') => count(sql<{ n: number }>`select
     (select count(*) from messages where id like ${prefix + '%'}) + (select count(*) from subjects where message_id like ${prefix + '%'}) +
     (select count(*) from recipients where message_id like ${prefix + '%'}) + (select count(*) from contents where message_id like ${prefix + '%'}) +
-    (select count(*) from replays where message_id like ${prefix + '%'}) + (select count(*) from events where message_id like ${prefix + '%'}) n`);
+    (select count(*) from replays where message_id like ${prefix + '%'}) + (select count(*) from events where message_id like ${prefix + '%'}) +
+    (select count(*) from domain_events where message_id like ${prefix + '%'}) n`);
 
   beforeAll(async () => {
     if (driver === 'sqlite') store = createSqliteStore(':memory:');
@@ -77,7 +79,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
     await store.migrate();
   });
   beforeEach(async () => {
-    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'jobs', 'guards']) await sql`delete from ${sql.table(table)}`.execute(store.db);
+    for (const table of ['audit', 'events', 'domain_events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'jobs', 'guards']) await sql`delete from ${sql.table(table)}`.execute(store.db);
   });
   afterAll(async () => { await store.db.destroy(); await mf?.dispose(); });
 

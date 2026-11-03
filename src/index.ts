@@ -64,7 +64,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
   const extensions = (store: KyselyStore) => host ??= createExtensionHost(config, store, async module => {
     if (module === "mailstack-pro" && extension) return { default: extension };
     throw new Error("Extension not built into the Worker");
-  }, { keys: undefined });
+  }, { keys: undefined, kickJobs: true });
   return {
     scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
       if (!env.DB) throw new Error("Scheduled storage unavailable");
@@ -72,7 +72,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       if (event.cron === "17 * * * *") ctx.waitUntil(extensions(store).then(h => h.runRetention(event.scheduledTime)));
       // The host registers this isolate's reconcile handlers before the jobs drain.
       else if (event.cron === "* * * * *") ctx.waitUntil(extensions(store).then(h =>
-        runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, beforeDelete: h.beforeDelete })));
+        runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, ...h.jobs })));
     },
     async fetch(
       req: Request,
@@ -164,7 +164,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         if (ext) return (await extensions(store)).route(req, env, panel);
         const response = await internalFetch(req, env, store, config, panel, { platform: "worker", extensions: () => extensions(store) });
         // 202 = work stored as a job; start it now instead of waiting for the minute cron.
-        if (response.status === 202) deps.waitUntil?.(extensions(store).then(h => runJobs(store, "request", { beforeDelete: h.beforeDelete })));
+        if (response.status === 202) deps.waitUntil?.(extensions(store).then(h => runJobs(store, "request", h.jobs)));
         return response;
       }
 

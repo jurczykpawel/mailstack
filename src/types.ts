@@ -153,6 +153,8 @@ export interface SendResult {
   id?: string;
   /** Internal domain-event correlation for an executed delivery attempt. */
   correlationId?: string;
+  /** Internal: the delivery's domain events are stored for the fan-out job. */
+  durable?: true;
   idempotent?: true;
   code?: string;
   message?: string;

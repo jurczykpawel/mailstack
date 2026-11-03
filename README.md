@@ -1314,6 +1314,11 @@ makes both unavailable. All hooks are optional:
   are new attempts. Events contain only `id`, `type`, `at` (epoch milliseconds),
   `brand`, `template`, `status`, and optional `ref`/`messageId` (the local log id).
   Address, subject and message content are absent. Keep correlation refs opaque.
+  Stored events (level other than `none`) arrive from the `fanout` job with
+  `refDigest` instead of `ref`, at least once: return `{ ack: true }` only after every
+  delivery is stored, or `{ partial: endpointId }` to continue later with
+  `onEvent(event, ctx, endpointId)`. Anything else keeps the event pending; events
+  unconfirmed for 7 days are dropped and recorded as a gap.
 - `routes(app)` registers exact paths with
   `app.route('GET', '/ping', (request, ctx) => Response.json({ ok: true }))`.
   They are mounted on Node's internal port **8081** and on the Worker's

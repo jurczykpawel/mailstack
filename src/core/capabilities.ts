@@ -13,7 +13,7 @@ export const LIMITS = { listPage: 100, exportPageMessages: 50, exportPageBytes: 
 /** Daily SQLite snapshots kept by the Node runtime. */
 export const NODE_SNAPSHOTS = 7;
 /** What the running host contributes: its platform and its extension host. */
-export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Promise<Pick<ExtensionHost, 'features' | 'resendSource'>> }
+export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Promise<Pick<ExtensionHost, 'features' | 'resendSource'> & Partial<Pick<ExtensionHost, 'durableEvents'>>> }
 type Feature = { state: 'enabled' } | { state: 'disabled' | 'unavailable'; reason: string };
 const FEATURES = ['panel', 'webhooks', 'resend.replay', 'resend.source', 'aws.status', 'aws.test'] as const;
 type Name = typeof FEATURES[number];
@@ -48,6 +48,10 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
     if (name.startsWith('resend.') && !ext.resendSource) return off('host', 'unavailable');
     return allowed[name] ? { state: 'enabled' } : off('role');
   };
+  // Durable events need a consumer and a message row; level none keeps them in memory only (A 3.3.3).
+  const none = effectivePolicies(cfg).filter(p => p.policy.level === 'none').map(p => ({ brand: p.brandId, template: p.templateId }));
+  const events = !await ext.durableEvents?.() ? { durable: false, reason: 'not_configured' }
+    : none.length ? { durable: false, reason: 'policy:level_none', scopes: none } : { durable: true };
   const transit = await parseTransitKeys(Reflect.get(env, 'TRANSIT_KEYS')).catch(() => ({ publicKeys: [] }));
   const proCommit = Reflect.get(env, 'BUILD_PRO_COMMIT');
   return {
@@ -56,7 +60,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
       audience: transitAudience(env, host) ?? null },
     license: { state: panel.denied ? 'invalid' : 'valid' },
     principal: { role: panel.role, brands: panel.brands, templates: panel.templates },
-    features: Object.fromEntries(FEATURES.map(name => [name, state(name)])),
+    features: { ...Object.fromEntries(FEATURES.map(name => [name, state(name)])), events },
     limits: LIMITS,
     // Provider-side copies outlive an erasure: D1 Time Travel keeps 30 days (Paid) or 7 (Free); Node keeps its snapshots.
     backupWindowDays: host.platform === 'node' ? NODE_SNAPSHOTS : free ? 7 : 30,

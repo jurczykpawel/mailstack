@@ -4,11 +4,13 @@ import { pruneAudit } from './store/audit.ts';
 import type { KyselyStore } from './store';
 import type { BeforeMessageDelete, MessageDeletion } from './extensions';
 import type { Config } from './config/schema';
+import { eventRetention } from './events.ts';
 
 export function isContentReadable(row: { expires_at: number } | null | undefined, now: number): boolean {
   return !!row && row.expires_at > now;
 }
-export async function runRetention(store: KyselyStore, now: number, cfg: Config, beforeDelete?: BeforeMessageDelete): Promise<void> {
+/** `consumers`: extensions whose cursors decide when events are confirmed (A 3.3.3). */
+export async function runRetention(store: KyselyStore, now: number, cfg: Config, beforeDelete?: BeforeMessageDelete, consumers: string[] = []): Promise<void> {
   let cursor = '', cleanupFailed = false;
   while (true) {
     const messages = (await sql<MessageDeletion['messages'][number]>`select id,brand,template from messages where id > ${cursor} and (meta_expires_at < ${now}
@@ -44,6 +46,7 @@ export async function runRetention(store: KyselyStore, now: number, cfg: Config,
       sql`update messages set status = 'unknown' where id = ${id} and status = 'sending' and created_at < ${now - 900000}`,
     ]).map(query => query.compile(store.db)));
   }
+  await eventRetention(store, now, consumers);
   await sql`delete from jobs where state in ('done', 'dead') and done_at <= ${now - 7 * 86400000}`.execute(store.db);
   await pruneAudit(store, now - cfg.logging.ceilings.auditDays * 86400000, row => appendAudit(store, {
     at: now, actor: 'system', action: 'audit.pruned', details: { upTo: row.seq, hashAtUpTo: row.hash },

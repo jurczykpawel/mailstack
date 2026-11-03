@@ -44,9 +44,9 @@ export const ERASE_JOB: JobKind = {
     if (c.phase === 1) {
       await beforeDelete?.({ reason: 'erase', messages: rows });
       return { cursor, writes: [sql`update messages set meta_expires_at=0, content_expires_at=0 where id in (${ids})`,
-        ...remove(['contents', 'replays'])].map(q => q.compile(store.db)) };
+        ...remove(['contents', 'replays', 'domain_events'])].map(q => q.compile(store.db)) };
     }
-    return { cursor, writes: [...remove(['recipients', 'events', 'contents', 'replays', 'subjects']),
+    return { cursor, writes: [...remove(['recipients', 'events', 'domain_events', 'contents', 'replays', 'subjects']),
       sql`delete from messages where id in (${ids})`].map(q => q.compile(store.db)) };
   },
 };
