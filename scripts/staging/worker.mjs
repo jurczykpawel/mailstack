@@ -17,6 +17,9 @@ const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
 // Optional Mailstack Pro checkout (clean tree); its commit is extracted like the core one.
 const pro = process.env.MAILSTACK_STAGING_PRO, branch = process.env.MAILSTACK_STAGING_BRANCH ?? 'main';
+// MAILSTACK_STAGING_EGRESS=1 (with Pro): egress container through Wrangler and a key-guarded probe for the SSRF acceptance (A 3.6).
+const egress = process.env.MAILSTACK_STAGING_EGRESS === '1';
+if (egress && !pro) throw new Error('MAILSTACK_STAGING_EGRESS needs MAILSTACK_STAGING_PRO');
 if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
 // The internal host needs the Access team host and the AUD tag of its Access application.
 const access = { ACCESS_TEAM_DOMAIN: process.env.MAILSTACK_ACCESS_TEAM_DOMAIN?.trim(), ACCESS_AUD: process.env.MAILSTACK_ACCESS_AUD?.trim() };
@@ -26,7 +29,7 @@ if (state.startsWith(root + '/')) throw new Error('State must be outside the sou
 process.umask(0o077); mkdirSync(state, { recursive: true, mode: 0o700 });
 const put = (file, value) => {
   const path = `${state}/${file}`, data = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-  if (file !== 'secrets.json') return writeFileSync(path, data, { mode: 0o600 });
+  if (file !== 'secrets.json') { writeFileSync(path, data, { mode: 0o600 }); return path; }
   const next = `${path}.${randomBytes(16).toString('hex')}.tmp`;
   try {
     writeFileSync(next, data, { flag: 'wx', mode: 0o600, flush: true });
@@ -48,9 +51,10 @@ async function api(path, method = 'GET', body) {
 const base = `/accounts/${account}`, script = `${base}/workers/scripts/${name}`;
 async function fingerprint() { return digest(canonical(await api(`${base}/workers/scripts/mailstack/deployments`))); }
 let sequence = 0;
-async function mutate(label, path, method, body) {
+const mutate = (label, path, method, body) => guarded(label, () => api(path, method, body));
+async function guarded(label, run) {
   const before = await fingerprint(); let result;
-  try { result = await api(path, method, body); }
+  try { result = await run(); }
   finally {
     const after = await fingerprint();
     put(`mutation-${Date.now()}-${++sequence}.json`, { label, before, after, identical: before === after });
@@ -160,10 +164,18 @@ import {createApp} from './src/index.ts';
 import {receiver,receiverCleanup} from ${JSON.stringify(resolve(root,'scripts/staging/receiver.ts'))};
 const query=env=>async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('staging storage');return r.results;};
 import {budgetSender,budgetResponse} from ${JSON.stringify(resolve(root,'scripts/staging/ses-budget.ts'))};
+${egress ? `export {EgressContainer} from ${JSON.stringify(`${proSource}/src/egress/container.ts`)};
+import {containerEgress} from ${JSON.stringify(`${proSource}/src/egress/worker.ts`)};
+const probe=async(req,env)=>{const o=await req.json(),t=Date.now(),e=containerEgress(env.EGRESS),ready=await e.ready(),readyMs=Date.now()-t;
+try{return Response.json({ready,readyMs,result:await e.post({attemptId:crypto.randomUUID(),url:o.url,headers:{'content-type':'application/json'},body:'{}',notAfter:Date.now()+(o.ms??10000)})});}catch(err){return Response.json({ready,readyMs,error:err.message});}};` : 'const probe=null;'}
 const disabled=async()=>({ok:false,status:503,response:'staging_delivery_disabled'});
 export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(query(env)));return createApp({sendEmail:disabled}).scheduled(event,env,ctx);},async fetch(req,env,ctx){
 const path=new URL(req.url).pathname;
 const captured=await receiver(query(env),{token:env.STAGING_RECEIVER_TOKEN,key:env.STAGING_RECEIVER_KEY})(req);if(captured)return captured;
+if(probe&&path==='/_staging/egress'&&req.method==='POST'&&req.headers.get('authorization')==='Bearer '+env.STAGING_RECEIVER_KEY)return probe(req,env);
+if(probe&&path==='/_staging/redirect')return new Response(null,{status:302,headers:{location:'https://10.0.0.1/'}});
+if(probe&&path==='/_staging/slow')return new Promise(done=>setTimeout(()=>done(new Response('late')),15000));
+if(probe&&path==='/_staging/stream')return new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(Number(new URL(req.url).searchParams.get('n'))));c.close();}}));
 if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});
 if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});
 let reason;
@@ -172,7 +184,7 @@ const app=createApp({sendEmail:async(...args)=>{const r=await sender(...args);if
 const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
 if(${JSON.stringify(delivery)}==='disabled'&&r.status===502)return Response.json({success:false,message:'staging delivery disabled',code:'delivery_disabled'},{status:503,headers:h});
 return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}};`;
-  await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`], alias: { mailstack: source, zod: `${root}/node_modules/zod` }, conditions: ['workerd', 'worker', 'browser'], external: ['node:*'], plugins: [{ name: 'staging-config', setup(b) {
+  await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`, ...pro ? [`${pro}/node_modules`] : []], alias: { mailstack: source, zod: `${root}/node_modules/zod` }, conditions: ['workerd', 'worker', 'browser'], external: ['node:*', 'cloudflare:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
     b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
     b.onResolve({ filter: /\/assets\/logo$/ }, () => ({ path: `${source}/src/assets/logo.example.ts` }));
@@ -205,6 +217,13 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
   form.set('worker.mjs', new Blob([readFileSync(`${state}/worker.mjs`)], { type: 'application/javascript+module' }), 'worker.mjs');
   await mutate('upload-worker', script, 'PUT', form);
   await mutate('set-cron', `${script}/schedules`, 'PUT', [{ cron: '17 * * * *' }]);
+  // Wrangler adds the container, its image and the EGRESS binding to the uploaded script; secrets are kept.
+  if (egress) await guarded('deploy-egress-container', () => execFileSync(`${root}/node_modules/.bin/wrangler`, ['deploy', '--config', put('wrangler.json', { name, main: 'worker.mjs', no_bundle: true,
+    compatibility_date: metadata.compatibility_date, compatibility_flags: metadata.compatibility_flags, workers_dev: false, preview_urls: false, observability: { enabled: false }, vars,
+    triggers: { crons: ['17 * * * *'] }, d1_databases: [{ binding: 'DB', database_name: name, database_id: database.uuid }],
+    containers: [{ class_name: 'EgressContainer', image: `${pro}/Dockerfile.egress`, image_build_context: pro, instance_type: 'lite', max_instances: 1 }],
+    durable_objects: { bindings: [{ name: 'EGRESS', class_name: 'EgressContainer' }] }, migrations: [{ tag: 'egress-v1', new_sqlite_classes: ['EgressContainer'] }] })],
+    { cwd: state, stdio: 'inherit', env: { ...process.env, CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } }));
   await mutate('disable-workers-dev', `${script}/subdomain`, 'POST', { enabled: false, previews_enabled: false });
   const zones = await api('/zones?name=techskills.academy');
   const zone = zones.find(value => value.account.id === account);

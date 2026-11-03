@@ -162,5 +162,8 @@ describe('capabilities', () => {
       'aws.status': { state: 'enabled' }, 'aws.test': { state: 'enabled' } });
     expect(body.backupWindowDays).toBe(30);
     expect((await worker(ready, { ...cfg, cloudflare: { plan: 'free' } })).backupWindowDays).toBe(7);
+    // With the container binding the egress rule no longer applies; the remaining rules decide.
+    const bound = await capabilities({ ...env, EGRESS: {} }, store, cfg, principal, { platform: 'worker', extensions: async () => ({ features: () => ready, resendSource: undefined }) });
+    expect(bound.features).toMatchObject({ webhooks: { state: 'enabled' }, 'resend.source': { reason: 'not_configured' } });
   });
 });

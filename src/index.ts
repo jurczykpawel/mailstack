@@ -180,3 +180,5 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
   };
 }
 export default createApp();
+// The egress container class (Durable Object) when the Worker is built with Mailstack Pro.
+export * from "./core/pro-exports.generated";
