@@ -109,6 +109,8 @@ it('generates a persistent non-root inbox with a separate memory budget', () => 
   expect(mailpit.user).toBe('1234:5678');
   expect(mailpit.mem_limit).toBe('512m');
   expect(config.services.api.mem_limit).toBe('512m');
+  expect(config.services.api.environment.PANEL_AUDIENCE).toBe(config.services.panel.environment.PANEL_API_AUDIENCE);
+  expect(config.services.panel.environment.PANEL_ASSERTION_KEYS_FILE).toBe('/run/panel/assertion');
   expect(config.services.init.volumes).toContain('mailpit-data:/mailpit');
   expect(config.services.init.command.at(-1)).toContain('/mailpit');
   expect(mailpit.depends_on.init.condition).toBe('service_completed_successfully');
