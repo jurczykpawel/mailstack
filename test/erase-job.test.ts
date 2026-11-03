@@ -116,7 +116,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
     // Hidden at once: the panel list no longer shows the first portion while its rows still exist.
     expect(await count(sql<{ n: number }>`select count(*) n from messages`)).toBe(1200);
     const listed = await (await api('/messages?limit=100')).json() as { messages: { id: string }[] };
-    expect(listed.messages.every(m => m.id >= 'm00500')).toBe(true);
+    expect(listed.messages).toHaveLength(100); expect(listed.messages.every(m => m.id >= 'm00500')).toBe(true);
     t += 31000;
     await runJobs(store, 'request', { now: () => t });
     expect((await jobs())[0].state).toBe('done');
