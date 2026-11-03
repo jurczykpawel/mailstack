@@ -1,6 +1,7 @@
 import { readSesStatus } from './store/ses-status';
 import { createNtfyNotifier } from '../adapters/notify/ntfy';
 import { createResendService } from './resend';
+import { transitAudience } from './capabilities';
 import { handleSend } from '../send';
 import { verifyTurnstile } from '../turnstile';
 import { verifyAltcha } from '../altcha';
@@ -84,7 +85,7 @@ export type ExtensionHost = Awaited<ReturnType<typeof createExtensionHost>>;
  */
 export async function createExtensionHost(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }>,
-  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean; kickJobs?: boolean } = {}) {
+  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean; kickJobs?: boolean; platform?: 'worker' | 'node' } = {}) {
   const extensions: Extension[] = [], consumers: Extension[] = [], routes = new Map<string, Route>(), contexts = new Map<Extension, ExtensionContext>();
   const features: ExtensionFeature[] = [];
   const ctx: Omit<ExtensionContext, 'db'> = { now: Date.now,
@@ -209,6 +210,6 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       return route ? route.handler(req, { ...ctx, panel, db: route.db,
         ...(panel.brands === '*' && panel.templates === '*' ? { sesStatus: () => readSesStatus(store, config.events?.ses, String(Reflect.get(env, 'SES_REGION') ?? 'eu-west-1')) } : {}),
         sendInProcess: sesLoop(config, env, deps ?? sendDeps(env as Env), panel, loop),
-        ...(enabled && route.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });
+        ...(enabled && route.resend ? { resend: service(env as Env).forPanel(panel, transitAudience(env, { platform: options.platform ?? 'node' })) } : {}) }) : new Response(null, { status: 404 });
     } };
 }

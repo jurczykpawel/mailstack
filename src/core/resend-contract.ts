@@ -15,8 +15,10 @@ export interface ResendSource {
   ref_sealed: string | null;
   owner?: { clientId: string; callback: { url: string; secretEnv: string } };
 }
-export interface ResendRequest { messageId: string; reason: string; idempotencyKey: string; replay?: unknown; ref?: string }
-export type ResendOutcome = SendResult & { resendId?: string; source?: ResendSource };
+/** `envelope`: the replay (`resend.replay`) or `ref` (`resend.source`) sealed in the browser for this API and message (K2). */
+export interface ResendRequest { messageId: string; reason: string; idempotencyKey: string; envelope: string }
+/** `ref`: the opened source reference, for the extension's callback to the owning application (source strategy only). */
+export type ResendOutcome = SendResult & { resendId?: string; source?: ResendSource; ref?: string };
 export interface ResendCapability {
   source(messageId: string): Promise<ResendSource | SendResult>;
   request(input: ResendRequest): Promise<ResendOutcome>;

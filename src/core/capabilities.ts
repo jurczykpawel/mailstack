@@ -23,7 +23,7 @@ const EGRESS: Name[] = ['webhooks', 'resend.source'];
 
 /** `GET /internal/v2/capabilities`: what this principal may use here and why anything is off (A 3.8.3). */
 /** The API installation id that panel assertions and transit envelopes are bound to. */
-export const transitAudience = (env: object, host: CapabilityHost): string | undefined =>
+export const transitAudience = (env: object, host: Pick<CapabilityHost, 'platform'>): string | undefined =>
   Reflect.get(env, host.platform === 'worker' ? 'INTERNAL_HOST' : 'PANEL_AUDIENCE');
 
 export async function capabilities(env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, host: CapabilityHost, now = Date.now()) {
@@ -46,7 +46,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
     if (!pro) return failed ? off(failed.reason, 'unavailable') : off('not_configured');
     if (host.platform === 'worker' && !['EGRESS_URL', 'EGRESS_KEYS', 'EGRESS_ACCESS_CLIENT_ID', 'EGRESS_ACCESS_CLIENT_SECRET'].every(k => Reflect.get(env, k)) && EGRESS.includes(name)) return off('platform:secure_egress_unavailable');
     if (!configured[name]) return off('not_configured');
-    // The host builds resend only with a delivery adapter (the Worker host has none yet).
+    // The host builds resend only with a delivery adapter.
     if (name.startsWith('resend.') && !ext.resendSource) return off('host', 'unavailable');
     return allowed[name] ? { state: 'enabled' } : off('role');
   };

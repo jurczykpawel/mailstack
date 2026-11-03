@@ -5,7 +5,8 @@ import { getTemplate } from '../templates';
 import type { Env, SendDeps, SendResult, Attachment } from '../types';
 import type { Config } from './config/schema';
 import { blindIndex, canonicalJson, createMac, refIndex, verifyMac } from './crypto';
-import { parseKeyring } from './keyring';
+import { parseKeyring, parseTransitKeys } from './keyring';
+import { openTransit, TransitError } from './transit';
 import { appendAudit } from './audit';
 import { panelAllows, type PanelPrincipal } from './panel';
 import { resolvePolicy } from './logging/policy';
@@ -76,6 +77,15 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     }
     return payload;
   }
+  // Replay and `ref` reach the API only sealed in the browser for this API, operation and message; the panel server forwards them unopened (K2).
+  async function unwrap(value: string, strategy: ResendSource['strategy'], messageId: string, audience = '') {
+    let keys; try { keys = (await parseTransitKeys(Reflect.get(env, 'TRANSIT_KEYS'))).privateKeys; } catch { return fail(503, 'transit_unavailable'); }
+    let payload;
+    try { payload = await openTransit(value, { aud: audience, op: `resend.${strategy}`, messageId }, keys, store, at()); }
+    catch (e) { if (!(e instanceof TransitError)) throw e; return e.code === 'replayed' ? fail(409, 'replayed') : fail(403, 'transit_invalid'); }
+    // A missing value fails later as `resend_mismatch` (replay) or `no_ref` (source).
+    return payload && typeof payload === 'object' ? Reflect.get(payload, strategy === 'replay' ? 'replay' : 'ref') as unknown : undefined;
+  }
   async function outcome(job: ResendJob): Promise<ResendOutcome> {
     if (job.state === 'sending') {
       const original = await store.db.selectFrom('messages').select('client_id').where('id', '=', job.message_id).executeTakeFirst();
@@ -124,7 +134,8 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     return { ...result, resendId: job.id };
   }
   return {
-    forPanel(principal: PanelPrincipal): ResendCapability {
+    /** `audience`: the API installation id the panel's envelopes are bound to. */
+    forPanel(principal: PanelPrincipal, audience?: string): ResendCapability {
       const panel = structuredClone(principal);
       return {
         source: id => attempt(async () => { const { source } = await inspect(id, panel); await audit(panel.actor, 'resend.source', id); return source; }),
@@ -133,13 +144,15 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
             if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500 ||
               typeof input.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.idempotencyKey)) fail(400, 'invalid_request');
             const { m, source } = await inspect(input.messageId, panel);
+            const opened = await unwrap(input.envelope, source.strategy, m.id, audience);
             if (source.strategy === 'source') {
-              const ref = input.ref;
-              if (typeof ref !== 'string' || !ref.length || ref.length > 128 || !m.ref_idx) return fail(409, 'resend_mismatch');
+              const ref = opened;
+              if (typeof ref !== 'string') return fail(409, 'no_ref');
+              if (!ref.length || ref.length > 128 || !m.ref_idx) return fail(409, 'resend_mismatch');
               const indexes = await Promise.all(parseKeyring(env).indexKeys.map(key => refIndex(ref, key)));
               if (!indexes.some(value => value.index === m.ref_idx)) fail(409, 'resend_mismatch');
             }
-            const payload = source.strategy === 'replay' ? await validate(m.id, input.replay, m.replay_mac) : undefined;
+            const payload = source.strategy === 'replay' ? await validate(m.id, opened, m.replay_mac) : undefined;
             if (payload && payload.template !== m.template) fail(409, 'resend_mismatch');
             const identity = { message_id: m.id, root: m.resend_root ?? m.id, actor: panel.actor, strategy: source.strategy };
             const id = await jobId(input.idempotencyKey), existing = await loadJob(id, identity);
@@ -148,7 +161,7 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
               if (existing.state === 'pending' && payload) {
                 return execute(existing, payload);
               }
-              return { ...await outcome(existing), ...(source.strategy === 'source' ? { source } : {}) };
+              return { ...await outcome(existing), ...(source.strategy === 'source' ? { source, ref: opened as string } : {}) };
             }
             await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
             const claimed = await claimResend(store, { id, messageId: m.id, root: m.resend_root ?? m.id, actor: panel.actor, now: at(),
@@ -159,11 +172,11 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
               if (job && job.state !== 'failed') {
                 await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
                 return job.state === 'pending' && payload ? execute(job, payload) :
-                  { ...await outcome(job), ...(source.strategy === 'source' ? { source } : {}) };
+                  { ...await outcome(job), ...(source.strategy === 'source' ? { source, ref: opened as string } : {}) };
               }
               return fail(429, 'rate_limited');
             }
-            return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source };
+            return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source, ref: opened as string };
           });
           if (!result.ok && result.code !== 'log_unavailable') return attempt(async () => {
             await audit(panel.actor, 'resend.denied', typeof input.messageId === 'string' ? input.messageId.slice(0, 128) : 'message', { code: result.code });

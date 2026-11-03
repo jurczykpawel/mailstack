@@ -124,8 +124,9 @@ verification or disclosing another selection's entries.
   events contain only `id` and `evidence_sealed`.
 - `GET /internal/v2/messages/:id/resend-source`: `{id, brand, template,
   ref_sealed, replay}`; replay is `{sealed, expires_at}` or null. No MAC, index or
-  signing/sending key is returned. This route prepares the panel-side read only;
-  resend execution remains a separate task.
+  signing/sending key is returned. Execution is the Pro extension route
+  `POST /internal/ext/pro/resend?id=` `{reason, idempotencyKey, envelope}` (op
+  `resend.replay` or `resend.source`, bound to the message).
 - `POST /internal/v2/subjects/export` `{envelope, limit?, cursor?}` (envelope op `subjects.export`, payload `{email}`): `{messages, cursor}`, each with metadata,
   recipients, timeline, sealed content/replay/ref and an `evidence` object
   containing sealed provider response and event evidence. All subject

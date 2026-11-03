@@ -1160,7 +1160,7 @@ Alerts are best-effort: an ntfy failure at event time does not retry the alert; 
 
 ### Extension resend contract
 
-Node extensions opt in with `capabilities: ["resend"]`. The runtime passes
+Extensions (Node and the Worker build) opt in with `capabilities: ["resend"]`. The runtime passes
 `ctx.resend` only to authenticated internal routes of that extension, with the verified
 panel principal bound to it. `viewer` cannot use this port; `operator` and `admin`
 need a step-up within five minutes, an unexpired assertion, and matching brand/template
@@ -1173,11 +1173,14 @@ Types live in `src/core/resend-contract.ts`:
   and sealed payload (with expiry), or a structured error. Audit must succeed before
   returning sealed data. A source strategy also returns the owning client id and
   callback descriptor (`url`, `secretEnv`), never the secret value.
-- `request({messageId, reason, idempotencyKey, replay?})` accepts a 10–500 character
-  reason and the normal idempotency key format. For `replay`, pass the exact decrypted
-  payload from `source().replay`; core validates it and awaits the shared delivery
-  pipeline. For `source`, it returns `202` with `resendId` and the sealed source
-  descriptor. Callback signing, execution, UI and license decisions belong to the
+- `request({messageId, reason, idempotencyKey, envelope})` accepts a 10–500 character
+  reason and the normal idempotency key format. `envelope` is a transit envelope sealed
+  in the browser for this API, the message and op `resend.replay` (payload `{replay}`, the
+  exact decrypted `source().replay`) or `resend.source` (payload `{ref}`); a wrong
+  binding or expired envelope is `403 transit_invalid`, a reused one `409 replayed`.
+  For `replay`, core validates the payload and awaits the shared delivery pipeline
+  (on the Worker through SES). For `source`, it returns `202` with `resendId`, the sealed
+  source descriptor and the opened `ref` for the callback. Callback signing, execution, UI and license decisions belong to the
   extension. The extension must declare the capability only when enabled.
 
 The payload contains `to`, `template`, `data`, and optional `replyTo`,

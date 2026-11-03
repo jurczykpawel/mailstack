@@ -14,14 +14,27 @@ import { getTemplate } from '../src/templates';
 import type { Env, SendDeps } from '../src/types';
 import type { PanelPrincipal } from '../src/core/panel';
 import type { ResendPayload } from '../src/core/resend-contract';
+import { resolvePolicy } from '../src/core/logging/policy';
+import { seal, transitEnv } from './fixtures/transit';
+import { panelEnv } from './fixtures/panel';
 
 let store: ReturnType<typeof createSqliteStore>, deps: SendDeps, cfg: typeof config, now: number;
 let service: ReturnType<typeof createResendService>, id: string, payload: ResendPayload;
 const pair = generateKeyPairSync('x25519');
 const privateKey = { ...pair.privateKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' };
-const env = { API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'c1' }] }), INDEX_KEYS: JSON.stringify([{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }]) } as Env;
+const env = { API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'c1' }] }), INDEX_KEYS: JSON.stringify([{ kid: 'i1', key: Buffer.alloc(32, 7).toString('base64url') }]), ...transitEnv } as Env;
 const principal = (): PanelPrincipal => ({ actor: 'user-1', role: 'operator', issuedAt: now, expiresAt: now + 60000, stepUpAt: now, scopes: ['panel'], brands: '*', templates: '*' });
-const request = (key = 'request-1', value: unknown = payload, panel = principal(), messageId = id, ref = 'ORDER-1') => service.forPanel(panel).request({ messageId, reason: 'Requested by customer', idempotencyKey: key, replay: value, ref });
+// As the browser does: the replay or `ref` sealed for this API, the message's resend operation and the message.
+const sealFor = async (messageId: string, value: unknown, ref: unknown) => {
+  const m = await store.db.selectFrom('messages').select(['brand', 'template']).where('id', '=', messageId).executeTakeFirst();
+  const source = !!m && (await resolvePolicy(cfg.logging, m.brand, m.template)).policy.resend === 'source';
+  return seal(source ? (ref === undefined ? {} : { ref }) : { replay: value }, source ? 'resend.source' : 'resend.replay', panelEnv.PANEL_AUDIENCE, now, messageId);
+};
+// Resend reservations only; every opened envelope also leaves its one-time nonce in `guards`.
+const reservations = () => store.db.selectFrom('guards').selectAll().where('key', 'like', 'resend:%').execute();
+const port = (panel = principal()) => service.forPanel(panel, panelEnv.PANEL_AUDIENCE);
+const request = async (key = 'request-1', value: unknown = payload, panel = principal(), messageId = id, ref: unknown = 'ORDER-1') =>
+  port(panel).request({ messageId, reason: 'Requested by customer', idempotencyKey: key, envelope: await sealFor(messageId, value, ref) });
 async function original(template = 'notice', clientId = 'sender') {
   const result = await renderAndSend(deps, env, cfg.brands.acme, getTemplate(template)!, { paragraphs: 'Hello', licenseKey: 'synthetic-key' }, { to: ['buyer@example.com'], clientId, ref: 'ORDER-1' });
   return result.id!;
@@ -93,7 +106,7 @@ it.each([{ role: 'viewer' }, { stepUpAt: null }, { stepUpAt: 0 }, { brands: [] }
 });
 it('requires a reason, valid key and an available audit writer', async () => {
   for (const input of [{ reason: 'short', idempotencyKey: 'key' }, { reason: 'Long enough reason', idempotencyKey: 'bad key' }]) {
-    expect(await service.forPanel(principal()).request({ messageId: id, ...input, replay: payload })).toMatchObject({ status: 400 });
+    expect(await port().request({ messageId: id, ...input, envelope: await sealFor(id, payload, 'ORDER-1') })).toMatchObject({ status: 400 });
   }
   await sql`drop table audit`.execute(store.db);
   expect(await request()).toMatchObject({ status: 503 });
@@ -300,7 +313,7 @@ it('binds the capability to the verified principal snapshot', async () => {
   const panel = { ...principal(), role: 'viewer' as const };
   const port = service.forPanel(panel);
   Object.assign(panel, { role: 'admin' });
-  expect(await port.request({ messageId: id, reason: 'Customer requested it', idempotencyKey: 'key', replay: payload })).toMatchObject({ status: 403 });
+  expect(await port.request({ messageId: id, reason: 'Customer requested it', idempotencyKey: 'key', envelope: await sealFor(id, payload, undefined) })).toMatchObject({ status: 403 });
 });
 it('returns source descriptors independently of configuration objects', async () => {
   id = await original('license');
@@ -368,9 +381,9 @@ it.each(['message', 'actor', 'brand', 'strategy'].flatMap(difference => ['pendin
 
 it.each(['ORDER-2', undefined, '', 'x'.repeat(129)])('requires the original source reference %s', async ref => {
   id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
-  const input = { messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', ref };
-  expect(await service.forPanel(principal()).request(input)).toMatchObject({ ok: false, status: 409, code: 'resend_mismatch' });
-  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(0);
+  const input = { messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', envelope: await sealFor(id, undefined, ref) };
+  expect(await port().request(input)).toMatchObject({ ok: false, status: 409, code: ref === undefined ? 'no_ref' : 'resend_mismatch' });
+  expect(await reservations()).toHaveLength(0);
   expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(0);
   expect(deps.sendEmail).not.toHaveBeenCalled();
   expect(await request('source-key')).toMatchObject({ ok: true, status: 202 });
@@ -378,10 +391,10 @@ it.each(['ORDER-2', undefined, '', 'x'.repeat(129)])('requires the original sour
 it('checks source references on existing reservations', async () => {
   id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
   const approved = await request('source-key');
-  const guards = await store.db.selectFrom('guards').selectAll().execute();
-  expect(await service.forPanel(principal()).request({ messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', ref: 'ORDER-2' })).toMatchObject({ status: 409, code: 'resend_mismatch' });
+  const guards = await reservations();
+  expect(await port().request({ messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', envelope: await sealFor(id, undefined, 'ORDER-2') })).toMatchObject({ status: 409, code: 'resend_mismatch' });
   expect(await request('source-key')).toMatchObject({ ok: true, status: 202, idempotent: true, resendId: approved.resendId });
-  expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual(guards);
+  expect(await reservations()).toEqual(guards);
   expect(deps.sendEmail).not.toHaveBeenCalled();
 });
 it('reserves one source job for twenty matching requests', async () => {
@@ -390,17 +403,17 @@ it('reserves one source job for twenty matching requests', async () => {
   expect(results.every(r => r.ok && r.status === 202)).toBe(true);
   expect(new Set(results.map(r => r.resendId)).size).toBe(1);
   expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(1);
-  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(3);
+  expect(await reservations()).toHaveLength(3);
   expect(deps.sendEmail).not.toHaveBeenCalled();
 });
 it('declines twenty concurrent requests with different source references', async () => {
   id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
-  const results = await Promise.all(Array.from({ length: 20 }, (_, i) => service.forPanel(principal()).request({
-    messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-' + i, ref: 'ORDER-2',
+  const results = await Promise.all(Array.from({ length: 20 }, async (_, i) => port().request({
+    messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-' + i, envelope: await sealFor(id, undefined, 'ORDER-2'),
   })));
   expect(results.every(r => !r.ok && r.status === 409 && r.code === 'resend_mismatch')).toBe(true);
   expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(0);
-  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(0);
+  expect(await reservations()).toHaveLength(0);
   expect(deps.sendEmail).not.toHaveBeenCalled();
 });
 it('matches source references with a retained index key', async () => {
