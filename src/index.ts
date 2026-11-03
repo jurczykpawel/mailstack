@@ -4,7 +4,6 @@ import { handleSesEvent } from "./events/ses";
 import { createVerifier } from "./events/sns";
 import type { KyselyStore } from "./core/store";
 import { createD1Store } from "./core/store/d1";
-import { runRetention } from "./core/retention";
 import { runJobs } from "./core/jobs";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
@@ -16,11 +15,13 @@ import { sendEmail } from "./ses";
 import { verifyTurnstile } from "./turnstile";
 import { createChallenge, createNonce, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
-import { proKeys } from "./core/pro.generated";
+import { proExtension, proKeys } from "./core/pro.generated";
+import { createExtensionHost, type ExtensionHost } from "./core/extension-host";
 import { internalFetch } from "./core/internal";
 import { authorizePanel } from "./core/panel";
 import { createAccessVerifier, type AccessVerifier } from "./core/access";
 import type { KeyProvider } from "./clients";
+import type { EmitEvent } from "./core/extensions";
 
 const verifySns = createVerifier();
 
@@ -55,19 +56,22 @@ function handlePreflight(req: Request, url: URL): Response {
   return new Response(null, { status: 403 });
 }
 
-export function scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
-  if (!env.DB) throw new Error("Scheduled storage unavailable");
-  const store = createD1Store(env.DB);
-  if (event.cron === "17 * * * *") ctx.waitUntil(runRetention(store, event.scheduledTime, config));
-  else if (event.cron === "* * * * *") ctx.waitUntil(runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined }));
-}
-
-export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore; access?: AccessVerifier } = {}, pro = proKeys) {
+export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore; access?: AccessVerifier } = {}, pro = proKeys, extension = proExtension) {
   const access = overrides.access ?? createAccessVerifier();
   // Built once per isolate on first use (needs env); a failure leaves only the full key.
-  let keys: Promise<KeyProvider | undefined> | undefined;
+  let keys: Promise<KeyProvider | undefined> | undefined, host: Promise<ExtensionHost> | undefined;
+  // Extensions come only from the static Pro build; keys stay with `pro` above (license cache in D1).
+  const extensions = (store: KyselyStore) => host ??= createExtensionHost(config, store, async module => {
+    if (module === "mailstack-pro" && extension) return { default: extension };
+    throw new Error("Extension not built into the Worker");
+  }, { keys: undefined });
   return {
-    scheduled,
+    scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
+      if (!env.DB) throw new Error("Scheduled storage unavailable");
+      const store = createD1Store(env.DB);
+      if (event.cron === "17 * * * *") ctx.waitUntil(extensions(store).then(h => h.runRetention(event.scheduledTime)));
+      else if (event.cron === "* * * * *") ctx.waitUntil(runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined }));
+    },
     async fetch(
       req: Request,
       env: Env,
@@ -78,6 +82,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       const deps = { ...defaultDeps, ...overrides, store, keys: overrides.keys ?? await keys,
         notifier: overrides.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
         waitUntil: ctx.waitUntil?.bind(ctx) ?? overrides.waitUntil,
+        emitEvent: overrides.emitEvent ?? (store && config.extensions.length ? ((event, defer) => defer?.(extensions(store).then(h => h.emitEvent(event)))) satisfies EmitEvent : undefined),
       };
       const url = new URL(req.url);
       const { pathname } = url;
@@ -148,11 +153,13 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         return handleSourceHook(req, env, deps, sourceId);
       }
 
-      if (pathname.startsWith("/internal/v2/") && store && env.PANEL_ASSERTION_KEYS && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
+      const ext = pathname.startsWith("/internal/ext/");
+      if ((ext || pathname.startsWith("/internal/v2/")) && store && env.PANEL_ASSERTION_KEYS && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
         if (!await access(req, env)) return Response.json({ success: false }, { status: 403 });
         const panel = await authorizePanel(req, env, config, { audience: env.INTERNAL_HOST, store, keys: deps.keys, defer: deps.waitUntil });
         if (panel instanceof Response) return panel;
-        const response = await internalFetch(req, env, store, config, panel);
+        if (ext) return (await extensions(store)).route(req, env, panel);
+        const response = await internalFetch(req, env, store, config, panel, (await extensions(store)).beforeDelete);
         // 202 = work stored as a job; start it now instead of waiting for the minute cron.
         if (response.status === 202) deps.waitUntil?.(runJobs(store, "request"));
         return response;

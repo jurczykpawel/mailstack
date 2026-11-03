@@ -42,12 +42,14 @@ it('defaults to no extensions and validates complete entries', () => {
   }
   expect(parseConfig({ ...example, extensions: [{ module: '/opt/mailstack/demo.mjs' }] }).extensions).toHaveLength(1);
 });
-it('reports module and initialization failures using configuration paths', async () => {
+it('marks module and initialization failures unavailable using configuration paths', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   for (const importer of [async () => { throw new Error('private value'); }, async () => ({ default: {} }), async () => ({ default: () => ({ name: '../demo' }) })]) {
-    await expect(loadExtensions(configured(), store, importer)).rejects.toThrow('$.extensions.0');
-    try { await loadExtensions(configured(), store, importer); } catch (error) { expect(String(error)).not.toContain('private value'); }
+    expect((await loadExtensions(configured(), store, importer)).features()).toEqual([{ module: 'demo-extension', state: 'unavailable', reason: 'initialization' }]);
   }
-  await expect(loadExtensions(parseConfig({ ...example, extensions: [{ module: '/no-such-extension.mjs' }] }), store)).rejects.toThrow('$.extensions.0');
+  expect((await loadExtensions(parseConfig({ ...example, extensions: [{ module: '/no-such-extension.mjs' }] }), store)).features()[0].state).toBe('unavailable');
+  expect(log.mock.calls.flat().join(' ')).toContain('$.extensions.0.module');
+  expect(log.mock.calls.flat().join(' ')).not.toContain('private value');
 });
 it('passes options and a limited context to the module', async () => {
   const factory = vi.fn(() => ({ name: 'demo' }));
@@ -69,14 +71,14 @@ it('permits migrations within the extension table prefix', async () => {
   expect((await sql`select * from ext_demo_items`.execute(store.db)).rows).toEqual([]);
 });
 it.each(['messages', 'ext_other_items'])('rejects migration tables outside the assigned prefix: %s', async table => {
-  await expect(load({ name: 'demo', migrate: async db => { await db.schema.dropTable(table).ifExists().execute(); } })).rejects.toThrow('$.extensions.0');
+  expect((await load({ name: 'demo', migrate: async db => { await db.schema.dropTable(table).ifExists().execute(); } })).features()[0].state).toBe('unavailable');
   await store.health();
   expect((await store.db.selectFrom('messages').selectAll().execute())).toEqual([]);
 });
 it('rejects raw migration statements and cross-table references', async () => {
   for (const migrate of [async (db: Parameters<NonNullable<Extension['migrate']>>[0]) => { await sql`delete from messages`.execute(db); },
     async (db: Parameters<NonNullable<Extension['migrate']>>[0]) => { await db.schema.createTable('ext_demo_items').addColumn('id', 'text', c => c.references('messages.id')).execute(); }]) {
-    await expect(load({ name: 'demo', migrate })).rejects.toThrow('$.extensions.0');
+    expect((await load({ name: 'demo', migrate })).features()[0].state).toBe('unavailable');
   }
 });
 it('mounts routes on the internal handler with panel credentials and actor', async () => {
@@ -187,7 +189,9 @@ it('emits no form submission event after an unsuccessful public send', async () 
 });
 
 it('waits for route registration before completing initialization', async () => {
-  await expect(load({ name: 'demo', routes: async () => { await Promise.resolve(); throw new Error('private initialization detail'); } })).rejects.toThrow('$.extensions.0.module');
+  const runtime = await load({ name: 'demo', routes: async app => { app.route('GET', '/x', () => new Response('x')); await Promise.resolve(); throw new Error('private initialization detail'); } });
+  expect(runtime.features()[0]).toMatchObject({ state: 'unavailable' });
+  expect((await runtime.route(new Request('http://localhost/internal/ext/demo/x'), env, { brands: '*', templates: '*' } as never)).status).toBe(404);
 });
 
 it('provides an opted-in route with a scoped resend capability', async () => {
