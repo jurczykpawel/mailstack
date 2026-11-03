@@ -145,3 +145,21 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_due ON jobs(state, run_after);
 CREATE INDEX IF NOT EXISTS jobs_done ON jobs(done_at) WHERE done_at IS NOT NULL;
 `;
+
+/** Extension schema ledger (one row per applied extension migration) and reconcile state per extension. */
+export const EXT_SCHEMA = `
+CREATE TABLE IF NOT EXISTS ext_migrations (
+  extension TEXT NOT NULL,
+  version   INTEGER NOT NULL,
+  name      TEXT NOT NULL,
+  checksum  TEXT NOT NULL,
+  PRIMARY KEY (extension, version)
+);
+CREATE TABLE IF NOT EXISTS ext_reconcile (
+  extension  TEXT PRIMARY KEY,
+  config_sha TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  cursor     TEXT,
+  done_at    INTEGER
+);
+`;

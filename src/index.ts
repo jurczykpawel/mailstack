@@ -70,6 +70,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       if (!env.DB) throw new Error("Scheduled storage unavailable");
       const store = createD1Store(env.DB);
       if (event.cron === "17 * * * *") ctx.waitUntil(extensions(store).then(h => h.runRetention(event.scheduledTime)));
+      // The host registers this isolate's reconcile handlers before the jobs drain.
       else if (event.cron === "* * * * *") ctx.waitUntil(extensions(store).then(h =>
         runJobs(store, "cron", { notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, beforeDelete: h.beforeDelete })));
     },

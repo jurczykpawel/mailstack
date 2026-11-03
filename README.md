@@ -1285,7 +1285,23 @@ The contracts live in `src/core/extensions.ts`. Extension names match
 `[a-z][a-z0-9_]{0,39}`; a name that equals or prefixes another (`demo`, `demo_x`)
 makes both unavailable. All hooks are optional:
 
-- `migrate(db)` runs before listening. Use Kysely schema/query builders and tables
+- `migrations: [{ version, name, up(db) }]` describe the schema with the Kysely
+  schema builder only (create/alter table, create index, drop table; one statement
+  per call, no bound values, prefix rules below). Each `up` runs on a recording
+  driver; the compiled SQL and its SHA-256 form the manifest. Node applies missing
+  versions at start, each in one transaction ending with its row in `ext_migrations`.
+  `npm run setup` writes `.wrangler/migrations/<1000+version>_ext_<name>_<version>.sql`
+  (ledger row as the last statement; an invalid statement fails setup) for
+  `wrangler d1 migrations apply`. A manifest version missing from the ledger or with
+  another checksum leaves the extension `unavailable: schema`; its routes return
+  `503 {code:"extension_unavailable", reason}`. Newer ledger versions are accepted, so
+  versions only add (expand); remove columns or tables two releases later at the earliest.
+- `reconcile(db, { configSha, cursor })` holds data setup for the current
+  configuration and returns `{ cursor }` or `{ done: true }`. It runs as an
+  `ext.reconcile` job; a new configuration starts a new `ext_reconcile` generation and
+  older generations no longer record progress. Until it finishes the extension is
+  `unavailable: reconcile`. It must be idempotent.
+- `migrate(db)` (legacy, until extensions move to `migrations`/`reconcile`) runs before listening. Use Kysely schema/query builders and tables
   beginning with `ext_<name>_`; referenced tables must use the same prefix. Raw SQL,
   schema-qualified tables and dropping indexes are not supported. Index names also
   use this prefix. Migrations should be repeatable, for example with `ifNotExists()`.

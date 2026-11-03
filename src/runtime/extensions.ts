@@ -11,7 +11,7 @@ import type { SendDeps } from '../types';
 export async function loadExtensions(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }> = module => import(module),
   delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>) {
-  const host = await createExtensionHost(config, store, module => importer(isAbsolute(module) ? pathToFileURL(module).href : module), { delivery });
+  const host = await createExtensionHost(config, store, module => importer(isAbsolute(module) ? pathToFileURL(module).href : module), { delivery, applyMigrations: true });
   return { ...host, async fetch(req: Request, env: object): Promise<Response> {
     const { pathname } = new URL(req.url);
     if (!pathname.startsWith('/internal/v2/') && !pathname.startsWith('/internal/ext/')) return new Response(null, { status: 404 });
