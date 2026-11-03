@@ -151,7 +151,7 @@ describe('capabilities', () => {
     expect((await (await request()).json() as Caps).license).toEqual({ state: 'invalid' });
   });
 
-  it('N: on the Worker, outbound features need the egress container and resend needs a delivery host', async () => {
+  it('N: on the Worker, outbound features need the full egress service configuration and resend needs a delivery host', async () => {
     const principal = { ...panelClaims(), scopes: ['panel', 'webhooks:write'], brands: '*' as const, templates: '*' as const };
     const worker = (features: ReturnType<typeof runtime.features>, c = cfg) => capabilities(env, store, c, principal,
       { platform: 'worker', extensions: async () => ({ features: () => features, resendSource: undefined }) });
@@ -162,8 +162,11 @@ describe('capabilities', () => {
       'aws.status': { state: 'enabled' }, 'aws.test': { state: 'enabled' } });
     expect(body.backupWindowDays).toBe(30);
     expect((await worker(ready, { ...cfg, cloudflare: { plan: 'free' } })).backupWindowDays).toBe(7);
-    // With the container binding the egress rule no longer applies; the remaining rules decide.
-    const bound = await capabilities({ ...env, EGRESS: {} }, store, cfg, principal, { platform: 'worker', extensions: async () => ({ features: () => ready, resendSource: undefined }) });
+    // With URL, keys and Access token the egress rule no longer applies; one missing secret keeps it.
+    const egress = { EGRESS_URL: 'https://egress.example', EGRESS_KEYS: '[]', EGRESS_ACCESS_CLIENT_ID: 'id', EGRESS_ACCESS_CLIENT_SECRET: 's' };
+    const bound = await capabilities({ ...env, ...egress }, store, cfg, principal, { platform: 'worker', extensions: async () => ({ features: () => ready, resendSource: undefined }) });
     expect(bound.features).toMatchObject({ webhooks: { state: 'enabled' }, 'resend.source': { reason: 'not_configured' } });
+    const partial = await capabilities({ ...env, ...egress, EGRESS_ACCESS_CLIENT_SECRET: '' }, store, cfg, principal, { platform: 'worker', extensions: async () => ({ features: () => ready, resendSource: undefined }) });
+    expect(partial.features).toMatchObject({ webhooks: { reason: 'platform:secure_egress_unavailable' } });
   });
 });

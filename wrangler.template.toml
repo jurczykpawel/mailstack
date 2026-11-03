@@ -2,7 +2,7 @@
 # `npm run setup` (and predev/predeploy) generates wrangler.toml from this file by
 # substituting env vars from your gitignored .env (see .env.example):
 #   MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE, MAILSTACK_INTERNAL_ROUTE,
-#   MAILSTACK_ACCESS_TEAM_DOMAIN, MAILSTACK_ACCESS_AUD, MAILSTACK_EGRESS
+#   MAILSTACK_ACCESS_TEAM_DOMAIN, MAILSTACK_ACCESS_AUD, MAILSTACK_EGRESS_URL
 name = "mailstack"
 main = "src/index.ts"
 compatibility_date = "2026-06-01"
@@ -30,6 +30,8 @@ INTERNAL_HOST = ${INTERNAL_HOST}
 # Cloudflare Access team host and application AUD; the internal host accepts only requests with a valid Access JWT.
 ACCESS_TEAM_DOMAIN = ${ACCESS_TEAM_DOMAIN}
 ACCESS_AUD = ${ACCESS_AUD}
+# Egress service behind a Tunnel (Pro webhooks, resend callbacks); empty keeps them disabled, never a fallback to fetch.
+EGRESS_URL = ${EGRESS_URL}
 
 [[d1_databases]]
 binding = "DB"
@@ -38,8 +40,7 @@ database_id = "${MAILSTACK_D1_ID}"
 preview_database_id = "${MAILSTACK_D1_PREVIEW_ID}"
 migrations_dir = ".wrangler/migrations"
 
-__EGRESS__
-
 # SECRETS — never in any file. Set with `wrangler secret put <NAME>`:
 #   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY, TURNSTILE_SECRET, API_KEY, ALTCHA_HMAC_KEY,
 #   PANEL_ASSERTION_KEYS (with MAILSTACK_INTERNAL_ROUTE; JSON [{kid, key}], several entries during rotation)
+#   EGRESS_KEYS, EGRESS_ACCESS_CLIENT_ID, EGRESS_ACCESS_CLIENT_SECRET (with MAILSTACK_EGRESS_URL)
