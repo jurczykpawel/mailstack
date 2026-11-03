@@ -18,7 +18,7 @@ type Feature = { state: 'enabled' } | { state: 'disabled' | 'unavailable'; reaso
 const FEATURES = ['panel', 'webhooks', 'resend.replay', 'resend.source', 'aws.status', 'aws.test'] as const;
 type Name = typeof FEATURES[number];
 const FREE_PLAN: Name[] = ['panel', 'webhooks', 'resend.source', 'aws.test'];
-// Outbound HTTP on the Worker needs the egress container; without it these stay off instead of falling back to fetch.
+// Outbound HTTP on the Worker needs the egress container (`EGRESS` binding); without it these stay off instead of falling back to fetch.
 const EGRESS: Name[] = ['webhooks', 'resend.source'];
 
 /** `GET /internal/v2/capabilities`: what this principal may use here and why anything is off (A 3.8.3). */
@@ -44,7 +44,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
     if (free && FREE_PLAN.includes(name)) return off('platform:free_plan');
     if (name === 'panel') return { state: 'enabled' };
     if (!pro) return failed ? off(failed.reason, 'unavailable') : off('not_configured');
-    if (host.platform === 'worker' && EGRESS.includes(name)) return off('platform:secure_egress_unavailable');
+    if (host.platform === 'worker' && !Reflect.get(env, 'EGRESS') && EGRESS.includes(name)) return off('platform:secure_egress_unavailable');
     if (!configured[name]) return off('not_configured');
     // The host builds resend only with a delivery adapter (the Worker host has none yet).
     if (name.startsWith('resend.') && !ext.resendSource) return off('host', 'unavailable');

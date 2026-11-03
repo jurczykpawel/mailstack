@@ -28,6 +28,8 @@ try {
     // `workerExtension` is optional in Pro: until it exists the Worker host has no extensions (unavailable).
     ["src/core/pro.generated.ts", worker ? `import * as pro from ${JSON.stringify(worker)};\nexport { workerKeys as proKeys, CACHE_SCHEMA as proSchema } from ${JSON.stringify(worker)};\nexport const proExtension: unknown = (pro as { workerExtension?: unknown }).workerExtension;\n`
       : `export const proKeys: import("../clients.ts").ProKeys | undefined = undefined;\nexport const proSchema: string | undefined = undefined;\nexport const proExtension: unknown = undefined;\n`],
+    // Worker module exports: the egress container class, exported (with its migration) by every Pro build.
+    ["src/core/pro-exports.generated.ts", proPath ? `export { EgressContainer } from ${JSON.stringify(resolve(realpathSync(proPath), "src/egress/container.ts"))};\n` : "export {};\n"],
   ];
   for (const [file, content] of outputs) {
     const output = resolve(root, file);
