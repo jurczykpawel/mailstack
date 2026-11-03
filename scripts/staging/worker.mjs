@@ -201,13 +201,19 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
     b.onResolve({ filter: /\/pro\.generated$/ }, () => ({ path: 'pro', namespace: 'staging-pro' }));
     b.onLoad({ filter: /.*/, namespace: 'staging-pro' }, () => ({ resolveDir: source, loader: 'ts', contents: pro ? `import * as pro from ${JSON.stringify(`${proSource}/src/worker.ts`)}; export { workerKeys as proKeys } from ${JSON.stringify(`${proSource}/src/worker.ts`)}; export const proExtension = pro.workerExtension;` : 'export const proKeys = undefined; export const proExtension = undefined;' }));
   } }] });
-  const { INITIAL_SCHEMA: migration } = await import(pathToFileURL(`${source}/src/core/store/migration.ts`).href);
-  const rows = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'" });
-  if (!rows[0].results.length) await mutate('migrate-database', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migration });
+  // Same schema files as `npm run setup` (gen-wrangler): core schemas are additive, so an older staging database gains
+  // the tables added since; Pro extension migrations missing from the ledger are applied with their ledger row.
+  const schema = await import(pathToFileURL(`${source}/src/core/store/migration.ts`).href);
+  const query = sql => api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql }).then(r => r[0].results);
+  const tables = new Set((await query("SELECT name FROM sqlite_master WHERE type='table'")).map(r => r.name));
+  const proWorker = pro && await import(pathToFileURL(`${pro}/src/worker.ts`).href);
+  const steps = [['messages', schema.INITIAL_SCHEMA], ['ses_status', schema.SES_STATUS_SCHEMA], ['jobs', schema.JOBS_SCHEMA], ['ext_migrations', schema.EXT_SCHEMA], ['domain_events', schema.EVENTS_SCHEMA], ...pro ? [['pro_license_cache', proWorker.CACHE_SCHEMA]] : []];
+  for (const [table, sql] of steps) if (!tables.has(table)) await mutate(`migrate-${table}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql });
   if (pro) {
-    const { CACHE_SCHEMA } = await import(pathToFileURL(`${pro}/src/worker.ts`).href);
-    const found = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='pro_license_cache'" });
-    if (!found[0].results.length) await mutate('migrate-pro-cache', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: CACHE_SCHEMA });
+    const { compileMigrations, migrationFile } = await import(pathToFileURL(`${root}/src/core/ext-migrations.ts`).href);
+    const { name: ext, migrations } = proWorker.workerMigrations(cfg.extensions[0].options);
+    const applied = new Set((await query(`SELECT version FROM ext_migrations WHERE extension='${ext}'`)).map(r => r.version));
+    for (const m of await compileMigrations(ext, migrations)) if (!applied.has(m.version)) await mutate(`migrate-${m.file}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migrationFile(m) });
   }
   const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
