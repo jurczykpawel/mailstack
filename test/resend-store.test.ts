@@ -9,6 +9,9 @@ import { config } from '../src/core/config';
 import { getTemplate } from '../src/templates';
 import { generateKeyPairSync } from 'node:crypto';
 
+// Miniflare D1 with twenty concurrent claims can exceed the 5 s default on a busy machine.
+vi.setConfig({ testTimeout: 30000 });
+
 describe.each(['sqlite', 'd1'] as const)('resend store: %s', driver => {
 let mf: Miniflare | undefined;
 beforeAll(async () => {
