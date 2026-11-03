@@ -79,13 +79,12 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
   }
   // Replay and `ref` reach the API only sealed in the browser for this API, operation and message; the panel server forwards them unopened (K2).
   async function unwrap(value: string, strategy: ResendSource['strategy'], messageId: string, audience = '') {
-    const key = strategy === 'replay' ? 'replay' : 'ref';
     let keys; try { keys = (await parseTransitKeys(Reflect.get(env, 'TRANSIT_KEYS'))).privateKeys; } catch { return fail(503, 'transit_unavailable'); }
     let payload;
     try { payload = await openTransit(value, { aud: audience, op: `resend.${strategy}`, messageId }, keys, store, at()); }
     catch (e) { if (!(e instanceof TransitError)) throw e; return e.code === 'replayed' ? fail(409, 'replayed') : fail(403, 'transit_invalid'); }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => k !== key)) fail(409, strategy === 'replay' ? 'resend_mismatch' : 'no_ref');
-    return Reflect.get(payload as object, key) as unknown;
+    // A missing value fails later as `resend_mismatch` (replay) or `no_ref` (source).
+    return payload && typeof payload === 'object' ? Reflect.get(payload, strategy === 'replay' ? 'replay' : 'ref') as unknown : undefined;
   }
   async function outcome(job: ResendJob): Promise<ResendOutcome> {
     if (job.state === 'sending') {

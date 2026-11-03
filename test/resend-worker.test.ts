@@ -41,9 +41,10 @@ beforeAll(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-06-01', d1Databases: ['DB'] }));
   store = createD1Store(await mf.getD1Database('DB')); await store.migrate();
   saved = structuredClone({ clients: config.clients, extensions: config.extensions, logging: config.logging });
-  config.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', recipientOverride: false, attachments: false }];
+  config.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', recipientOverride: false, attachments: false },
+    { id: 'sender', tokenSha256: 'a'.repeat(64), scopes: ['send'], brands: ['acme'], templates: ['license'], recipientOverride: true, attachments: false, resendCallback: { url: 'https://source.example/resend', secretEnv: 'SOURCE_SECRET' } }];
   config.extensions = [{ module: 'mailstack-pro', options: {} }];
-  config.logging.defaults.level = 'masked'; config.logging.brands.acme = { templates: { notice: { resend: 'replay' } } };
+  config.logging.defaults.level = 'masked'; config.logging.brands.acme = { templates: { notice: { resend: 'replay' }, license: { resend: 'source' } } };
 });
 afterAll(async () => { Object.assign(config, saved); await store.db.destroy(); await mf.dispose(); });
 beforeEach(async () => {
@@ -94,4 +95,13 @@ it.each([[['resend'], 409, 'resend_mismatch'], [[], 400, 'not_supported']] as co
     body: JSON.stringify({ brand: 'acme', template: 'notice', to: 'buyer@example.com', paragraphs: 'Fresh', resendOf: id }) }), env, ctx);
   expect({ status: response.status, body: await response.json() }).toMatchObject({ status, body: { code } });
   expect(sendEmail).not.toHaveBeenCalled();
+});
+it('approves a source resend on D1 with the owner from the Worker keys and returns the opened ref', async () => {
+  const deps: SendDeps = { store, keys: testKeys(config), logging: config.logging, now: () => new Date(), verifyTurnstile: vi.fn(), verifyAltcha: vi.fn(), sendEmail };
+  id = (await renderAndSend(deps, env, config.brands.acme, getTemplate('license')!, { licenseKey: 'synthetic-key' }, { to: ['buyer@example.com'], clientId: 'sender', ref: 'ORDER-1' })).id!;
+  sendEmail.mockClear();
+  const response = await resend({ envelope: await seal({ ref: 'ORDER-1' }, 'resend.source', host, Date.now(), id) });
+  expect(response.status).toBe(202);
+  expect(await response.json()).toMatchObject({ ok: true, ref: 'ORDER-1', source: { strategy: 'source', owner: { clientId: 'sender' } } });
+  expect(await jobs()).toBe(1); expect(sendEmail).not.toHaveBeenCalled();
 });
