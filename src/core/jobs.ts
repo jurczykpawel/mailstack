@@ -35,15 +35,16 @@ export async function drain(store: KyselyStore, budget: Budget, { now = Date.now
       returning id, kind, cursor, payload, attempts`.execute(store.db)).rows;
     if (!row) break;
     claimed++;
-    await run(store, budget, row, token, Object.hasOwn(kinds, row.kind) ? kinds[row.kind] : undefined, now);
+    if (await run(store, budget, row, token, Object.hasOwn(kinds, row.kind) ? kinds[row.kind] : undefined, now) === 'out_of_budget') break;
   }
   return claimed;
 }
 
 async function run(store: KyselyStore, budget: Budget, row: Claimed, token: string, kind: JobKind | undefined, now: () => number) {
-  // Copies the row onto itself (duplicate key) once the token is gone, which aborts the whole batch of a late executor.
-  const fence = sql`insert into jobs select * from jobs where id = ${row.id} and (token is not ${token} or state <> 'running')`;
-  const owned = sql`id = ${row.id} and token = ${token}`;
+  // The only ownership check: once the token is gone the fence copies the row onto itself (duplicate key),
+  // which aborts the whole batch, so a late executor writes neither its result nor its step writes.
+  const fence = sql`insert into jobs select * from jobs where id = ${row.id} and token is not ${token}`;
+  const owned = sql`id = ${row.id}`;
   const commit = (update: RawBuilder<unknown>, writes: CompiledQuery[] = []) =>
     store.batch([fence.compile(store.db), ...writes, update.compile(store.db)]);
   const finish = (state: 'done' | 'dead', result: unknown, writes?: CompiledQuery[]) => commit(sql`update jobs set state = ${state},
@@ -64,6 +65,7 @@ async function run(store: KyselyStore, budget: Budget, row: Claimed, token: stri
       cursor = step.cursor; attempts = 1;
     }
     await release(sql`attempts = max(attempts - 1, 0)`);
+    return 'out_of_budget';
   } catch {
     // A lost token makes these writes fail too; the lease then hands the job to whoever holds it now.
     await (attempts >= MAX_ATTEMPTS ? finish('dead', { error: 'handler_failed' })

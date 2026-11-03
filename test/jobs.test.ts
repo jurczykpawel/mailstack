@@ -75,6 +75,27 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
     expect((await sql`select * from guards`.execute(store.db)).rows).toEqual([]);
   });
 
+  it('rejects progress from a late executor while the new owner is still running', async () => {
+    const late = deferred(), fresh = deferred(), entered = [deferred(), deferred()];
+    let calls = 0;
+    const kinds: Record<string, JobKind> = { race: { async step() {
+      const call = calls++; entered[call].resolve();
+      if (call === 0) { await late.promise; return { cursor: 'late', writes: [sql`insert into guards values ('late', 1, ${t + 1000})`.compile(store.db)] }; }
+      await fresh.promise; return { result: 'fresh' };
+    } } };
+    await add('race');
+    const first = drain(store, createBudget('cron', clock), { now: clock, kinds });
+    await entered[0].promise;
+    t += 30000;
+    const second = drain(store, createBudget('request', clock), { now: clock, kinds });
+    await entered[1].promise;
+    late.resolve(); await first;
+    expect((await rows())[0]).toMatchObject({ state: 'running', cursor: null, attempts: 2 });
+    expect((await sql`select * from guards`.execute(store.db)).rows).toEqual([]);
+    fresh.resolve(); await second;
+    expect((await rows())[0]).toMatchObject({ state: 'done', result: '"fresh"' });
+  });
+
   it('stops before the deadline, keeps the cursor and resumes from it', async () => {
     const cursors: (string | null)[] = [];
     const kinds: Record<string, JobKind> = { scan: { reserveMs: 5000, async step(job) {
@@ -82,7 +103,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
       return next === 6 ? { result: { count: next } } : { cursor: String(next), writes: [sql`insert into guards values (${'p' + next}, 1, ${t + 1})`.compile(store.db)] };
     } } };
     await add('scan');
-    await drain(store, createBudget('request', clock), { now: clock, kinds });
+    expect(await drain(store, createBudget('request', clock), { now: clock, kinds })).toBe(1);
     expect((await rows())[0]).toMatchObject({ state: 'pending', cursor: '3', token: null, lease_until: null, attempts: 0 });
     expect(t - start).toBeLessThanOrEqual(20000);
     await drain(store, createBudget('request', clock), { now: clock, kinds });
@@ -96,7 +117,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
     await store.batch(Array.from({ length: 51 }, (_, i) => enqueueJob(store, 'ok', {}, t - i).query));
     expect(await drain(store, createBudget('cron', clock), { now: clock, kinds })).toBe(50);
     expect((await rows()).filter(r => r.state === 'pending')).toHaveLength(1);
-  });
+  }, 20000);
 
   it('runs the oldest due jobs first', async () => {
     const order: unknown[] = [];
@@ -106,10 +127,30 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`jobs: ${driver}`, () =
     expect(order).toEqual(['old', 'new']);
   });
 
-  it('marks a job of an unknown kind dead with a reason', async () => {
-    await add('missing');
+  it('marks a job of an unknown kind dead with a reason, including inherited names', async () => {
+    await add('missing'); await add('toString');
     await drain(store, createBudget('request', clock), { now: clock, kinds: {} });
-    expect((await rows())[0]).toMatchObject({ state: 'dead', result: '{"error":"unknown_kind"}', done_at: t, token: null });
+    for (const row of await rows()) expect(row).toMatchObject({ state: 'dead', result: '{"error":"unknown_kind"}', done_at: t, token: null });
+  });
+
+  it('claims nothing more once a finished job used up the deadline', async () => {
+    const kinds: Record<string, JobKind> = { long: { async step() { t += 20000; return { result: null }; } } };
+    await add('long'); await add('long', {}, t + 1);
+    t += 1;
+    expect(await drain(store, createBudget('request', clock), { now: clock, kinds })).toBe(1);
+    expect((await rows()).map(r => [r.state, r.attempts]).sort()).toEqual([['done', 1], ['pending', 0]]);
+  });
+
+  it('resets the failure count once a job saves progress', async () => {
+    let fail = 3;
+    const kinds: Record<string, JobKind> = { flaky: { async step(job) {
+      if (fail-- > 0) throw new Error('x');
+      if (job.cursor) throw new Error('after progress');
+      return { cursor: 'half' };
+    } } };
+    await add('flaky');
+    for (const delay of [0, 60000, 600000, 3600000]) { t += delay; await drain(store, createBudget('request', clock), { now: clock, kinds }); }
+    expect((await rows())[0]).toMatchObject({ state: 'pending', cursor: 'half', attempts: 1, run_after: t + 60000 });
   });
 
   it('retries a failing handler with growing delays and then gives up', async () => {

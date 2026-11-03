@@ -19,5 +19,5 @@ export function createBudget(trigger: Trigger, clock: () => number = Date.now): 
   const { ms, jobs } = PLANS[trigger], deadline = clock() + ms;
   let left = jobs;
   const has = (reserveMs = 0) => clock() + reserveMs < deadline;
-  return { has, take: () => left > 0 && has() && left-- > 0 };
+  return { has, take: () => has() && left-- > 0 };
 }
