@@ -35,8 +35,8 @@ it('runs an extension job with sandboxed writes and revives it only once finishe
 it('refuses undeclared kinds, invalid keys and writes outside the extension tables', async () => {
   const s = await host({ run: async (_job, ctx) => ({ writes: [ctx.db.deleteFrom('messages')] }) });
   expect(() => s.db.enqueue('other', 'a', {})).toThrow(); expect(() => s.db.enqueue('send', 'a b', {})).toThrow();
-  await expect(s.db.batch([s.db.insertInto('jobs').values({ id: 'x' })])).rejects.toThrow();
   await s.db.batch([s.db.enqueue('send', 'a', {})]);
+  await expect(s.db.batch([s.db.deleteFrom('jobs')])).rejects.toThrow(); expect(await s.jobs()).toHaveLength(1);
   await runJobs(store, 'request', s.h.jobs);
   expect(await s.jobs()).toEqual([expect.objectContaining({ state: 'pending', attempts: 1 })]);
 });
