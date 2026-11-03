@@ -31,6 +31,6 @@ it('passes the extension cleanup to the minute cron drain', async () => {
   expect(vi.mocked(runJobs).mock.calls).toEqual([[expect.anything(), 'cron', { notifier: undefined, beforeDelete: expect.any(Function), consumers: expect.any(Map), kinds: expect.objectContaining({ erase: expect.anything() }) }]]);
 });
 
-it('declares the minute job cron and the hourly retention cron the Worker dispatches on', () => {
-  expect(readFileSync('wrangler.template.toml', 'utf8')).toContain('crons = ["* * * * *", "17 * * * *"]');
+it('declares exactly one minute cron; retention runs inside it at minute 17 UTC', () => {
+  expect(readFileSync('wrangler.template.toml', 'utf8').match(/^crons = .*$/gm)).toEqual(['crons = ["* * * * *"]']);
 });

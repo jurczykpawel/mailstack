@@ -1107,7 +1107,7 @@ or run migrations. For a separate machine, use a consistent SQLite snapshot (see
 
 ### Retention and snapshots
 
-The Worker runs retention hourly at minute 17 (UTC). Expired content, resend data
+The Worker has a single minute cron; it runs retention hourly at minute 17 (UTC) and background jobs in every other minute. Expired content, resend data
 and guards are removed; message metadata and its children are deleted in atomic
 batches of at most 500 messages. Logging ceilings also apply to existing rows.
 Content readers must call `isContentReadable(row, now)` before returning content,

@@ -226,7 +226,7 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
   const form = new FormData(); form.set('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.set('worker.mjs', new Blob([readFileSync(`${state}/worker.mjs`)], { type: 'application/javascript+module' }), 'worker.mjs');
   await mutate('upload-worker', script, 'PUT', form);
-  await mutate('set-cron', `${script}/schedules`, 'PUT', [{ cron: '17 * * * *' }]);
+  await mutate('set-cron', `${script}/schedules`, 'PUT', [{ cron: '* * * * *' }]);
   await mutate('disable-workers-dev', `${script}/subdomain`, 'POST', { enabled: false, previews_enabled: false });
   const zones = await api('/zones?name=techskills.academy');
   const zone = zones.find(value => value.account.id === account);
