@@ -59,12 +59,14 @@ function handlePreflight(req: Request, url: URL): Response {
 export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?: KyselyStore; access?: AccessVerifier } = {}, pro = proKeys, extension = proExtension) {
   const access = overrides.access ?? createAccessVerifier();
   // Built once per isolate on first use (needs env); a failure leaves only the full key.
-  let keys: Promise<KeyProvider | undefined> | undefined, host: Promise<ExtensionHost> | undefined;
-  // Extensions come only from the static Pro build; keys stay with `pro` above (license cache in D1).
+  let keys: Promise<KeyProvider | undefined> | undefined, loaded: KeyProvider | undefined, host: Promise<ExtensionHost> | undefined;
+  // The host resolves resend owners through the keys this isolate loaded for its requests (`fetch` awaits them before routing).
+  const hostKeys: KeyProvider = { authenticate: async (...args) => (await keys)?.authenticate(...args) ?? null, client: id => (overrides.keys ?? loaded)?.client(id) };
+  // Extensions come only from the static Pro build; keys stay with `pro` above (license cache in D1). Resend sends through SES like `/v1/send`.
   const extensions = (store: KyselyStore) => host ??= createExtensionHost(config, store, async module => {
     if (module === "mailstack-pro" && extension) return { default: extension };
     throw new Error("Extension not built into the Worker");
-  }, { keys: undefined, kickJobs: true });
+  }, { keys: hostKeys, kickJobs: true, platform: "worker", delivery: { sendEmail: overrides.sendEmail ?? sendEmail, provider: "ses" } });
   return {
     scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
       if (!env.DB) throw new Error("Scheduled storage unavailable");
@@ -81,12 +83,14 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       ctx: ExecutionContext,
     ): Promise<Response> {
       const store = overrides.store ?? (env.DB ? createD1Store(env.DB) : undefined);
-      keys ??= Promise.resolve().then(() => pro?.(config, env)).catch(() => undefined);
+      keys ??= Promise.resolve().then(() => pro?.(config, env)).catch(() => undefined).then(k => loaded = k);
       const deps = { ...defaultDeps, ...overrides, store, keys: overrides.keys ?? await keys,
         notifier: overrides.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
         waitUntil: ctx.waitUntil?.bind(ctx) ?? overrides.waitUntil,
         emitEvent: overrides.emitEvent ?? (store && config.extensions.length ? ((event, defer) => defer?.(extensions(store).then(h => h.emitEvent(event)))) satisfies EmitEvent : undefined),
         durableEvents: overrides.durableEvents ?? (store && config.extensions.length ? () => extensions(store).then(h => h.durableEvents()) : undefined),
+        resendSource: overrides.resendSource ?? (store && config.extensions.length ? ((...args) => extensions(store).then(h => h.resendSource?.(...args)
+          ?? { ok: false, status: 400, code: "not_supported", message: "not supported" })) satisfies SendDeps["resendSource"] : undefined),
       };
       const url = new URL(req.url);
       const { pathname } = url;

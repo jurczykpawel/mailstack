@@ -8,6 +8,6 @@ export const transitEnv = { TRANSIT_KEYS: JSON.stringify({ keys: [{ ...pair, kid
 const publicKey = (await parseTransitKeys(transitEnv.TRANSIT_KEYS)).publicKeys[0];
 
 /** What the browser sends: the sensitive value sealed for this API's audience and one operation. */
-export const seal = (payload: unknown, op: TransitOp, aud = panelEnv.PANEL_AUDIENCE, now = Date.now()) =>
-  sealTransit(payload, { aud, op, messageId: null }, publicKey, now);
+export const seal = (payload: unknown, op: TransitOp, aud = panelEnv.PANEL_AUDIENCE, now = Date.now(), messageId: string | null = null) =>
+  sealTransit(payload, { aud, op, messageId }, publicKey, now);
 export const sealed = async (payload: unknown, op: TransitOp) => ({ envelope: await seal(payload, op) });
