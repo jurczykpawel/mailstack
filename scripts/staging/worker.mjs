@@ -17,9 +17,11 @@ const command = process.argv[2] ?? 'status';
 const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
 // Optional Mailstack Pro checkout (clean tree); its commit is extracted like the core one.
 const pro = process.env.MAILSTACK_STAGING_PRO, branch = process.env.MAILSTACK_STAGING_BRANCH ?? 'main';
-// MAILSTACK_STAGING_EGRESS=1 (with Pro): egress container through Wrangler and a key-guarded probe for the SSRF acceptance (A 3.6).
-const egress = process.env.MAILSTACK_STAGING_EGRESS === '1';
-if (egress && !pro) throw new Error('MAILSTACK_STAGING_EGRESS needs MAILSTACK_STAGING_PRO');
+// MAILSTACK_STAGING_EGRESS_URL=https://<egress host> (with Pro): the egress service behind the staging Tunnel, a key-guarded
+// probe for the SSRF acceptance (A 3.6) and a webhook endpoint at the receiver (M8). The Access service token comes from
+// MAILSTACK_STAGING_EGRESS_ACCESS_ID/_SECRET on the first deploy; EGRESS_KEYS is generated into the state for the service.
+const egress = process.env.MAILSTACK_STAGING_EGRESS_URL?.trim();
+if (egress && !(pro && /^https:\/\/[a-z0-9.-]+$/.test(egress))) throw new Error('MAILSTACK_STAGING_EGRESS_URL needs MAILSTACK_STAGING_PRO and an https origin');
 if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
 // The internal host needs the Access team host and the AUD tag of its Access application.
 const access = { ACCESS_TEAM_DOMAIN: process.env.MAILSTACK_ACCESS_TEAM_DOMAIN?.trim(), ACCESS_AUD: process.env.MAILSTACK_ACCESS_AUD?.trim() };
@@ -152,6 +154,15 @@ if (command.startsWith('hmac-')) {
   }
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
   secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
+  if (egress) {
+    secrets.EGRESS_KEYS ??= JSON.stringify([{ kid: 'st-egress-1', key: randomBytes(32).toString('base64url') }]);
+    secrets.EGRESS_ACCESS_CLIENT_ID = process.env.MAILSTACK_STAGING_EGRESS_ACCESS_ID ?? secrets.EGRESS_ACCESS_CLIENT_ID;
+    secrets.EGRESS_ACCESS_CLIENT_SECRET = process.env.MAILSTACK_STAGING_EGRESS_ACCESS_SECRET ?? secrets.EGRESS_ACCESS_CLIENT_SECRET;
+    if (!secrets.EGRESS_ACCESS_CLIENT_ID || !secrets.EGRESS_ACCESS_CLIENT_SECRET) throw new Error('Set MAILSTACK_STAGING_EGRESS_ACCESS_ID and _SECRET for the first egress deploy');
+    secrets.PRO_WEBHOOK_KEYS ??= JSON.stringify([{ kid: 'st-webhook-1', key: randomBytes(32).toString('base64url') }]);
+    secrets.STAGING_WEBHOOK_SECRET ??= randomBytes(32).toString('base64url');
+    cfg.extensions[0].options.webhooks = { endpoints: [{ id: 'st-receiver', url: `https://${hostname}/_staging/receiver/${secrets.STAGING_RECEIVER_TOKEN}/m8`, secretEnv: 'STAGING_WEBHOOK_SECRET', events: ['message.sent'], brands: ['acme'] }] };
+  }
   put('secrets.json', secrets);
   put('mailstack.json', cfg);
   const configJSON = JSON.stringify(cfg), sha = digest(configJSON);
@@ -164,10 +175,9 @@ import {createApp} from './src/index.ts';
 import {receiver,receiverCleanup} from ${JSON.stringify(resolve(root,'scripts/staging/receiver.ts'))};
 const query=env=>async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('staging storage');return r.results;};
 import {budgetSender,budgetResponse} from ${JSON.stringify(resolve(root,'scripts/staging/ses-budget.ts'))};
-${egress ? `export {EgressContainer} from ${JSON.stringify(`${proSource}/src/egress/container.ts`)};
-import {containerEgress} from ${JSON.stringify(`${proSource}/src/egress/worker.ts`)};
-const probe=async(req,env)=>{const o=await req.json(),t=Date.now(),e=containerEgress(env.EGRESS),ready=await e.ready(),readyMs=Date.now()-t;
-try{return Response.json({ready,readyMs,result:await e.post({attemptId:crypto.randomUUID(),url:o.url,headers:{'content-type':'application/json'},body:'{}',notAfter:Date.now()+(o.ms??10000)})});}catch(err){return Response.json({ready,readyMs,error:err.message});}};` : 'const probe=null;'}
+${egress ? `import {workerEgress} from ${JSON.stringify(`${proSource}/src/egress/worker.ts`)};
+const probe=async(req,env)=>{const o=await req.json(),t=Date.now(),e=workerEgress(env),ready=await e.ready(),readyMs=Date.now()-t,s=Date.now();
+try{const result=await e.post({attemptId:crypto.randomUUID(),url:o.url,headers:{'content-type':'application/json'},body:'{}',notAfter:Date.now()+(o.ms??10000)});return Response.json({ready,readyMs,postMs:Date.now()-s,result});}catch(err){return Response.json({ready,readyMs,postMs:Date.now()-s,error:err.message});}};` : 'const probe=null;'}
 const disabled=async()=>({ok:false,status:503,response:'staging_delivery_disabled'});
 export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(query(env)));return createApp({sendEmail:disabled}).scheduled(event,env,ctx);},async fetch(req,env,ctx){
 const path=new URL(req.url).pathname;
@@ -199,7 +209,7 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
     const found = await api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='pro_license_cache'" });
     if (!found[0].results.length) await mutate('migrate-pro-cache', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: CACHE_SCHEMA });
   }
-  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, ...access } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
@@ -217,13 +227,6 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
   form.set('worker.mjs', new Blob([readFileSync(`${state}/worker.mjs`)], { type: 'application/javascript+module' }), 'worker.mjs');
   await mutate('upload-worker', script, 'PUT', form);
   await mutate('set-cron', `${script}/schedules`, 'PUT', [{ cron: '17 * * * *' }]);
-  // Wrangler adds the container, its image and the EGRESS binding to the uploaded script; secrets are kept.
-  if (egress) await guarded('deploy-egress-container', () => execFileSync(`${root}/node_modules/.bin/wrangler`, ['deploy', '--config', put('wrangler.json', { name, main: 'worker.mjs', no_bundle: true,
-    compatibility_date: metadata.compatibility_date, compatibility_flags: metadata.compatibility_flags, workers_dev: false, preview_urls: false, observability: { enabled: false }, vars,
-    triggers: { crons: ['17 * * * *'] }, d1_databases: [{ binding: 'DB', database_name: name, database_id: database.uuid }],
-    containers: [{ class_name: 'EgressContainer', image: `${pro}/Dockerfile.egress`, image_build_context: pro, instance_type: 'lite', max_instances: 1 }],
-    durable_objects: { bindings: [{ name: 'EGRESS', class_name: 'EgressContainer' }] }, migrations: [{ tag: 'egress-v1', new_sqlite_classes: ['EgressContainer'] }] })],
-    { cwd: state, stdio: 'inherit', env: { ...process.env, CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } }));
   await mutate('disable-workers-dev', `${script}/subdomain`, 'POST', { enabled: false, previews_enabled: false });
   const zones = await api('/zones?name=techskills.academy');
   const zone = zones.find(value => value.account.id === account);

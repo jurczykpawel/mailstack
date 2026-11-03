@@ -8,9 +8,9 @@
  * an .env — only a real `deploy` needs the real values.
  *
  * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional);
- * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD; MAILSTACK_EGRESS=1 (Pro build) adds the egress container.
+ * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD; MAILSTACK_EGRESS_URL is the https origin of the egress service (Pro webhooks, resend callbacks).
  */
-import { readFileSync, readdirSync, realpathSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
 import { compileMigrations, migrationFile } from "../src/core/ext-migrations.ts";
 import { BUILD_CONFIG_SHA, CONFIG_JSON } from "../src/core/config/bundled.ts";
@@ -18,7 +18,6 @@ import { proExtension, proSchema } from "../src/core/pro.generated.ts";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./env.ts";
-import { egressToml } from "./wrangler-egress.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const env = loadEnv(root);
@@ -33,6 +32,8 @@ if (internal && !route) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILS
 const team = (env.MAILSTACK_ACCESS_TEAM_DOMAIN || "").trim(), aud = (env.MAILSTACK_ACCESS_AUD || "").trim();
 if (internal && !(team && aud)) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD");
 if (team && !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) throw new Error("MAILSTACK_ACCESS_TEAM_DOMAIN must be <team>.cloudflareaccess.com");
+const egress = (env.MAILSTACK_EGRESS_URL || "").trim();
+if (egress && !/^https:\/\/[a-z0-9.-]+$/i.test(egress)) throw new Error("MAILSTACK_EGRESS_URL must be an https origin (https://host)");
 // With a custom domain the workers.dev and preview URLs stay off, so only the listed hosts reach the Worker.
 const routesBlock = route
   ? `workers_dev = false\npreview_urls = false\nroutes = [\n${[route, internal].filter(Boolean).map((pattern) => `  { pattern = "${pattern}", custom_domain = true },\n`).join("")}]`
@@ -48,7 +49,7 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("${INTERNAL_HOST}", JSON.stringify(internal))
   .replace("${ACCESS_TEAM_DOMAIN}", JSON.stringify(team))
   .replace("${ACCESS_AUD}", JSON.stringify(aud))
-  .replace("__EGRESS__", egressToml(env.MAILSTACK_EGRESS, proSchema && env.MAILSTACK_PRO_PATH?.trim() && realpathSync(env.MAILSTACK_PRO_PATH.trim())));
+  .replace("${EGRESS_URL}", JSON.stringify(egress));
 
 mkdirSync(resolve(root, ".wrangler/migrations"), { recursive: true });
 writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SCHEMA);

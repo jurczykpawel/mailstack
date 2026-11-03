@@ -108,6 +108,31 @@ docker compose --profile production up -d
 
 The temporary firewall allowance for the old panel port 3411 on `piotr` lived only in memory and in no file. Once the Tunnel is verified, confirm the port is closed (`ss -ltn` on the host, and a connection attempt from outside); this document does not record that as done.
 
+### Worker egress behind the staging Tunnel (WP20B)
+
+The Worker staging sends webhooks and resend callbacks only through the `egress` service of Pro's Compose (see Pro README, "Egress for the Worker"); there is no Cloudflare container. Target layout on `piotr`, in `/opt/stacks/mailstack-panel-worker` (the panel of the Worker staging):
+
+- one remotely managed Tunnel `mailstack-staging-piotr`: `mailstack-panel-test.automagicznie.pl` → `https://panel:8090` (`originServerName` = that host, no TLS verify) and `mailstack-egress-test.automagicznie.pl` → `http://egress:8080`, catch-all 404; proxied CNAMEs to `<tunnel id>.cfargotunnel.com`;
+- Access applications: egress host with a single Service Auth policy (service token `mailstack-staging-egress`, 401 instead of a login redirect); panel host with the owner identity policy and a short session;
+- the egress host lives in `automagicznie.pl`, not in the Worker's zone, so the Worker reaches it as a public host and the receiver on `mailstack-test.techskills.academy` stays an allowed webhook target; `EGRESS_DENY_ZONES=automagicznie.pl`, `EGRESS_DENY_CIDRS=65.108.2.217/32,2a01:4f9:6a:5210::293/128` (the host's public IPv4 and IPv6, measured);
+- `secrets/egress/keys` holds the `EGRESS_KEYS` value from the Worker staging state (`secrets.json`), `secrets/tunnel/token` the tunnel token; both 0600, owned by UID 1000.
+
+Measured on `piotr` (WP20B, egress image alone with the production networks, no ports): from the egress network the host's services answer on the Docker gateway, `172.17.0.1` and the host LAN address `192.168.2.193`; the public IPv4 refuses connections, the network has no IPv6 route and no Tailscale address. The service refuses every one of these targets before connecting; a public target is reached. Treat the code rules as the only barrier between webhooks and the host.
+
+Worker deploy with the egress (after the Tunnel exists):
+
+```sh
+MAILSTACK_STAGING_PRO=<clean Pro checkout> MAILSTACK_STAGING_BRANCH=target MAILSTACK_STAGING_DELIVERY=ses \
+MAILSTACK_STAGING_EGRESS_URL=https://mailstack-egress-test.automagicznie.pl \
+MAILSTACK_STAGING_EGRESS_ACCESS_ID=<client id> MAILSTACK_STAGING_EGRESS_ACCESS_SECRET=<client secret> \
+MAILSTACK_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com MAILSTACK_ACCESS_AUD=<internal API app AUD> \
+scripts/staging/worker.sh deploy
+```
+
+The deploy adds a webhook endpoint `st-receiver` (event `message.sent`, brand `acme`) pointing at the staging receiver run `m8`. Gate E5: `MAILSTACK_STAGING_EGRESS_URL=https://mailstack-test.techskills.academy MAILSTACK_STAGING_EGRESS_KEY=<STAGING_RECEIVER_KEY> MAILSTACK_STAGING_DENIED=mailpit.automagicznie.pl,65.108.2.217,2a01:4f9:6a:5210::293 npx vitest run test/staging-egress.test.ts`.
+
+The account is on Workers Free and already uses all five Cron Triggers; the staging Worker keeps only `17 * * * *`. Without the minute cron, background jobs run only when a request that records a durable event starts the job runner (`kickJobs`); retries after a failure wait for the next such request. Whether a new delivery completes in that same pass has not been measured on staging.
+
 ### Simulator-only SES delivery
 
 The Worker staging script defaults to disabled delivery. To enable the existing

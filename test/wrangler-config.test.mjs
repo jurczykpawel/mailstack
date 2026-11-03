@@ -32,20 +32,13 @@ it('adds the internal host as a second custom domain and disables workers.dev', 
     for (const line of ['INTERNAL_HOST = ""', 'ACCESS_TEAM_DOMAIN = ""', 'ACCESS_AUD = ""']) expect(readFileSync('wrangler.toml', 'utf8')).toContain(line);
   } finally { writeFileSync('wrangler.toml', previous); }
 });
-it('adds the egress container and its binding only with MAILSTACK_EGRESS=1 on a Pro build', async () => {
-  const { egressToml } = await import('../scripts/wrangler-egress.mjs');
-  const on = egressToml('1', '/pro');
-  for (const line of ['new_sqlite_classes = ["EgressContainer"]', '[[containers]]', 'image = "/pro/Dockerfile.egress"', 'image_build_context = "/pro"',
-    'instance_type = "lite"', 'max_instances = 1', 'name = "EGRESS"']) expect(on).toContain(line);
-  // Pro without egress keeps the class migration (rollback needs no delete migration), but no container or binding.
-  for (const flag of ['', ' ', '0', undefined]) expect(egressToml(flag, '/pro')).toMatch(/^\[\[migrations\]\]\ntag = "egress-v1"\nnew_sqlite_classes = \["EgressContainer"\]\n$/);
-  expect(egressToml('', undefined)).toBe('');
-  expect(() => egressToml('1', undefined)).toThrow('requires a Mailstack Pro build');
-  expect(() => egressToml('yes', '/pro')).toThrow('MAILSTACK_EGRESS must be');
-  const previous = readFileSync('wrangler.toml', 'utf8'), env = { ...process.env, MAILSTACK_ROUTE: '', MAILSTACK_INTERNAL_ROUTE: '', MAILSTACK_PRO_PATH: '' };
+it('passes the egress service origin as a var and refuses anything but an https origin', () => {
+  const previous = readFileSync('wrangler.toml', 'utf8'), env = { ...process.env, MAILSTACK_ROUTE: '', MAILSTACK_INTERNAL_ROUTE: '' };
+  const gen = (url) => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_EGRESS_URL: url }, stdio: 'pipe' });
   try {
-    expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_EGRESS: '1' }, stdio: 'pipe' })).toThrow();
-    execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_EGRESS: '' }, stdio: 'pipe' });
-    expect(readFileSync('wrangler.toml', 'utf8')).not.toMatch(/containers|EgressContainer|__EGRESS__/);
+    gen('https://egress.example.com'); expect(readFileSync('wrangler.toml', 'utf8')).toContain('EGRESS_URL = "https://egress.example.com"');
+    gen(''); const out = readFileSync('wrangler.toml', 'utf8');
+    expect(out).toContain('EGRESS_URL = ""'); expect(out).not.toMatch(/containers|EgressContainer|durable_objects|__EGRESS__/);
+    for (const bad of ['http://egress.example.com', 'https://egress.example.com/post', 'https://egress.example.com?x=1']) expect(() => gen(bad), bad).toThrow();
   } finally { writeFileSync('wrangler.toml', previous); }
 });

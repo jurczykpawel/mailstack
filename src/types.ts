@@ -28,8 +28,8 @@ export interface Env extends KeyEnvironment {
   API_KEY: string;
   ALTCHA_HMAC_KEY: string;
   DB?: D1Database;
-  /** Egress container Durable Object namespace (MAILSTACK_EGRESS=1 with Pro); without it outbound features stay off. */
-  EGRESS?: DurableObjectNamespace;
+  /** Egress service behind a Tunnel (WP20B); without all four, outbound features stay off. */
+  EGRESS_URL?: string; EGRESS_KEYS?: string; EGRESS_ACCESS_CLIENT_ID?: string; EGRESS_ACCESS_CLIENT_SECRET?: string;
   CONTENT_PUBLIC_KEYS?: string;
   INDEX_KEYS?: string;
   /** Panel assertion keyring `[{kid, key}]` (32-byte base64url keys); several entries allow rotation. */

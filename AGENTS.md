@@ -510,9 +510,9 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
    explicitly skipped. `/health.version` comes from package.json; commit defaults to `dev`.
    Release tags `v*` run checks and publish the container image; the private-config
    Worker deploy workflow is deferred. See README for release tags and local Compose.
-   With Mailstack Pro, `MAILSTACK_EGRESS=1` in `.env` adds the egress container (`EGRESS` binding, Docker image
-   built by Wrangler from `Dockerfile.egress`, Workers Paid). Without it Worker webhooks and resend source stay
-   `disabled` (`platform:secure_egress_unavailable`); every Pro build exports the class with migration `egress-v1`.
+   With Mailstack Pro, `MAILSTACK_EGRESS_URL` in `.env` (plus secrets `EGRESS_KEYS`, `EGRESS_ACCESS_CLIENT_ID`,
+   `EGRESS_ACCESS_CLIENT_SECRET`) points webhooks and resend source at the `egress` service of the panel's Compose,
+   behind a Tunnel + Access (Pro README). Without all four they stay `disabled` (`platform:secure_egress_unavailable`).
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
    Optional `MAILSTACK_INTERNAL_ROUTE` adds a second domain serving only `/internal/v2/*`
