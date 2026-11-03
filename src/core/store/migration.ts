@@ -163,3 +163,34 @@ CREATE TABLE IF NOT EXISTS ext_reconcile (
   done_at    INTEGER
 );
 `;
+
+/** Durable domain events (one row per state-change cause) with per-extension fan-out cursors and recorded gaps (A 3.3). */
+export const EVENTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS domain_events (
+  seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         TEXT NOT NULL UNIQUE,
+  cause      TEXT NOT NULL UNIQUE,
+  type       TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  brand      TEXT NOT NULL,
+  template   TEXT NOT NULL,
+  status     TEXT NOT NULL,
+  at         INTEGER NOT NULL,
+  ref_digest TEXT
+);
+CREATE INDEX IF NOT EXISTS domain_events_msg ON domain_events(message_id);
+CREATE INDEX IF NOT EXISTS domain_events_at ON domain_events(at);
+CREATE TABLE IF NOT EXISTS ext_event_cursor (
+  extension TEXT PRIMARY KEY,
+  seq       INTEGER NOT NULL DEFAULT 0,
+  partial   TEXT
+);
+CREATE TABLE IF NOT EXISTS ext_event_gaps (
+  extension TEXT NOT NULL,
+  from_seq  INTEGER NOT NULL,
+  to_seq    INTEGER NOT NULL,
+  count     INTEGER NOT NULL,
+  at        INTEGER NOT NULL,
+  PRIMARY KEY (extension, from_seq)
+);
+`;

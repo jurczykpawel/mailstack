@@ -328,6 +328,7 @@ export async function handleSend(
     ref: trusted ? body.ref as string | undefined : undefined,
     idempotencyKey,
     attachments,
+    submitted: !trusted && template.id === 'contact',
   });
 
   if (!result.ok) {

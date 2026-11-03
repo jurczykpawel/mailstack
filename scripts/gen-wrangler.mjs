@@ -11,7 +11,7 @@
  * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD.
  */
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
+import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
 import { compileMigrations, migrationFile } from "../src/core/ext-migrations.ts";
 import { BUILD_CONFIG_SHA, CONFIG_JSON } from "../src/core/config/bundled.ts";
 import { proExtension, proSchema } from "../src/core/pro.generated.ts";
@@ -53,6 +53,7 @@ writeFileSync(resolve(root, ".wrangler/migrations/0001_initial.sql"), INITIAL_SC
 writeFileSync(resolve(root, ".wrangler/migrations/0002_ses_status.sql"), SES_STATUS_SCHEMA);
 writeFileSync(resolve(root, ".wrangler/migrations/0004_jobs.sql"), JOBS_SCHEMA);
 writeFileSync(resolve(root, ".wrangler/migrations/0005_ext.sql"), EXT_SCHEMA);
+writeFileSync(resolve(root, ".wrangler/migrations/0006_domain_events.sql"), EVENTS_SCHEMA);
 // Extension migrations: validated and compiled from the schema builder; an invalid statement fails setup.
 // Names are fixed per version (`<1000+version>_ext_<name>_<version>.sql`), so a regenerated file is never applied twice.
 for (const file of readdirSync(resolve(root, ".wrangler/migrations"))) if (/^\d+_ext_.+\.sql$/.test(file)) rmSync(resolve(root, ".wrangler/migrations", file));

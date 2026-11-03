@@ -452,7 +452,11 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
 
 `POST /v1/events/ses` accepts signed SNS subscription confirmations and SES events.
 Configure exact `events.ses.topicArns` and `accountIds`, the runtime keyring and
-`SES_CONFIGURATION_SET`; see [SES/SNS setup](README.md#ses-events). Node SMTP records
+`SES_CONFIGURATION_SET`; see [SES/SNS setup](README.md#ses-events).
+When an extension defines `onEvent`, each delivery transition and each new SES event of a
+message row is also written to `domain_events` in the same atomic batch as the status
+change (unique `cause` per transition or SNS notification; `ref_digest` only for
+consumers with `eventRef`). Without a consumer or at level `none` nothing extra is written. Node SMTP records
 local relay acceptance; downstream delivery events and DSN polling are not included.
 
 Use [Docker installation](README.md#run-with-docker-node--sqlite) for Node/SQLite.

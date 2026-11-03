@@ -5,6 +5,8 @@ import { config } from '../config';
 import { seal, verifyMac } from '../crypto';
 import { parseKeyring } from '../keyring';
 import type { MessageRow } from '../store/messages';
+import type { EventIntent } from '../store/events';
+import type { DomainEvent } from '../extensions';
 import { resolvePolicy } from './policy';
 import { idempotencyHash, intentRequest, messageId, recordIntent } from './writer';
 
@@ -15,6 +17,8 @@ export interface DeliveryContext {
   ref?: string;
   idempotencyKey?: string;
   explicitJsonLd?: unknown[];
+  /** Public contact submission: `form.submitted` is recorded with `message.sent`. */
+  submitted?: boolean;
 }
 const failure = (status: number, code: string, message = code.replaceAll('_', ' ')): SendResult => ({ ok: false, status, code, message });
 
@@ -115,11 +119,16 @@ export async function deliver(
     if (deps.waitUntil) deps.waitUntil(task);
     else return task;
   };
+  // Durable events only with a consumer and a message row (level none has none); asked before contacting the provider.
+  const consumer = id ? await deps.durableEvents?.().catch(() => undefined) : undefined;
+  const refDigest = consumer?.ref && context.ref !== undefined ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(context.ref))), b => b.toString(16).padStart(2, '0')).join('') : null;
+  const events = (...types: DomainEvent['type'][]): EventIntent | undefined => consumer && { at: deps.now().getTime(), refDigest, types };
   let result: SendResult;
   try {
     result = await deps.sendEmail(env, { ...params, ...(id ? { messageId: id, brand: brand.id } : {}) });
   } catch {
-    if (id) await deps.store!.setStatus(id, 'unknown').catch(() => {});
+    if (id) await deps.store!.setStatus(id, 'unknown', events('message.unknown')).catch(() => {});
     emit('unknown');
     await alert('unknown');
     return { ...failure(502, 'send_failed'), id, correlationId };
@@ -135,10 +144,10 @@ export async function deliver(
             rejected: params.to.flatMap((address, pos) => result.smtp!.rejected.includes(address) ? [pos] : []),
             evidence: await seal(result.response ?? {}, { brand: brand.id, messageId: id, purpose: 'evidence' }, parseKeyring(env).contentKeys),
           } } : {}),
-        });
-      } else await deps.store!.markFailed(id, sealed);
+        }, events('message.sent', ...context.submitted ? ['form.submitted' as const] : []));
+      } else await deps.store!.markFailed(id, sealed, events('message.send_failed'));
     } catch {
-      await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed').catch(() => {});
+      await deps.store!.setStatus(id, result.ok ? 'unknown' : 'send_failed', events(result.ok ? 'message.unknown' : 'message.send_failed')).catch(() => {});
       if (result.ok) { emit('unknown'); await alert('unknown'); return { ...failure(502, 'send_failed'), id, correlationId }; }
     }
   }

@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Dialect } from 'kysely';
 import type { Store } from '../ports';
-import { EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from './migration.ts';
+import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from './migration.ts';
 import { MessageOperations } from './messages.ts';
 import type { AtomicBatch, Database } from './messages.ts';
 
@@ -14,7 +14,7 @@ export class KyselyStore extends MessageOperations implements Store {
   async health(): Promise<void> { await sql`select 1`.execute(this.db); }
 
   async migrate(): Promise<void> {
-    for (const statement of (INITIAL_SCHEMA + SES_STATUS_SCHEMA + JOBS_SCHEMA + EXT_SCHEMA).split(';').map(s => s.trim()).filter(Boolean)) {
+    for (const statement of (INITIAL_SCHEMA + SES_STATUS_SCHEMA + JOBS_SCHEMA + EXT_SCHEMA + EVENTS_SCHEMA).split(';').map(s => s.trim()).filter(Boolean)) {
       await sql.raw(statement).execute(this.db);
     }
   }

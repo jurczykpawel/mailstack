@@ -85,6 +85,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         notifier: overrides.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
         waitUntil: ctx.waitUntil?.bind(ctx) ?? overrides.waitUntil,
         emitEvent: overrides.emitEvent ?? (store && config.extensions.length ? ((event, defer) => defer?.(extensions(store).then(h => h.emitEvent(event)))) satisfies EmitEvent : undefined),
+        durableEvents: overrides.durableEvents ?? (store && config.extensions.length ? () => extensions(store).then(h => h.durableEvents()) : undefined),
       };
       const url = new URL(req.url);
       const { pathname } = url;
