@@ -1,6 +1,7 @@
 import { readSesStatus } from './store/ses-status';
 import { createNtfyNotifier } from '../adapters/notify/ntfy';
 import { createResendService } from './resend';
+import { handleSend } from '../send';
 import { verifyTurnstile } from '../turnstile';
 import { verifyAltcha } from '../altcha';
 import type { Env, SendDeps } from '../types';
@@ -11,7 +12,7 @@ import { runRetention } from './retention';
 import { ensureJob, runJobs, type JobHooks, type JobKind } from './jobs';
 import { JOB_KINDS } from './job-kinds';
 import type { EventConsumer } from './events';
-import type { PanelPrincipal } from './panel';
+import { panelAllows, type PanelPrincipal } from './panel';
 import { requireKeyProvider, type KeyProvider } from '../clients';
 import { appendAudit } from './audit';
 import { eventId } from './store/events';
@@ -55,6 +56,23 @@ function extensionDb(store: KyselyStore, prefix: string, kinds: string[] = []): 
     const query = q.compile(); return jobs.has(query) ? query : sandboxed(query, prefix);
   })) });
 }
+const SES_SCENARIOS = ['success', 'bounce', 'complaint'] as const;
+/** R8: the only send an extension gets: three fixed notice mails to SES simulator addresses, never an arbitrary message. */
+const sesLoop = (config: Config, env: object, deps: SendDeps | undefined, panel: PanelPrincipal, last: { at: number }): ExtensionContext['sendInProcess'] => async ({ brand, scenario, key }) => {
+  const secret = Reflect.get(env, config.legacyApiKey?.env ?? 'API_KEY');
+  if (!SES_SCENARIOS.includes(scenario) || !Object.hasOwn(config.brands, brand) || typeof key !== 'string' || !/^[\w.:-]{1,100}$/.test(key) ||
+    !panelAllows(panel, 'admin') || (panel.brands !== '*' && !panel.brands.includes(brand)) || (panel.templates !== '*' && !panel.templates.includes('notice'))) return { error: 'invalid' };
+  if (!deps || config.legacyApiKey?.enabled === false || typeof secret !== 'string' || !secret) return { error: 'unavailable' };
+  const now = deps.now().getTime();
+  if (now - last.at < 1100) return { error: 'rate_limited' };
+  last.at = now;
+  try {
+    const response = await handleSend(new Request('https://in-process.invalid/v1/send', { method: 'POST', headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json', 'idempotency-key': `aws-${key}-${scenario}` },
+      body: JSON.stringify({ brand, template: 'notice', to: `${scenario}@simulator.amazonses.com`, autoreply: false, heading: 'SES loop test', paragraphs: 'Synthetic delivery check.' }) }), env as Env, deps);
+    const body = await response.json() as { success?: unknown; id?: unknown }; const id = typeof body.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(body.id) ? body.id : undefined;
+    return { ...id ? { id } : {}, ...response.ok && body.success === true ? id ? {} : { error: 'log_required' as const } : { error: 'send_failed' as const } };
+  } catch { return { error: 'unavailable' }; }
+};
 type Route = { handler: Parameters<ExtensionApp['route']>[2]; db: ExtensionDatabase; resend: boolean; extension: string };
 type Ready = { module: string; state: 'ready'; name: string; capabilities: string[] };
 export type ExtensionFeature = Ready | { module: string; state: 'unavailable'; reason: 'initialization' | 'schema' | 'reconcile' };
@@ -166,7 +184,9 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
   const events = consumers.length ? { ref: consumers.some(e => e.eventRef === true) } : undefined;
   const durableEvents = async () => events;
   const { delivery } = options;
-  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, durableEvents, verifyTurnstile, verifyAltcha });
+  const sendDeps = (env: Env): SendDeps | undefined => delivery && { ...delivery, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, durableEvents, verifyTurnstile, verifyAltcha };
+  const service = (env: Env) => createResendService(config, store, env, sendDeps(env)!);
+  const loop = { at: 0 };
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
   /** A waiting extension becomes ready once its reconcile job finished (in any process or isolate). */
@@ -182,12 +202,13 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
     async refresh() { for (const extension of [...waiting.keys()]) await refresh(extension); },
     runRetention: (now: number) => runRetention(store, now, config, beforeDelete, consumers.map(e => e.name)),
     /** Dispatches `/internal/ext/*` after the caller's panel gate; unknown routes are 404. */
-    async route(req: Request, env: object, panel: PanelPrincipal): Promise<Response> {
+    async route(req: Request, env: object, panel: PanelPrincipal, deps?: SendDeps): Promise<Response> {
       const route = routes.get(`${req.method} ${new URL(req.url).pathname}`);
       const feature = route && await refresh(route.extension);
       if (feature?.state === 'unavailable') return Response.json({ success: false, message: 'extension unavailable', code: 'extension_unavailable', reason: feature.reason }, { status: 503 });
       return route ? route.handler(req, { ...ctx, panel, db: route.db,
         ...(panel.brands === '*' && panel.templates === '*' ? { sesStatus: () => readSesStatus(store, config.events?.ses, String(Reflect.get(env, 'SES_REGION') ?? 'eu-west-1')) } : {}),
+        sendInProcess: sesLoop(config, env, deps ?? sendDeps(env as Env), panel, loop),
         ...(enabled && route.resend ? { resend: service(env as Env).forPanel(panel) } : {}) }) : new Response(null, { status: 404 });
     } };
 }
