@@ -28,6 +28,8 @@ export interface ExtensionJob {
 export interface ExtensionContext {
   panel?: PanelPrincipal;
   sesStatus?: () => Promise<import('./store/ses-status').SesStatusV1>;
+  /** Admin-only SES loop test (R8): `scenario` is one of three simulator mails; the key is the caller's idempotency token. */
+  sendInProcess?: (input: { brand: string; scenario: 'success' | 'bounce' | 'complaint'; key: string }) => Promise<{ id?: string; error?: 'invalid' | 'unavailable' | 'rate_limited' | 'send_failed' | 'log_required' }>;
   resend?: import('./resend-contract').ResendCapability;
   db: ExtensionDatabase;
   appendAudit: (entry: AuditEntry) => Promise<AuditRow>;

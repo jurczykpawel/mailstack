@@ -161,7 +161,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         if (!await access(req, env)) return Response.json({ success: false }, { status: 403 });
         const panel = await authorizePanel(req, env, config, { audience: env.INTERNAL_HOST, store, keys: deps.keys, defer: deps.waitUntil });
         if (panel instanceof Response) return panel;
-        if (ext) return (await extensions(store)).route(req, env, panel);
+        if (ext) return (await extensions(store)).route(req, env, panel, deps);
         const response = await internalFetch(req, env, store, config, panel, { platform: "worker", extensions: () => extensions(store) });
         // 202 = work stored as a job; start it now instead of waiting for the minute cron.
         if (response.status === 202) deps.waitUntil?.(extensions(store).then(h => runJobs(store, "request", h.jobs)));
