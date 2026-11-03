@@ -137,6 +137,7 @@ Error responses:
 | 413 | `payload too large` | body > 64 KiB (10 MiB for attachment-enabled send clients) |
 | 415 | `attachment type not allowed`, code `attachment_type` | MIME type outside attachment allowlist |
 | 422 | `invalid attachment`, code `attachment_invalid` | invalid attachment shape, name, base64, signature or decoded limits |
+| 403 | `license required`, code `license_required` | scoped key whose license was refused |
 | 429 | `rate limit exceeded` | public-mode rate limit hit |
 | 502 | `send failed` | SES returned a non-2xx response |
 
@@ -182,8 +183,14 @@ Restricting `scopes`/`brands`/`templates`/`recipientOverride` fails validation
 Additional keys (`clients`), restrictions, `rate`, `resendCallback` and the `panel` client
 live in Mailstack Pro (`mailstack-pro/src/keys.ts`, CLI `node scripts/client.ts create`).
 Pro registers a `KeyProvider` through the extension `keys(config)` hook; `authenticate`
-checks the full key first, then asks the provider. Pro returns null without a valid
-license, so the full key never depends on licensing. `clients` without a key provider stops
+checks the full key first, then asks the provider. A valid scoped token without a valid
+license may come back as `{denied: 'license', client}`; the core swaps in the configured
+client, answers `403 license_required` on send, hooks and every internal route except
+`GET /internal/v2/capabilities` (panel scope + assertion), which reports
+`license.state: invalid` and all Pro features `disabled: license` (`src/core/capabilities.ts`;
+also protocol range, platform, feature reasons, limits, `backupWindowDays`, job stats and
+public `TRANSIT_KEYS`; `cloudflare.plan: "free"` disables features Free cannot carry).
+The full key never depends on licensing. `clients` without a key provider stops
 Node startup and `npm run setup`; a configured extension that fails to import or
 initialize is only marked unavailable (`createExtensionHost` in
 `src/core/extension-host.ts`), leaving the full key working (N7). Extension schema comes from Kysely-builder
