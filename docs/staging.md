@@ -95,6 +95,19 @@ For a data reset, stop only this Compose project. Preserve `.env`, `config`, `se
 
 Alerts have a loopback placeholder and send no external notifications. Replace `PANEL_NTFY_URL` only when intentionally testing alerts. Replace the panel's private TLS certificate pair before its one-year expiry. Do not use this fixture installation for production traffic.
 
+### Panel behind Tunnel + Access (target composition)
+
+The panel on the staging host is reached through a Cloudflare Tunnel, not a published port. Pro's `compose.yml` has no `ports:` for any service; with `--profile production` it adds `cloudflared` (remotely managed tunnel, token read from `secrets/tunnel/token`, mounted read-only) and `backup` (daily encrypted copy, see [backup.md](backup.md)). The tunnel's public hostname points at `https://panel:8090` with `originServerName` set to the panel host and no-TLS-verify (the panel's own certificate is private); a Cloudflare Access application with an identity policy (owner e-mail, short session) guards that hostname before the passkey login. The panel container holds no content key.
+
+API container environment (Node staging): `PANEL_AUDIENCE` (installation id; the API refuses `PANEL_ASSERTION_KEYS` without it), `PANEL_ASSERTION_KEYS` (the keyring shared with `secrets/panel/assertion`) and `TRANSIT_KEYS` (private set from `npm run keys`). `scripts/staging/node.mjs` only swaps the Sellf HMAC; it does not compose this environment, which is supplied by the Stackpilot installer or `api.env`.
+
+```sh
+# CLOUDFLARED_VERSION optionally overrides the pinned default (2026.10.0)
+docker compose --profile production up -d
+```
+
+The temporary firewall allowance for the old panel port 3411 on `piotr` lived only in memory and in no file. Once the Tunnel is verified, confirm the port is closed (`ss -ltn` on the host, and a connection attempt from outside); this document does not record that as done.
+
 ### Simulator-only SES delivery
 
 The Worker staging script defaults to disabled delivery. To enable the existing
