@@ -22,6 +22,10 @@ const FREE_PLAN: Name[] = ['panel', 'webhooks', 'resend.source', 'aws.test'];
 const EGRESS: Name[] = ['webhooks', 'resend.source'];
 
 /** `GET /internal/v2/capabilities`: what this principal may use here and why anything is off (A 3.8.3). */
+/** The API installation id that panel assertions and transit envelopes are bound to. */
+export const transitAudience = (env: object, host: CapabilityHost): string | undefined =>
+  Reflect.get(env, host.platform === 'worker' ? 'INTERNAL_HOST' : 'PANEL_AUDIENCE');
+
 export async function capabilities(env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, host: CapabilityHost, now = Date.now()) {
   const ext = await host.extensions(), loaded = ext.features();
   const pro = loaded.find(f => f.state === 'ready' && f.name === 'pro'), failed = loaded.find(f => f.state === 'unavailable');
@@ -49,7 +53,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
   return {
     protocol: PROTOCOL,
     api: { version, commit: Reflect.get(env, 'BUILD_COMMIT') || 'dev', ...(proCommit ? { proCommit } : {}), platform: host.platform,
-      audience: Reflect.get(env, host.platform === 'worker' ? 'INTERNAL_HOST' : 'PANEL_AUDIENCE') ?? null },
+      audience: transitAudience(env, host) ?? null },
     license: { state: panel.denied ? 'invalid' : 'valid' },
     principal: { role: panel.role, brands: panel.brands, templates: panel.templates },
     features: Object.fromEntries(FEATURES.map(name => [name, state(name)])),

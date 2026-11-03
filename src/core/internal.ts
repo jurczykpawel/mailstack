@@ -2,7 +2,8 @@ import { sql, type RawBuilder } from 'kysely';
 import { appendAudit, AUDIT_GENESIS, type AuditRow } from './audit';
 import { auditHead } from './store/audit';
 import { blindIndexes, refIndex } from './crypto';
-import { parseIndexKeys } from './keyring';
+import { parseIndexKeys, parseTransitKeys } from './keyring';
+import { openTransit, TransitError, type TransitOp } from './transit';
 import { boundedText } from './http';
 import { panelAllows, type PanelPrincipal } from './panel';
 import type { KyselyStore } from './store';
@@ -10,7 +11,7 @@ import type { Config } from './config/schema';
 import type { MessageRow } from './store/messages';
 import { enqueueJob, newJobId } from './jobs';
 import { selection, type EraseScope } from './erase';
-import { capabilities, LIMITS, type CapabilityHost } from './capabilities';
+import { capabilities, LIMITS, transitAudience, type CapabilityHost } from './capabilities';
 
 const PAGE_BYTES = LIMITS.exportPageBytes - 8192; // 1 MiB page including the manifest envelope
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
@@ -40,6 +41,15 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       if (!value || typeof value !== 'object' || Array.isArray(value)) return fail(400);
       return value as Record<string, unknown>;
     } catch (e) { return fail(e instanceof RangeError ? 413 : 400); }
+  };
+  // The searched address, `ref` or subject address travels only as a transit envelope bound to this API, the operation and a one-time nonce.
+  const envelope = async (input: Record<string, unknown>, op: TransitOp, allowed: string[]) => {
+    if (typeof input.envelope !== 'string' || Object.keys(input).some(k => !allowed.includes(k))) return fail(400);
+    let keys; try { keys = (await parseTransitKeys(Reflect.get(env, 'TRANSIT_KEYS'))).privateKeys; } catch { return fail(503); }
+    try {
+      const payload = await openTransit(input.envelope, { aud: transitAudience(env, host) ?? '', op }, keys, store, now);
+      return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : fail(400);
+    } catch (e) { return fail(e instanceof TransitError ? (e.code === 'replayed' ? 409 : 403) : 503); }
   };
   const blob = async (table: 'contents' | 'replays', id: string) => (await run(sql<{ sealed: string; expires_at: number }>`select b.sealed,b.expires_at from ${sql.table(table)} b
     join messages m on m.id=b.message_id where m.id=${id} and ${scope} and ${live} and ${contentLive} and b.expires_at > ${now}`))[0] ?? null;
@@ -75,7 +85,7 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
     requireRole('viewer');
     if (req.url.length > 8192) return fail(400);
     if (path === '/capabilities' && req.method === 'GET') return response(await capabilities(env, store, cfg, panel, host, now));
-    if (path === '/messages' && req.method === 'GET') {
+    const list = async (q: URLSearchParams, found?: { rcpt?: string; ref?: string }) => {
       const limit = integer(q.get('limit'), 50, LIMITS.listPage); if (!limit) fail(400);
       const from = integer(q.get('from'), 0, Number.MAX_SAFE_INTEGER), to = integer(q.get('to'), Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
       if (from > to) fail(400);
@@ -91,17 +101,15 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
           filters.push(sql`(m.created_at < ${c[0]} or (m.created_at=${c[0]} and m.id < ${c[1]}))`);
         } catch { fail(400); }
       }
-      if (q.has('rcpt') || q.has('ref')) {
+      if (found) {
         const keys = parseIndexKeys(Reflect.get(env, 'INDEX_KEYS'));
-        for (const name of ['rcpt', 'ref'] as const) if (q.has(name)) {
-          const value = q.get(name)!; if (!value || value.length > (name === 'ref' ? 128 : 320)) fail(400);
-          if (name === 'rcpt') {
-            let indices; try { indices = await blindIndexes(value, keys); } catch { return fail(400); }
-            filters.push(sql`exists(select 1 from recipients r where r.message_id=m.id and (${sql.join(indices.map(i => sql`(r.idx_kid=${i.kid} and r.addr_idx=${i.index})`), sql` or `)}))`);
-          } else filters.push(sql`m.ref_idx in (${sql.join((await Promise.all(keys.map(k => refIndex(value, k)))).map(i => i.index))})`);
+        if (found.rcpt !== undefined) {
+          let indices; try { indices = await blindIndexes(found.rcpt, keys); } catch { return fail(400); }
+          filters.push(sql`exists(select 1 from recipients r where r.message_id=m.id and (${sql.join(indices.map(i => sql`(r.idx_kid=${i.kid} and r.addr_idx=${i.index})`), sql` or `)}))`);
         }
+        if (found.ref !== undefined) filters.push(sql`m.ref_idx in (${sql.join((await Promise.all(keys.map(k => refIndex(found.ref!, k)))).map(i => i.index))})`);
       }
-      await audit(q.has('rcpt') || q.has('ref') ? 'log.search' : 'log.list');
+      await audit(found ? 'log.search' : 'log.list');
       const rows = await run<MessageRow & { addr_hints: string }>(sql`select m.id,m.brand,m.template,m.level,m.status,m.created_at,m.sent_at,m.subject_sealed,
         (select json_group_array(addr_hint) from (select r.addr_hint from recipients r where r.message_id=m.id order by r.pos)) addr_hints from messages m
         where ${sql.join(filters, sql` and `)} order by m.created_at desc,m.id desc limit ${limit + 1}`);
@@ -109,6 +117,20 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       const messages = rows.map(m => ({ ...m, addr_hints: JSON.parse(m.addr_hints) as string[] }));
       const last = rows.at(-1);
       return response({ messages, cursor: more && last ? btoa(JSON.stringify([last.created_at, last.id])) : null });
+    };
+    if (path === '/messages' && req.method === 'GET') return q.has('rcpt') || q.has('ref') ? fail(400) : await list(q);
+    if (path === '/messages/search' && req.method === 'POST') {
+      const { envelope: sealed, ...plain } = await body();
+      const sought = await envelope({ envelope: sealed }, 'log.search', ['envelope']);
+      const { rcpt, ref, ...extra } = sought;
+      const text = (v: unknown, max: number) => v === undefined || (typeof v === 'string' && v.length > 0 && v.length <= max);
+      if (Object.keys(extra).length || (rcpt === undefined) === (ref === undefined) || !text(rcpt, 320) || !text(ref, 128)) return fail(400);
+      const params = new URLSearchParams();
+      for (const [name, value] of Object.entries(plain)) {
+        if (!['brand', 'template', 'status', 'from', 'to', 'limit', 'cursor'].includes(name) || !['string', 'number'].includes(typeof value)) return fail(400);
+        params.set(name, String(value));
+      }
+      return await list(params, { rcpt: rcpt as string | undefined, ref: ref as string | undefined });
     }
     const match = /^\/messages\/([A-Za-z0-9_-]{1,128})(?:\/(content|evidence|resend-source))?$/.exec(path);
     if (match && req.method === 'GET') {
@@ -151,9 +173,11 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
     }
     if ((path === '/subjects/export' || path === '/subjects/erase') && req.method === 'POST') {
       requireRole('admin', true);
-      const input = await body();
-      if (typeof input.email !== 'string' || input.email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) return fail(400);
-      const indices = await blindIndexes(input.email, parseIndexKeys(Reflect.get(env, 'INDEX_KEYS')));
+      const input = await body(), erasing = path.endsWith('erase');
+      const sought = await envelope(input, erasing ? 'subjects.erase' : 'subjects.export', erasing ? ['envelope', 'reason'] : ['envelope', 'limit', 'cursor']);
+      const { email, ...extra } = sought;
+      if (Object.keys(extra).length || typeof email !== 'string' || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(400);
+      const indices = await blindIndexes(email, parseIndexKeys(Reflect.get(env, 'INDEX_KEYS')));
       if (path.endsWith('erase')) {
         if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500) return fail(400);
         return await erase({ indices: indices.map(({ kid, index }) => ({ kid, index })), brands: panel.brands, templates: panel.templates, at: now }, {});

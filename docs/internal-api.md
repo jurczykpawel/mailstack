@@ -102,11 +102,21 @@ verification or disclosing another selection's entries.
 
 - `GET /internal/v2/messages`: `{messages, cursor}`. List projection: `id`, `brand`,
   `template`, `level`, `status`, `created_at`, `sent_at`, `addr_hints`, `subject_sealed`.
-  Optional exact `brand`, `template`, `status`, `rcpt` and `ref`; inclusive epoch-ms
+  Optional exact `brand`, `template`, `status`; `rcpt` and `ref` are refused with 400
+  (search is `POST /messages/search`, below); inclusive epoch-ms
   `from` / `to`; `limit` 1–100 (default 50). Cursor is opaque base64 JSON over
   `[created_at, id]`, descending with an ID tiebreaker; reuse the same filters on
-  subsequent pages. Invalid bounds/cursor return 400. Search covers all active
-  index keys, including the recipient's index kid. Search terms never enter audit.
+  subsequent pages. Invalid bounds/cursor return 400.
+- `POST /internal/v2/messages/search` `{envelope, brand?, template?, status?, from?, to?, limit?, cursor?}`:
+  same response and paging as the list. The envelope (op `log.search`) seals exactly one of
+  `{rcpt}` or `{ref}`. Search covers all active index keys, including the recipient's index kid;
+  search terms never enter audit (`log.search`).
+- **Transit envelope inputs.** Search, export and erase accept the address or `ref` only as a
+  transit envelope (`mt1.…`, sealed to a key published in `capabilities.transitKeys`, bound to
+  `api.audience`, the operation and a one-time nonce, valid up to five minutes). A plain `email`,
+  `rcpt`, `ref` or any other unlisted body field is 400. A wrong operation or audience, expired or
+  malformed envelope is 403; a repeated nonce is 409 (`replayed`); no `TRANSIT_KEYS` is 503.
+  The nonce is consumed before the request runs, so a failed request needs a fresh envelope.
 - `GET /internal/v2/messages/:id`: metadata, sealed subject, sealed `recipients`
   and chronological `events` without evidence. Internal indexes/MACs are omitted.
 - `GET /internal/v2/messages/:id/content`: `{sealed, expires_at, level}` or 404.
@@ -116,17 +126,17 @@ verification or disclosing another selection's entries.
   ref_sealed, replay}`; replay is `{sealed, expires_at}` or null. No MAC, index or
   signing/sending key is returned. This route prepares the panel-side read only;
   resend execution remains a separate task.
-- `POST /internal/v2/subjects/export` `{email, limit?, cursor?}`: `{messages, cursor}`, each with metadata,
+- `POST /internal/v2/subjects/export` `{envelope, limit?, cursor?}` (envelope op `subjects.export`, payload `{email}`): `{messages, cursor}`, each with metadata,
   recipients, timeline, sealed content/replay/ref and an `evidence` object
   containing sealed provider response and event evidence. All subject
   roles match: recipient, reply_to, submitter. Limit is an integer 1–50 (default
   25); each page is audited before returning data. Pass the returned opaque cursor
-  with the same email on the next request until cursor is null. Pages use ascending
+  with a new envelope for the same email on the next request until cursor is null. Pages use ascending
   message ID order, read at most limit + 1 messages and load their data sequentially.
   Each response buffers only one page; clients must collect all pages to complete
   an export. This is a live view: concurrent erasure/expiry may remove records and
   new messages may appear on later pages.
-- `POST /internal/v2/subjects/erase` `{email, reason}`: `202 {jobId}`. Reason is required
+- `POST /internal/v2/subjects/erase` `{envelope, reason}` (envelope op `subjects.erase`, payload `{email}`): `202 {jobId}`. Reason is required
   (10–500 characters) but not persisted. One batch writes the `privacy.erase` audit
   entry (eight-character index prefix, `{job}`) and an `erase` job with a fixed scope:
   the subject's indexes under every active key, the client's brand/template

@@ -16,6 +16,7 @@ import { getTemplate } from '../src/templates';
 import { loadExtensions } from '../src/runtime/extensions';
 import { tokenSha256 } from '../src/clients';
 import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
+import { sealed, transitEnv } from './fixtures/transit';
 import { idempotencyHash } from '../src/core/logging/writer';
 import { recordEvents, eventId } from '../src/core/store/events';
 import { runRetention } from '../src/core/retention';
@@ -228,8 +229,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     const [keyed, importer] = keysOnly(cfg);
     const runtime = await loadExtensions(keyed, store, importer);
     const request = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
-      body: JSON.stringify({ email: 'buyer@acme.example', reason: 'Requested by subject' }) }), token, panelClaims());
-    expect((await runtime.fetch(request, { ...env, ...panelEnv })).status).toBe(202);
+      body: JSON.stringify({ reason: 'Requested by subject', ...await sealed({ email: 'buyer@acme.example' }, 'subjects.erase') }) }), token, panelClaims());
+    expect((await runtime.fetch(request, { ...env, ...panelEnv, ...transitEnv })).status).toBe(202);
     await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete });
     await store.setStatus(message.id, 'unknown');
     await store.markFailed(message.id, 'sealed');
