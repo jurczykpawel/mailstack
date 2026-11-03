@@ -20,6 +20,7 @@ import { idempotencyHash } from '../src/core/logging/writer';
 import { recordEvents, eventId } from '../src/core/store/events';
 import { runRetention } from '../src/core/retention';
 import type { Env, SendDeps } from '../src/types';
+import { runJobs } from '../src/core/jobs';
 
 for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${driver}`, () => {
   let store: KyselyStore, mf: Miniflare | undefined, binding: D1Database;
@@ -228,7 +229,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     const runtime = await loadExtensions(keyed, store, importer);
     const request = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
       body: JSON.stringify({ email: 'buyer@acme.example', reason: 'Requested by subject' }) }), token, panelClaims());
-    expect(await (await runtime.fetch(request, { ...env, ...panelEnv })).json()).toEqual({ count: 1 });
+    expect((await runtime.fetch(request, { ...env, ...panelEnv })).status).toBe(202);
+    await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete });
     await store.setStatus(message.id, 'unknown');
     await store.markFailed(message.id, 'sealed');
     await store.markSent(message.id, { sentAt: now, providerMessageId: 'fixture', providerResponseSealed: 'sealed',

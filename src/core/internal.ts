@@ -7,8 +7,9 @@ import { boundedText } from './http';
 import { panelAllows, type PanelPrincipal } from './panel';
 import type { KyselyStore } from './store';
 import type { Config } from './config/schema';
-import type { BeforeMessageDelete, MessageDeletion } from './extensions';
 import type { MessageRow } from './store/messages';
+import { enqueueJob, newJobId } from './jobs';
+import { selection, type EraseScope } from './erase';
 
 const PAGE_BYTES = 1024 * 1024 - 8192; // 1 MiB page including the manifest envelope
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
@@ -18,17 +19,18 @@ function integer(value: string | null, fallback: number, max: number): number {
   if (!/^\d{1,16}$/.test(value) || !Number.isSafeInteger(+value) || +value > max) fail(400);
   return +value;
 }
-export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal, beforeDelete?: BeforeMessageDelete): Promise<Response> {
+const narrow = (own: '*' | string[], other: '*' | string[]) => own === '*' ? other : other === '*' ? own : own.filter(v => other.includes(v));
+const covers = (own: '*' | string[], other: '*' | string[]) => own === '*' || (other !== '*' && other.every(v => own.includes(v)));
+const names = (v: unknown) => v === '*' || (Array.isArray(v) && v.length <= 100 && v.every(n => typeof n === 'string' && n.length <= 128));
+export async function internalFetch(req: Request, env: object, store: KyselyStore, cfg: Config, panel: PanelPrincipal): Promise<Response> {
   const now = Date.now(), url = new URL(req.url), path = url.pathname.slice('/internal/v2'.length), q = url.searchParams;
   const run = async <T>(query: RawBuilder<T>) => (await query.execute(store.db)).rows;
-  const selection = (column: string, values: '*' | string[]) => values === '*' ? sql`1=1` :
-    values.length ? sql`${sql.ref(column)} in (${sql.join(values)})` : sql`0=1`;
   const scope = sql`(${selection('m.brand', panel.brands)}) and (${selection('m.template', panel.templates)})`;
   const live = sql`m.meta_expires_at > ${now} and m.created_at > ${now - cfg.logging.ceilings.metaDays * 86400000}`;
   const contentLive = sql`(m.content_expires_at is null or m.content_expires_at > ${now}) and m.created_at > ${now - cfg.logging.ceilings.contentDays * 86400000}`;
   const requireRole = (role: 'viewer' | 'operator' | 'admin', step = false) => { if (!panelAllows(panel, role, step, now)) fail(403); };
-  const audit = async (action: string, target?: string, details?: unknown) => {
-    try { return await appendAudit(store, { at: now, actor: 'panel:' + panel.actor, action, target, details }); }
+  const audit = async (action: string, target?: string, details?: unknown, writes?: Parameters<typeof appendAudit>[2]) => {
+    try { return await appendAudit(store, { at: now, actor: 'panel:' + panel.actor, action, target, details }, writes); }
     catch { return fail(503); }
   };
   const body = async () => {
@@ -60,6 +62,13 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       const list = grouped.get(message_id); if (list) list.push(row); else grouped.set(message_id, [row]);
     }
     return grouped;
+  };
+  // The job row commits in the audit entry's batch and only if that entry was written.
+  const erase = async (scope: EraseScope, details: Record<string, unknown>) => {
+    const job = newJobId();
+    await audit('privacy.erase', 'subject:' + scope.indices[0].index.slice(0, 8), { ...details, job }, row =>
+      [enqueueJob(store, 'erase', scope, now, sql`exists(select 1 from audit where seq=${row.seq} and hash=${row.hash})`, job).query]);
+    return response({ jobId: job }, 202);
   };
   try {
     requireRole('viewer');
@@ -118,72 +127,71 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       }
       await audit('log.read', id); return response(await detail(m));
     }
+    if (path === '/subjects/erase-index' && req.method === 'POST') {
+      requireRole('admin', true);
+      const { tombstone: t, ...rest } = await body();
+      if (Object.keys(rest).length || !t || typeof t !== 'object' || Array.isArray(t)) return fail(400);
+      const { kid, index, at, brands, templates, ...extra } = t as Record<string, unknown>;
+      if (Object.keys(extra).length || typeof kid !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(kid) || typeof index !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(index) ||
+        !Number.isSafeInteger(at) || (at as number) < 0 || (at as number) > now || !names(brands) || !names(templates)) return fail(400);
+      // A restored erasure keeps its time bound and never widens past the caller's own scope.
+      return await erase({ indices: [{ kid, index }], brands: narrow(panel.brands, brands as '*' | string[]), templates: narrow(panel.templates, templates as '*' | string[]), at: at as number }, { source: 'tombstone' });
+    }
+    const job = /^\/jobs\/(job_[a-f0-9]{32})$/.exec(path)?.[1];
+    if (job && req.method === 'GET') {
+      requireRole('admin');
+      const row = (await run<{ state: string; cursor: string | null; payload: string; result: string | null; created_at: number; done_at: number | null }>(sql`select state,cursor,payload,result,created_at,done_at
+        from jobs where id=${job} and kind='erase'`))[0];
+      const fixed = row && JSON.parse(row.payload) as EraseScope;
+      if (!row || !covers(panel.brands, fixed.brands) || !covers(panel.templates, fixed.templates)) return fail(404);
+      const { phase = 1, count = 0 } = row.cursor ? JSON.parse(row.cursor) : {};
+      return response({ id: job, kind: 'erase', state: row.state, progress: { phase, count }, result: row.result === null ? null : JSON.parse(row.result), created_at: row.created_at, done_at: row.done_at });
+    }
     if ((path === '/subjects/export' || path === '/subjects/erase') && req.method === 'POST') {
       requireRole('admin', true);
       const input = await body();
       if (typeof input.email !== 'string' || input.email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) return fail(400);
-      if (path.endsWith('erase') && (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500)) return fail(400);
-      const exporting = path.endsWith('export');
+      const indices = await blindIndexes(input.email, parseIndexKeys(Reflect.get(env, 'INDEX_KEYS')));
+      if (path.endsWith('erase')) {
+        if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500) return fail(400);
+        return await erase({ indices: indices.map(({ kid, index }) => ({ kid, index })), brands: panel.brands, templates: panel.templates, at: now }, {});
+      }
       const limit = input.limit === undefined ? 25 : input.limit;
       let after = '';
-      if (exporting) {
-        if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) return fail(400);
-        if (input.cursor !== undefined && input.cursor !== null) {
-          try {
-            if (typeof input.cursor !== 'string' || input.cursor.length > 256) return fail(400);
-            after = atob(input.cursor);
-            if (!/^[A-Za-z0-9_-]{1,128}$/.test(after)) return fail(400);
-          } catch { return fail(400); }
-        }
+      if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) return fail(400);
+      if (input.cursor !== undefined && input.cursor !== null) {
+        try {
+          if (typeof input.cursor !== 'string' || input.cursor.length > 256) return fail(400);
+          after = atob(input.cursor);
+          if (!/^[A-Za-z0-9_-]{1,128}$/.test(after)) return fail(400);
+        } catch { return fail(400); }
       }
-      const indices = await blindIndexes(input.email, parseIndexKeys(Reflect.get(env, 'INDEX_KEYS')));
       const subject = sql`exists(select 1 from subjects s where s.message_id=m.id and (${sql.join(indices.map(i => sql`(s.idx_kid=${i.kid} and s.addr_idx=${i.index})`), sql` or `)}))`;
-      const matched = (await run<{ count: number }>(sql`select count(*) count from messages m where ${scope} and ${subject} ${path.endsWith('export') ? sql`and ${live}` : sql``}`))[0].count;
-      await audit(path.endsWith('erase') ? 'privacy.erase' : 'privacy.export', 'subject:' + indices[0].index.slice(0, 8), { count: matched });
-      if (path.endsWith('export')) {
-        const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} and m.id > ${after} order by m.id limit ${Number(limit) + 1}`);
-        const more = rows.length > Number(limit); rows.splice(Number(limit));
-        const blobs = (table: 'contents' | 'replays') => pageRows<{ message_id: string; sealed: string; expires_at: number }>(ids => sql`select b.message_id,b.sealed,b.expires_at
-          from ${sql.table(table)} b join messages m on m.id=b.message_id where b.message_id in (${ids}) and ${contentLive} and b.expires_at > ${now}`, rows);
-        const recipients = await pageRows<{ message_id: string }>(ids => sql`select message_id,pos,role,addr_sealed,addr_hint,status,last_event_at from recipients
-          where message_id in (${ids}) order by message_id,pos`, rows);
-        const events = await pageRows<{ message_id: string; id: string; evidence_sealed: string | null }>(ids => sql`select message_id,id,recipient_pos,type,occurred_at,received_at,source,auth,summary,evidence_sealed
-          from events where message_id in (${ids}) order by message_id,occurred_at,id`, rows);
-        const contents = await blobs('contents'), replays = await blobs('replays');
-        const messages = [], encoder = new TextEncoder();
-        let bytes = 0, truncated = false;
-        for (const m of rows) {
-          const own = events.get(m.id) ?? [];
-          const message = { ...describe(m, recipients.get(m.id) ?? [], own.map(({ evidence_sealed, ...event }) => event)),
-            content: contents.get(m.id)?.[0] ?? null, replay: replays.get(m.id)?.[0] ?? null, ref_sealed: m.ref_sealed,
-            evidence: { events: own.filter(e => e.evidence_sealed !== null).map(e => ({ id: e.id, evidence_sealed: e.evidence_sealed })), provider_response_sealed: m.provider_response_sealed ?? null } };
-          const size = encoder.encode(JSON.stringify(message)).length;
-          // A page stops before the byte budget is exceeded; the first message is always included so the cursor advances.
-          if (messages.length && bytes + size > PAGE_BYTES) { truncated = true; break; }
-          messages.push(message); bytes += size;
-        }
-        const cursor = more || truncated ? btoa(messages.at(-1)!.id) : null;
-        return response({ messages, cursor, manifest: { range: { first: messages[0]?.id ?? null, last: messages.at(-1)?.id ?? null, count: messages.length }, bytes, cursor, complete: cursor === null } });
+      const matched = (await run<{ count: number }>(sql`select count(*) count from messages m where ${scope} and ${subject} and ${live}`))[0].count;
+      await audit('privacy.export', 'subject:' + indices[0].index.slice(0, 8), { count: matched });
+      const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} and m.id > ${after} order by m.id limit ${Number(limit) + 1}`);
+      const more = rows.length > Number(limit); rows.splice(Number(limit));
+      const blobs = (table: 'contents' | 'replays') => pageRows<{ message_id: string; sealed: string; expires_at: number }>(ids => sql`select b.message_id,b.sealed,b.expires_at
+        from ${sql.table(table)} b join messages m on m.id=b.message_id where b.message_id in (${ids}) and ${contentLive} and b.expires_at > ${now}`, rows);
+      const recipients = await pageRows<{ message_id: string }>(ids => sql`select message_id,pos,role,addr_sealed,addr_hint,status,last_event_at from recipients
+        where message_id in (${ids}) order by message_id,pos`, rows);
+      const events = await pageRows<{ message_id: string; id: string; evidence_sealed: string | null }>(ids => sql`select message_id,id,recipient_pos,type,occurred_at,received_at,source,auth,summary,evidence_sealed
+        from events where message_id in (${ids}) order by message_id,occurred_at,id`, rows);
+      const contents = await blobs('contents'), replays = await blobs('replays');
+      const messages = [], encoder = new TextEncoder();
+      let bytes = 0, truncated = false;
+      for (const m of rows) {
+        const own = events.get(m.id) ?? [];
+        const message = { ...describe(m, recipients.get(m.id) ?? [], own.map(({ evidence_sealed, ...event }) => event)),
+          content: contents.get(m.id)?.[0] ?? null, replay: replays.get(m.id)?.[0] ?? null, ref_sealed: m.ref_sealed,
+          evidence: { events: own.filter(e => e.evidence_sealed !== null).map(e => ({ id: e.id, evidence_sealed: e.evidence_sealed })), provider_response_sealed: m.provider_response_sealed ?? null } };
+        const size = encoder.encode(JSON.stringify(message)).length;
+        // A page stops before the byte budget is exceeded; the first message is always included so the cursor advances.
+        if (messages.length && bytes + size > PAGE_BYTES) { truncated = true; break; }
+        messages.push(message); bytes += size;
       }
-      const batches: string[][] = [];
-      let cursor = '';
-      while (true) {
-        const messages = await run<MessageDeletion['messages'][number]>(sql`select m.id,m.brand,m.template from messages m
-          where ${scope} and ${subject} and m.id > ${cursor} order by m.id limit 50`);
-        if (!messages.length) break;
-        await beforeDelete?.({ reason: 'erase', messages });
-        batches.push(messages.map(m => m.id));
-        cursor = messages.at(-1)!.id;
-      }
-      let count = 0;
-      for (const selected of batches) {
-        const ids = sql`select m.id from messages m where m.id in (${sql.join(selected)}) and ${scope}`;
-        const queries = ['recipients', 'events', 'contents', 'replays', 'subjects'].map(t => sql`delete from ${sql.table(t)} where message_id in (${ids})`);
-        queries.push(sql`delete from messages where id in (${ids})`);
-        const changes = await store.batch(queries.map(query => query.compile(store.db)));
-        count += changes.at(-1)!;
-      }
-      return response({ count });
+      const cursor = more || truncated ? btoa(messages.at(-1)!.id) : null;
+      return response({ messages, cursor, manifest: { range: { first: messages[0]?.id ?? null, last: messages.at(-1)?.id ?? null, count: messages.length }, bytes, cursor, complete: cursor === null } });
     }
     if (['/audit', '/audit/head'].includes(path)) {
       if (panel.brands !== '*' || panel.templates !== '*') return fail(403);

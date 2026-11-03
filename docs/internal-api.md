@@ -86,7 +86,8 @@ webhook routes and behavior belong to the extension.
 | Content | operator | yes | `content.read` |
 | Evidence | operator | yes | `evidence.export` |
 | Resend source | operator | yes | `resend.source` |
-| Subject export / erase | admin | yes | `privacy.export` / `privacy.erase` |
+| Subject export / erase / tombstone replay | admin | yes | `privacy.export` / `privacy.erase` |
+| Erase job status | admin | no | none |
 | Audit rows / head | viewer | no | none |
 | Panel login / logout / integrity alarm append | viewer | no | the appended entry |
 | Panel role / user changes append | admin | yes | the appended entry |
@@ -125,15 +126,30 @@ verification or disclosing another selection's entries.
   Each response buffers only one page; clients must collect all pages to complete
   an export. This is a live view: concurrent erasure/expiry may remove records and
   new messages may appear on later pages.
-- `POST /internal/v2/subjects/erase` `{email, reason}`: `{count}`. Reason is required
-  (10–500 characters) but not persisted. Audit keeps only matched count and an
-  eight-character index prefix. Deletes include expired messages and explicitly
-  remove every child table in atomic batches of at most 50 messages. Batch failure
-  returns 503; earlier completed batches remain erased, so retry is safe.
-  [Extension cleanup](extension-privacy.md) completes for all selected messages
-  before core deletion begins; a cleanup error or deadline returns 503 without
-  deleting core messages or children. Late SES
-  events and SMTP completion cannot recreate deleted messages or children. Backups expire independently.
+- `POST /internal/v2/subjects/erase` `{email, reason}`: `202 {jobId}`. Reason is required
+  (10–500 characters) but not persisted. One batch writes the `privacy.erase` audit
+  entry (eight-character index prefix, `{job}`) and an `erase` job with a fixed scope:
+  the subject's indexes under every active key, the client's brand/template
+  selections and `created_at` up to the request time. Messages that arrive later stay.
+  Phase 1 hides each portion of up to 500 messages at once (metadata and archive
+  expiry set to 0, so lists, details and export drop them) and deletes content and
+  replay archives; phase 2 deletes every child table and the messages. Each portion
+  commits with the job cursor in one atomic batch: an interrupted invocation keeps
+  its finished portions and the job engine resumes from the cursor.
+  [Extension cleanup](extension-privacy.md) runs for each phase 1 portion before
+  it is hidden; a cleanup error retries the portion later. The finished job result
+  is `{count, tombstones}`, one tombstone `{kid, index, at, brands, templates}` per
+  index key, and `privacy.erase.done` `{job, count}` is audited once. Late SES events
+  and SMTP completion cannot recreate deleted messages or children. Backups expire
+  independently. A repeated request with the same assertion nonce returns 409.
+- `GET /internal/v2/jobs/:id` (admin): `{id, kind, state, progress: {phase, count},
+  result, created_at, done_at}` for erase jobs whose brand/template scope the client
+  covers; otherwise 404. `state` is `pending`, `running`, `done` or `dead`.
+- `POST /internal/v2/subjects/erase-index` `{tombstone}` (admin, step-up): replays a
+  stored tombstone after a restore as a new erase job (`202 {jobId}`, audit
+  `privacy.erase` with `source: tombstone`). The scope is the tombstone's brands and
+  templates narrowed to the client's selections, and only messages created up to
+  the tombstone's `at`.
 - `GET /internal/v2/audit?after_seq&limit`: `{rows}`, ascending seq, limit 1–500
   (default 100), after_seq nonnegative (default 0).
 - `GET /internal/v2/audit/head`: `{seq, hash}`, genesis `{seq:0, hash:64 zeros}`.

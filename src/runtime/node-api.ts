@@ -114,7 +114,7 @@ async function main() {
     const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource, keys: extensions.keys });
     const stopMaintenance = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
     const notifier = env.NTFY_URL ? createNtfyNotifier(env) : undefined;
-    const stopJobs = startJobClock(trigger => runJobs(store, trigger, { notifier }));
+    const stopJobs = startJobClock(trigger => runJobs(store, trigger, { notifier, beforeDelete: extensions.beforeDelete }));
     const stop = () => Promise.all([stopMaintenance(), stopJobs()]);
     const server = await startServer((req, env, ctx) => app.fetch(req, env, ctx as ExecutionContext), env)
       .catch(async error => { await stop(); throw error; });

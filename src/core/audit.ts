@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from './crypto/index.ts';
 import { auditHead, insertAudit, serializeAudit } from './store/audit.ts';
 import type { KyselyStore } from './store';
+import type { CompiledQuery } from 'kysely';
 
 export interface AuditEntry {
   at: number; actor: string; action: string; target?: string | null; details?: unknown;
@@ -16,7 +17,8 @@ function digest(row: Omit<AuditRow, 'hash'>): string {
   return createHash('sha256').update([row.prev_hash, row.seq, row.at, row.actor, row.action,
     row.target ?? '', row.details ?? ''].join('\n')).digest('hex');
 }
-export function appendAudit(store: KyselyStore, entry: AuditEntry): Promise<AuditRow> {
+/** `writes` commit in the audit row's batch; guard them on the row (`seq`, `hash`), because a lost append race still runs the batch. */
+export function appendAudit(store: KyselyStore, entry: AuditEntry, writes?: (row: AuditRow) => CompiledQuery[]): Promise<AuditRow> {
   return serializeAudit(store, async () => {
     const details = entry.details === undefined ? null : canonicalJson(entry.details);
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -24,7 +26,7 @@ export function appendAudit(store: KyselyStore, entry: AuditEntry): Promise<Audi
       const row: AuditRow = { seq: (head?.seq ?? 0) + 1, at: entry.at, actor: entry.actor,
         action: entry.action, target: entry.target ?? null, details, prev_hash: head?.hash ?? AUDIT_GENESIS, hash: '' };
       row.hash = digest(row);
-      try { if (await insertAudit(store, row)) return row; }
+      try { if (await insertAudit(store, row, writes?.(row))) return row; }
       catch (error) {
         if (!(error instanceof Error) || !/UNIQUE constraint failed: audit.seq|PRIMARY KEY.*audit/i.test(error.message)) throw error;
       }

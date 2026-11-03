@@ -17,6 +17,6 @@ export async function loadExtensions(config: Config, store: KyselyStore,
     if (!pathname.startsWith('/internal/v2/') && !pathname.startsWith('/internal/ext/')) return new Response(null, { status: 404 });
     const panel = await authorizePanel(req, env, config, { audience: String(Reflect.get(env, 'PANEL_AUDIENCE') ?? ''), store, keys: host.keys });
     if (panel instanceof Response) return panel;
-    return pathname.startsWith('/internal/v2/') ? internalFetch(req, env, store, config, panel, host.beforeDelete) : host.route(req, env, panel);
+    return pathname.startsWith('/internal/v2/') ? internalFetch(req, env, store, config, panel) : host.route(req, env, panel);
   } };
 }

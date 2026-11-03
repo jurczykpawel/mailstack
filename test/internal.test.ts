@@ -21,6 +21,7 @@ import { recordEvents } from '../src/core/store/events';
 import { handleSesEvent } from '../src/events/ses';
 import { notification, options as snsOptions, request as snsRequest } from './sns-fixture';
 import { createApp } from '../src/index';
+import { runJobs } from '../src/core/jobs';
 import type { Env } from '../src/types';
 import example from '../config/mailstack.example.json';
 
@@ -42,6 +43,16 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     for (const [k, v] of Object.entries(options.headers ?? {})) if (v !== undefined) req.headers.set(k, v);
     return await runtime.fetch(req, env) as Omit<Response, 'json'> & { json(): Promise<Payload> };
   };
+  // Erasure is accepted as a job (202); one drain finishes these small sets, so the job result is the outcome.
+  const erase = async (claimsOverride: Partial<PanelClaims> = {}) => {
+    const response = await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' }, claims: claimsOverride });
+    expect(response.status).toBe(202);
+    const { jobId } = await response.json() as unknown as { jobId: string };
+    await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete });
+    const [job] = (await sql<{ state: string; result: string }>`select state,result from jobs where id=${jobId}`.execute(store.db)).rows;
+    expect(job.state).toBe('done');
+    return JSON.parse(job.result) as { count: number };
+  };
   async function seed(id = 'msg_1', brand = 'acme', template = 'notice', role = 'recipient', idxKey = indices[0], expiry = now + 1000000) {
     const idx = await blindIndex('one@example.com', idxKey), ref = await refIndex('order-1', idxKey);
     await sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,sent_at,meta_expires_at,content_expires_at,provider_response_sealed,subject_sealed,ref_idx,ref_sealed,replay_mac,request_mac)
@@ -58,7 +69,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     await store.migrate();
   });
   beforeEach(async () => {
-    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages']) await sql`delete from ${sql.table(table)}`.execute(store.db);
+    for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'jobs']) await sql`delete from ${sql.table(table)}`.execute(store.db);
     cfg = parseConfig({ ...example, clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
     const [keyed, importer] = keysOnly(cfg);
     runtime = await loadExtensions(keyed, store, importer);
@@ -212,7 +223,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages.map((m: { id: string }) => m.id)).toEqual(['allowed']);
     expect((await call('/audit')).status).toBe(403); expect((await call('/audit/head')).status).toBe(403);
     expect((await call('/audit', { body: { action: 'panel.login' } })).status).toBe(403);
-    expect((await (await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } })).json()).count).toBe(1);
+    expect((await erase()).count).toBe(1);
     expect((await rows('messages')).map(r => r.id).sort()).toEqual(['other-brand', 'other-template']);
   });
   it('refuses missing records and expired metadata and blobs before purge', async () => {
@@ -270,13 +281,12 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     const body = path.startsWith('/subjects') ? { email: 'one@example.com', reason: 'Requested by subject' } : path === '/audit' ? { action: 'panel.login' } : undefined;
     const response = await call(path, { body });
     expect(response.status).toBe(503); expect(await response.text()).not.toContain('sealed-');
-    expect(await rows('messages')).toHaveLength(1);
+    expect(await rows('messages')).toHaveLength(1); expect(await rows('jobs')).toEqual([]);
   });
   it('exports all subject roles and erases children in bounded atomic batches', async () => {
     for (const [i, role] of ['recipient', 'reply_to', 'submitter'].entries()) await seed('msg_' + i, 'acme', 'notice', role, indices[i % 2]);
     expect((await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json()).messages).toHaveLength(3);
-    const response = await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } });
-    expect(await response.json()).toEqual({ count: 3 });
+    expect(await erase()).toMatchObject({ count: 3 });
     for (const table of ['messages', 'recipients', 'subjects', 'contents', 'replays', 'events']) expect(await rows(table)).toEqual([]);
     expect(await recordEvents(store, [{ id: 'late', message_id: 'msg_0', recipient_pos: 0, source: 'ses-sns', source_event_id: 'late', type: 'delivered', occurred_at: now, received_at: now, auth: 'sns-sig-v2', summary: 'ok', evidence_sealed: 'sealed' }])).toBe(false);
     expect(await rows('events')).toEqual([]);
@@ -288,7 +298,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
   it.each(['accepted', 'rejected'] as const)('completes %s SMTP results after subject erasure', async outcome => {
     await seed();
     await sql`update messages set status='sending' where id='msg_1'`.execute(store.db);
-    expect(await (await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } })).json()).toEqual({ count: 1 });
+    expect(await erase()).toMatchObject({ count: 1 });
     await store.markSent('msg_1', { providerMessageId: 'smtp-1', providerResponseSealed: 'sealed-response', sentAt: now,
       smtp: { accepted: outcome === 'accepted' ? [0] : [], rejected: outcome === 'rejected' ? [0] : [], evidence: 'sealed-smtp' } });
     for (const table of ['messages', 'recipients', 'subjects', 'contents', 'replays', 'events']) expect(await rows(table)).toEqual([]);
@@ -329,10 +339,11 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     for (const body of [{ limit: 0 }, { limit: 51 }, { limit: 1.5 }, { cursor: 1 }, { cursor: 'invalid!' }]) {
       expect((await call('/subjects/export', { body: { email: 'one@example.com', ...body } })).status).toBe(400);
     }
-    const response = await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } });
-    expect(response.status).toBe(200); expect(await response.json()).toEqual({ count: 105 });
+    expect(await erase()).toMatchObject({ count: 105 });
     for (const table of ['messages', 'subjects', 'contents', 'replays']) expect(await rows(table)).toEqual([]);
-    expect(JSON.parse(String((await rows('audit')).find(row => row.action === 'privacy.erase')!.details))).toEqual({ count: 105 });
+    const [job] = await rows('jobs');
+    expect(JSON.parse(String((await rows('audit')).find(row => row.action === 'privacy.erase')!.details))).toEqual({ job: job.id });
+    expect(JSON.parse(String((await rows('audit')).find(row => row.action === 'privacy.erase.done')!.details))).toEqual({ job: job.id, count: 105 });
   });
   async function bulk(count: number, evidence = 'sealed-evidence', prefix = 'page_') {
     const idx = await blindIndex('one@example.com', indices[0]);
@@ -432,7 +443,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     cfg.clients![0].brands = []; cfg.clients![0].templates = [];
     expect((await (await call()).json()).messages).toEqual([]);
     expect((await call('/messages/empty')).status).toBe(404);
-    expect((await (await call('/subjects/erase', { body: { email: 'one@example.com', reason: 'Requested by subject' } })).json()).count).toBe(0);
+    expect((await erase()).count).toBe(0);
     expect(await rows('messages')).toHaveLength(1);
   });
   it('returns an ordered audit suffix, head and bounded panel-originated entries', async () => {
