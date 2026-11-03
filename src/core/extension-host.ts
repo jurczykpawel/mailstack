@@ -54,7 +54,7 @@ export type ExtensionHost = Awaited<ReturnType<typeof createExtensionHost>>;
 export async function createExtensionHost(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }>,
   options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean } = {}) {
-  const extensions: Extension[] = [], routes = new Map<string, Route>(), contexts = new Map<Extension, ExtensionContext>();
+  const extensions: Extension[] = [], consumers: Extension[] = [], routes = new Map<string, Route>(), contexts = new Map<Extension, ExtensionContext>();
   const features: ExtensionFeature[] = [];
   const ctx: Omit<ExtensionContext, 'db'> = { now: Date.now,
     appendAudit: entry => appendAudit(store, entry), config: { brands: Object.keys(config.brands), logging: structuredClone(config.logging) } };
@@ -122,6 +122,8 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
         console.error(`mailstack: $.extensions.${index}.module: extension ${state} not ready`);
         waiting.set(extension.name, { index: features.length, ready });
       }
+      // Extensions waiting for schema or reconcile still consume: their events wait in `domain_events` (A 3.3.3).
+      if (extension.onEvent) consumers.push(extension);
       features.push(state === 'ready' ? ready : { module: ready.module, state: 'unavailable', reason: state });
     } catch { unavailable(index); }
   }
@@ -137,11 +139,13 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
   };
+  const events = consumers.length ? { ref: consumers.some(e => e.eventRef === true) } : undefined;
+  const durableEvents = async () => events;
   const { delivery } = options;
-  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, verifyTurnstile, verifyAltcha });
+  const service = (env: Env) => createResendService(config, store, env, { ...delivery!, keys, store, now: () => new Date(), logging: config.logging, notifier: env.NTFY_URL ? createNtfyNotifier(env) : undefined, emitEvent, durableEvents, verifyTurnstile, verifyAltcha });
   const enabled = delivery && extensions.some(e => e.capabilities?.includes('resend'));
   const resendSource: SendDeps['resendSource'] = enabled ? (env, client, id, key, payload, ref, attachments, brandId) => service(env).sendSource(client, id, key, payload, ref, attachments, brandId) : undefined;
-  return { emitEvent, resendSource, keys, beforeDelete, features: () => structuredClone(features),
+  return { emitEvent, durableEvents, resendSource, keys, beforeDelete, features: () => structuredClone(features),
     runRetention: (now: number) => runRetention(store, now, config, beforeDelete),
     /** Dispatches `/internal/ext/*` after the caller's panel gate; unknown routes are 404. */
     async route(req: Request, env: object, panel: PanelPrincipal): Promise<Response> {

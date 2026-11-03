@@ -111,7 +111,7 @@ async function main() {
   try {
     await store.migrate();
     const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider });
-    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, resendSource: extensions.resendSource, keys: extensions.keys });
+    const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, durableEvents: extensions.durableEvents, resendSource: extensions.resendSource, keys: extensions.keys });
     const stopMaintenance = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
     const notifier = env.NTFY_URL ? createNtfyNotifier(env) : undefined;
     const stopJobs = startJobClock(trigger => runJobs(store, trigger, { notifier, beforeDelete: extensions.beforeDelete }));

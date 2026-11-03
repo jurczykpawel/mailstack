@@ -1,5 +1,8 @@
 import { sql } from 'kysely';
+import type { CompiledQuery, Kysely } from 'kysely';
+import type { DomainEvent } from '../extensions';
 import type { KyselyStore } from './index';
+import type { Database } from './messages';
 
 export interface Message { id: string; brand: string; provider_account: string | null; provider_message_id: string | null }
 export interface Recipient { pos: number; addr_idx: string; idx_kid: string; status: string }
@@ -17,6 +20,19 @@ export function eventId(now: number): string {
   for (const byte of crypto.getRandomValues(new Uint8Array(16))) random += alphabet[byte & 31];
   return 'evt_' + time + random;
 }
+/** Durable events for one delivery transition; absent when no extension consumes events (no extra writes). */
+export interface EventIntent { at: number; refDigest: string | null; types: DomainEvent['type'][] }
+export type Transition = 'sent' | 'send_failed' | 'unknown';
+// States from which a transition may record its event (checked before the status update in the same batch);
+// the unique cause makes a repeated write a no-op, and a deleted message yields no row.
+const allowedFrom = { sent: sql`status <> 'send_failed'`, send_failed: sql`status in ('sending','unknown','send_failed')`,
+  unknown: sql`status in ('sending','unknown')` };
+export function transitionEvents(db: Kysely<Database>, messageId: string, status: Transition, intent?: EventIntent): CompiledQuery[] {
+  return (intent?.types ?? []).map(type => sql`insert into domain_events(id,cause,type,message_id,brand,template,status,at,ref_digest)
+    select ${eventId(intent!.at)},${`msg:${messageId}:${type.replace('message.', '')}`},${type},id,brand,template,${status},${intent!.at},${intent!.refDigest}
+    from messages where id=${messageId} and ${allowedFrom[status]}
+    on conflict(cause) do nothing`.compile(db));
+}
 export async function findMessage(store: KyselyStore, id: string | undefined, account: string, providerId: string): Promise<Message | undefined> {
   const db = store.db;
   const result = id ? await sql<Message>`select id,brand,provider_account,provider_message_id from messages where id=${id}`.execute(db)
@@ -26,7 +42,8 @@ export async function findMessage(store: KyselyStore, id: string | undefined, ac
 export async function recipients(store: KyselyStore, id: string): Promise<Recipient[]> {
   return (await sql<Recipient>`select pos,addr_idx,idx_kid,status from recipients where message_id=${id} order by pos`.execute(store.db)).rows;
 }
-export async function recordEvents(store: KyselyStore, rows: EventRow[]): Promise<boolean> {
+/** Records provider events; `domain` adds one durable event, written only when this batch inserted a new provider row. */
+export async function recordEvents(store: KyselyStore, rows: EventRow[], domain?: { type: DomainEvent['type']; at: number }): Promise<boolean> {
   const id = rows[0].message_id;
   const statements = rows.map(row => sql`insert into events (${sql.join(Object.keys(row).map(k => sql.ref(k)))})
     select ${sql.join(Object.values(row))} where exists(select 1 from messages where id=${id})
@@ -41,6 +58,10 @@ export async function recordEvents(store: KyselyStore, rows: EventRow[]): Promis
     status=coalesce((select status from recipients where message_id=${id} order by ${rank('status')} desc,pos limit 1),status),
     complained=case when exists(select 1 from events where message_id=${id} and type='complaint') then 1 else complained end
     where id=${id}`.compile(store.db));
+  if (domain) statements.push(sql`insert into domain_events(id,cause,type,message_id,brand,template,status,at,ref_digest)
+    select ${eventId(domain.at)},${'sns:' + rows[0].source_event_id},${domain.type},id,brand,template,status,${domain.at},null
+    from messages where id=${id} and exists(select 1 from events where id in (select value from json_each(${JSON.stringify(rows.map(row => row.id))})))
+    on conflict(cause) do nothing`.compile(store.db));
   const results = await store.batch(statements);
   return results.slice(0, rows.length).some(changes => changes === 1);
 }

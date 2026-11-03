@@ -41,6 +41,8 @@ export interface Extension {
   migrate?(db: ExtensionDatabase): Promise<void>;
   onBeforeDelete?(selection: MessageDeletion, ctx: ExtensionContext): void | Promise<void>;
   onEvent?(event: DomainEvent, ctx: ExtensionContext): void | Promise<void>;
+  /** The consumer forwards `ref` digests: durable events then store SHA-256 of `ref` (otherwise the column stays empty). */
+  eventRef?: boolean;
   routes?(app: ExtensionApp): void | Promise<void>;
   /** Supplies API keys beyond the core's single full key; receives the validated core configuration. */
   keys?(config: Config): KeyProvider | Promise<KeyProvider>;

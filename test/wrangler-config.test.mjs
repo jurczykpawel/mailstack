@@ -9,6 +9,7 @@ it('passes the optional SES configuration set through generated vars', () => {
     expect(readFileSync('wrangler.toml', 'utf8')).toContain('SES_CONFIGURATION_SET = "mail-events"');
     expect(readFileSync('.wrangler/migrations/0002_ses_status.sql', 'utf8')).toContain('CREATE TABLE IF NOT EXISTS ses_status');
     expect(readFileSync('.wrangler/migrations/0001_initial.sql', 'utf8')).not.toContain('ses_status');
+    expect(readFileSync('.wrangler/migrations/0006_domain_events.sql', 'utf8')).toMatch(/cause +TEXT NOT NULL UNIQUE[\s\S]*ext_event_cursor[\s\S]*ext_event_gaps/);
     execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, SES_CONFIGURATION_SET: '' }, stdio: 'pipe' });
     expect(readFileSync('wrangler.toml', 'utf8')).toContain('SES_CONFIGURATION_SET = ""');
   } finally { writeFileSync('wrangler.toml', previous); }

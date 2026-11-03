@@ -98,7 +98,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`send outcomes: ${drive
     const res = await send();
     expect(res.status).toBe(502);
     expect(await res.json()).toMatchObject({ success: false, message: 'send failed', code: 'send_failed' });
-    expect(status).toHaveBeenCalledExactlyOnceWith((await row()).id, 'send_failed');
+    expect(status).toHaveBeenCalledExactlyOnceWith((await row()).id, 'send_failed', undefined);
   });
 
   it('retains an unknown network outcome and does not send it again', async () => {

@@ -28,6 +28,7 @@ const mapping: Record<string, [string, string, string?]> = {
 };
 export interface EventDeps {
   emitEvent?: import("../core/extensions").EmitEvent;
+  durableEvents?: import('../types').SendDeps['durableEvents'];
   notifier?: Notifier; logging?: Config['logging']; panelUrl?: string;
   waitUntil?: (task: Promise<unknown>) => void;
   options?: SesOptions; store?: KyselyStore; contentKeys: ContentKey[]; indexKeys: IndexKey[];
@@ -94,10 +95,11 @@ export async function handleSesEvent(req: Request, deps: EventDeps): Promise<Res
     const rows = positions.map(pos => ({ id: eventId(now), message_id: message.id, recipient_pos: pos, source: 'ses-sns',
       source_event_id: `${body.MessageId}:${pos ?? 'msg'}`, type, occurred_at: Date.parse(data?.timestamp ?? body.Timestamp),
       received_at: now, auth: body.SignatureVersion === '2' ? 'sns-sig-v2' : 'sns-sig-v1', summary, evidence_sealed: evidence }));
-    const inserted = await recordEvents(deps.store, rows);
+    const types = { Delivery: 'message.delivered', Bounce: 'message.bounced', Complaint: 'message.complained', Reject: 'message.send_failed', 'Rendering Failure': 'message.send_failed' } as const;
+    const domainType = types[event.eventType as keyof typeof types];
+    const durable = domainType && await deps.durableEvents?.().catch(() => undefined);
+    const inserted = await recordEvents(deps.store, rows, durable ? { type: domainType, at: now } : undefined);
     if (inserted) {
-      const types = { Delivery: 'message.delivered', Bounce: 'message.bounced', Complaint: 'message.complained', Reject: 'message.send_failed', 'Rendering Failure': 'message.send_failed' } as const;
-      const domainType = types[event.eventType as keyof typeof types];
       if (domainType && deps.emitEvent) {
         const task = Promise.resolve().then(async () => {
           const projected = await deps.store!.db.selectFrom('messages').select(['template', 'status']).where('id', '=', message.id).executeTakeFirst();

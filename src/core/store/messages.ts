@@ -1,5 +1,6 @@
 import { sql } from 'kysely';
-import { eventId } from './events.ts';
+import { eventId, transitionEvents } from './events.ts';
+import type { EventIntent } from './events.ts';
 import type { CompiledQuery, Generated, Insertable, Kysely, Selectable } from 'kysely';
 
 export type MessageStatus = 'sending' | 'sent' | 'send_failed' | 'unknown' | 'accepted' | 'delay' | 'delivered' | 'bounce_permanent' | 'bounce_transient' | 'bounce_undetermined' | 'reject' | 'render_failure';
@@ -38,9 +39,10 @@ export interface MessageStore {
   claimIdempotency(clientId: string, keyHash: string, now: number, recorded: boolean): Promise<boolean>;
   clearIdempotency(id: string, keyHash: string): Promise<void>;
   insertMessage(intent: MessageIntent): Promise<void>;
-  markSent(id: string, update: SentUpdate): Promise<void>;
-  markFailed(id: string, providerResponseSealed: string): Promise<void>;
-  setStatus(id: string, status: MessageStatus): Promise<void>;
+  /** `events` are written in the same atomic batch as the status change. */
+  markSent(id: string, update: SentUpdate, events?: EventIntent): Promise<void>;
+  markFailed(id: string, providerResponseSealed: string, events?: EventIntent): Promise<void>;
+  setStatus(id: string, status: MessageStatus, events?: EventIntent): Promise<void>;
   findByIdempotency(clientId: string, keyHash: string): Promise<MessageRow | undefined>;
 }
 export type AtomicBatch = (queries: CompiledQuery[]) => Promise<number[]>;
@@ -111,8 +113,8 @@ export class MessageOperations implements MessageStore {
     ].map(query => query.compile(this.db)));
   }
 
-  async markSent(id: string, update: SentUpdate): Promise<void> {
-    const queries = [this.db.updateTable('messages').set({ status: finalizedStatus('sent'), provider_message_id: update.providerMessageId,
+  async markSent(id: string, update: SentUpdate, events?: EventIntent): Promise<void> {
+    const queries = [...transitionEvents(this.db, id, 'sent', events), this.db.updateTable('messages').set({ status: finalizedStatus('sent'), provider_message_id: update.providerMessageId,
       provider_response_sealed: update.providerResponseSealed, sent_at: update.sentAt }).where('id', '=', id).compile()];
     if (update.smtp) {
       for (const [type, positions] of [['accepted', update.smtp.accepted], ['send_failed', update.smtp.rejected]] as const) {
@@ -127,18 +129,18 @@ export class MessageOperations implements MessageStore {
     await this.batch(queries);
   }
 
-  async markFailed(id: string, providerResponseSealed: string): Promise<void> {
-    await this.batch([
+  async markFailed(id: string, providerResponseSealed: string, events?: EventIntent): Promise<void> {
+    await this.batch([...transitionEvents(this.db, id, 'send_failed', events), ...[
       this.db.updateTable('messages').set({ status: finalizedStatus('send_failed'), provider_response_sealed: providerResponseSealed }).where('id', '=', id),
       this.db.updateTable('recipients').set({ status: 'send_failed' }).where('message_id', '=', id).where('status', 'in', ['sending', 'unknown']),
-    ].map(query => query.compile()));
+    ].map(query => query.compile())]);
   }
 
-  async setStatus(id: string, status: MessageStatus): Promise<void> {
-    await this.batch([
+  async setStatus(id: string, status: MessageStatus, events?: EventIntent): Promise<void> {
+    await this.batch([...status === 'unknown' || status === 'send_failed' ? transitionEvents(this.db, id, status, events) : [], ...[
       this.db.updateTable('messages').set({ status: finalizedStatus(status) }).where('id', '=', id),
       this.db.updateTable('recipients').set({ status }).where('message_id', '=', id).where('status', 'in', ['sending', 'unknown']),
-    ].map(query => query.compile()));
+    ].map(query => query.compile())]);
   }
 
   async findByIdempotency(clientId: string, keyHash: string): Promise<MessageRow | undefined> {

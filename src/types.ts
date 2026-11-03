@@ -180,6 +180,8 @@ export interface SendDeps {
   resendSource?: (env: Env, clientId: string, messageId: string, key: string, payload: import('./core/resend-contract').ResendPayload,
     ref?: string, attachments?: Attachment[], brandId?: string) => Promise<SendResult>;
   emitEvent?: import("./core/extensions").EmitEvent;
+  /** Resolves when an extension consumes events (durable rows are written); `ref` stores the reference digest. */
+  durableEvents?: () => Promise<{ ref: boolean } | undefined>;
   provider?: 'ses' | 'smtp';
   notifier?: Notifier;
   logging?: Config["logging"];
