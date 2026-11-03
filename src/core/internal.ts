@@ -10,6 +10,7 @@ import type { Config } from './config/schema';
 import type { BeforeMessageDelete, MessageDeletion } from './extensions';
 import type { MessageRow } from './store/messages';
 
+const PAGE_BYTES = 1024 * 1024 - 8192; // 1 MiB page including the manifest envelope
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
 const fail = (status: number) => { throw status; };
 function integer(value: string | null, fallback: number, max: number): number {
@@ -39,17 +40,27 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
   };
   const blob = async (table: 'contents' | 'replays', id: string) => (await run(sql<{ sealed: string; expires_at: number }>`select b.sealed,b.expires_at from ${sql.table(table)} b
     join messages m on m.id=b.message_id where m.id=${id} and ${scope} and ${live} and ${contentLive} and b.expires_at > ${now}`))[0] ?? null;
-  const detail = async (m: MessageRow) => ({ id: m.id, brand: m.brand, template: m.template, level: m.level, status: m.status,
+  const describe = (m: MessageRow, recipients: unknown[], events: unknown[]) => ({ id: m.id, brand: m.brand, template: m.template, level: m.level, status: m.status,
     created_at: m.created_at, sent_at: m.sent_at, subject_sealed: m.subject_sealed, complained: m.complained,
-    provider: m.provider, provider_message_id: m.provider_message_id, resend_of: m.resend_of, resend_root: m.resend_root,
-    recipients: await run(sql`select pos,role,addr_sealed,addr_hint,status,last_event_at from recipients where message_id=${m.id} order by pos`),
-    events: await run(sql`select id,recipient_pos,type,occurred_at,received_at,source,auth,summary from events where message_id=${m.id} order by occurred_at,id`) });
+    provider: m.provider, provider_message_id: m.provider_message_id, resend_of: m.resend_of, resend_root: m.resend_root, recipients, events });
+  const detail = async (m: MessageRow) => describe(m,
+    await run(sql`select pos,role,addr_sealed,addr_hint,status,last_event_at from recipients where message_id=${m.id} order by pos`),
+    await run(sql`select id,recipient_pos,type,occurred_at,received_at,source,auth,summary from events where message_id=${m.id} order by occurred_at,id`));
   const evidence = async (id: string) => ({
     events: await run(sql`select e.id,e.evidence_sealed from events e join messages m on m.id=e.message_id
       where m.id=${id} and ${scope} and ${live} and e.evidence_sealed is not null order by e.occurred_at,e.id`),
     provider_response_sealed: (await run<{ provider_response_sealed: string | null }>(sql`select m.provider_response_sealed from messages m
       where m.id=${id} and ${scope} and ${live}`))[0]?.provider_response_sealed ?? null,
   });
+  // One query per table for a whole page of messages: the ids travel as a single JSON parameter.
+  const pageRows = async <T extends { message_id: string }>(query: (ids: RawBuilder<unknown>) => RawBuilder<T>, messages: MessageRow[]) => {
+    const grouped = new Map<string, Omit<T, 'message_id'>[]>();
+    if (!messages.length) return grouped;
+    for (const { message_id, ...row } of await run(query(sql`select value from json_each(${JSON.stringify(messages.map(m => m.id))})`))) {
+      const list = grouped.get(message_id); if (list) list.push(row); else grouped.set(message_id, [row]);
+    }
+    return grouped;
+  };
   try {
     requireRole('viewer');
     if (req.url.length > 8192) return fail(400);
@@ -80,10 +91,11 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
         }
       }
       await audit(q.has('rcpt') || q.has('ref') ? 'log.search' : 'log.list');
-      const rows = await run<MessageRow>(sql`select m.id,m.brand,m.template,m.level,m.status,m.created_at,m.sent_at,m.subject_sealed from messages m
+      const rows = await run<MessageRow & { addr_hints: string }>(sql`select m.id,m.brand,m.template,m.level,m.status,m.created_at,m.sent_at,m.subject_sealed,
+        (select json_group_array(addr_hint) from (select r.addr_hint from recipients r where r.message_id=m.id order by r.pos)) addr_hints from messages m
         where ${sql.join(filters, sql` and `)} order by m.created_at desc,m.id desc limit ${limit + 1}`);
       const more = rows.length > limit; rows.splice(limit);
-      const messages = await Promise.all(rows.map(async m => ({ ...m, addr_hints: (await run<{ addr_hint: string }>(sql`select addr_hint from recipients where message_id=${m.id} order by pos`)).map(r => r.addr_hint) })));
+      const messages = rows.map(m => ({ ...m, addr_hints: JSON.parse(m.addr_hints) as string[] }));
       const last = rows.at(-1);
       return response({ messages, cursor: more && last ? btoa(JSON.stringify([last.created_at, last.id])) : null });
     }
@@ -131,10 +143,27 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       if (path.endsWith('export')) {
         const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} and m.id > ${after} order by m.id limit ${Number(limit) + 1}`);
         const more = rows.length > Number(limit); rows.splice(Number(limit));
-        const messages = [];
-        for (const m of rows) messages.push({ ...await detail(m), content: await blob('contents', m.id),
-          replay: await blob('replays', m.id), ref_sealed: m.ref_sealed, evidence: await evidence(m.id) });
-        return response({ messages, cursor: more ? btoa(rows.at(-1)!.id) : null });
+        const blobs = (table: 'contents' | 'replays') => pageRows<{ message_id: string; sealed: string; expires_at: number }>(ids => sql`select b.message_id,b.sealed,b.expires_at
+          from ${sql.table(table)} b join messages m on m.id=b.message_id where b.message_id in (${ids}) and ${contentLive} and b.expires_at > ${now}`, rows);
+        const recipients = await pageRows<{ message_id: string }>(ids => sql`select message_id,pos,role,addr_sealed,addr_hint,status,last_event_at from recipients
+          where message_id in (${ids}) order by message_id,pos`, rows);
+        const events = await pageRows<{ message_id: string; id: string; evidence_sealed: string | null }>(ids => sql`select message_id,id,recipient_pos,type,occurred_at,received_at,source,auth,summary,evidence_sealed
+          from events where message_id in (${ids}) order by message_id,occurred_at,id`, rows);
+        const contents = await blobs('contents'), replays = await blobs('replays');
+        const messages = [], encoder = new TextEncoder();
+        let bytes = 0, truncated = false;
+        for (const m of rows) {
+          const own = events.get(m.id) ?? [];
+          const message = { ...describe(m, recipients.get(m.id) ?? [], own.map(({ evidence_sealed, ...event }) => event)),
+            content: contents.get(m.id)?.[0] ?? null, replay: replays.get(m.id)?.[0] ?? null, ref_sealed: m.ref_sealed,
+            evidence: { events: own.filter(e => e.evidence_sealed !== null).map(e => ({ id: e.id, evidence_sealed: e.evidence_sealed })), provider_response_sealed: m.provider_response_sealed ?? null } };
+          const size = encoder.encode(JSON.stringify(message)).length;
+          // A page stops before the byte budget is exceeded; the first message is always included so the cursor advances.
+          if (messages.length && bytes + size > PAGE_BYTES) { truncated = true; break; }
+          messages.push(message); bytes += size;
+        }
+        const cursor = more || truncated ? btoa(messages.at(-1)!.id) : null;
+        return response({ messages, cursor, manifest: { range: { first: messages[0]?.id ?? null, last: messages.at(-1)?.id ?? null, count: messages.length }, bytes, cursor, complete: cursor === null } });
       }
       const batches: string[][] = [];
       let cursor = '';

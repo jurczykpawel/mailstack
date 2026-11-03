@@ -334,6 +334,81 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     for (const table of ['messages', 'subjects', 'contents', 'replays']) expect(await rows(table)).toEqual([]);
     expect(JSON.parse(String((await rows('audit')).find(row => row.action === 'privacy.erase')!.details))).toEqual({ count: 105 });
   });
+  async function bulk(count: number, evidence = 'sealed-evidence', prefix = 'page_') {
+    const idx = await blindIndex('one@example.com', indices[0]);
+    for (let offset = 0; offset < count; offset += 10) {
+      const statements = [];
+      for (let i = offset; i < Math.min(offset + 10, count); i++) {
+        const id = prefix + String(i).padStart(4, '0');
+        statements.push(sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,sent_at,meta_expires_at,content_expires_at,provider_response_sealed,subject_sealed)
+          values(${id},'demo','acme','notice','full','hash','sent',${now - i},${now},${now + 1000000},${now + 1000000},'sealed-provider','sealed-subject')`);
+        for (const pos of [0, 1]) statements.push(sql`insert into recipients values(${id},${pos},'to',${idx.index + pos},${idx.kid},'sealed-address',${'hint-' + pos},'sent',null)`);
+        statements.push(sql`insert into subjects values(${id},'recipient',${idx.index},${idx.kid})`);
+        for (const table of ['contents', 'replays']) statements.push(sql`insert into ${sql.table(table)} values(${id},${'sealed-' + table},${now + 1000000})`);
+        statements.push(sql`insert into events(id,message_id,source,source_event_id,type,occurred_at,received_at,auth,summary,evidence_sealed)
+          values(${id},${id},'local',${id},'sent',${now},${now},'local','summary',${evidence})`);
+      }
+      await store.batch(statements.map(q => q.compile(store.db)));
+    }
+  }
+  const countCalls = () => {
+    const executor = store.db.getExecutor(), execute = executor.executeQuery.bind(executor);
+    const seen = { calls: 0 };
+    vi.spyOn(executor, 'executeQuery').mockImplementation(async (...args) => { seen.calls++; return await execute(...args); });
+    return seen;
+  };
+  it('lists a page without per-message queries and keeps recipient hints in order', async () => {
+    await bulk(100);
+    const seen = countCalls();
+    const page = await (await call('/messages?limit=100')).json();
+    expect(page.messages).toHaveLength(100);
+    expect(page.messages.every(m => JSON.stringify(m.addr_hints) === '["hint-0","hint-1"]')).toBe(true);
+    expect(seen.calls).toBeLessThanOrEqual(4);
+  });
+  it('lists messages without recipients with empty hints', async () => {
+    await sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at) values('bare','demo','acme','notice','meta','hash','sent',${now},${now + 1000000})`.execute(store.db);
+    expect((await (await call()).json()).messages[0].addr_hints).toEqual([]);
+  });
+  it('exports a page with a constant number of queries whatever its size', async () => {
+    await bulk(50);
+    const counts: number[] = [];
+    for (const limit of [1, 50]) {
+      const seen = countCalls();
+      const page = await (await call('/subjects/export', { body: { email: 'one@example.com', limit } })).json() as Payload & { manifest: Record<string, unknown> };
+      expect(page.messages).toHaveLength(limit);
+      expect(page.messages[0]).toMatchObject({ content: { sealed: 'sealed-contents' }, replay: { sealed: 'sealed-replays' }, ref_sealed: null,
+        recipients: [{ pos: 0 }, { pos: 1 }], events: [{ type: 'sent' }], evidence: { provider_response_sealed: 'sealed-provider', events: [{ evidence_sealed: 'sealed-evidence' }] } });
+      expect(page.manifest).toMatchObject({ range: { first: 'page_0000', count: limit }, complete: limit === 50 });
+      counts.push(seen.calls); vi.restoreAllMocks();
+    }
+    expect(Math.max(...counts)).toBeLessThanOrEqual(10);
+    expect(counts[1]).toBe(counts[0]);
+  });
+  it('ends an export page before 1 MiB and resumes from the cursor without gaps', async () => {
+    await bulk(12, 'x'.repeat(300000));
+    const ids: string[] = [], manifests: { complete: boolean; bytes: number }[] = [];
+    let cursor: string | null = null;
+    do {
+      const response = await call('/subjects/export', { body: { email: 'one@example.com', limit: 50, cursor } });
+      expect(Number((await response.clone().text()).length)).toBeLessThanOrEqual(1048576);
+      const page = await response.json() as Payload & { manifest: { complete: boolean; bytes: number; cursor: string | null } };
+      expect(page.manifest.cursor).toBe(page.cursor); expect(page.manifest.complete).toBe(page.cursor === null);
+      ids.push(...page.messages.map(m => m.id)); manifests.push(page.manifest); cursor = page.cursor;
+    } while (cursor);
+    expect(manifests.length).toBeGreaterThan(1);
+    expect(manifests.slice(0, -1).every(m => !m.complete)).toBe(true);
+    expect(ids).toEqual(Array.from({ length: 12 }, (_, i) => 'page_' + String(i).padStart(4, '0')));
+  });
+  it('still returns a single message larger than the page budget so the cursor advances', async () => {
+    await bulk(2, 'x'.repeat(1200000));
+    const first = await (await call('/subjects/export', { body: { email: 'one@example.com' } })).json() as Payload & { manifest: { complete: boolean } };
+    expect(first.messages.map(m => m.id)).toEqual(['page_0000']); expect(first.manifest.complete).toBe(false);
+    const second = await (await call('/subjects/export', { body: { email: 'one@example.com', cursor: first.cursor } })).json();
+    expect(second.messages.map(m => m.id)).toEqual(['page_0001']); expect(second.cursor).toBeNull();
+  });
+  it.each([btoa('bad id!'), btoa('x'.repeat(129)), 'not base64!'])('rejects a malformed export cursor: %s', async cursor => {
+    expect((await call('/subjects/export', { body: { email: 'one@example.com', cursor } })).status).toBe(400);
+  });
   it('binds signed assertions to body and query and checks the signature', async () => {
     const req = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST', body: JSON.stringify({ email: 'one@example.com', reason: 'Requested by subject' }) }), token, claims);
     const assertion = req.headers.get('x-panel-assertion')!;
