@@ -109,7 +109,7 @@ for (const runtime of ['node', 'workerd'] as const) describe(`SES ingestion: ${r
   beforeAll(async () => {
     const indices = await Promise.all(['one@example.com', 'two@example.com'].map(a => blindIndex(a, indexKeys[0])));
     if (runtime === 'workerd') {
-      const script = buildSync({ entryPoints: ['test/fixtures/ses-worker.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['node:crypto'] }).outputFiles[0].text;
+      const script = buildSync({ entryPoints: ['test/fixtures/ses-worker.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['node:crypto', 'node:async_hooks'] }).outputFiles[0].text;
       mf = new Miniflare(convertV4MiniflareOptions({ modules: true, script, compatibilityDate: '2026-06-01', compatibilityFlags: ['nodejs_compat'], d1Databases: ['DB'],
         bindings: { CERT: cert, KEYS: JSON.stringify(publicKeys), INDICES: JSON.stringify(indices), INDEX_KEYS: JSON.stringify(indexKeys) } }));
     } else {

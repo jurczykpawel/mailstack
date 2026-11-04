@@ -413,14 +413,48 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     expect(manifests.slice(0, -1).every(m => !m.complete)).toBe(true);
     expect(ids).toEqual(Array.from({ length: 12 }, (_, i) => 'page_' + String(i).padStart(4, '0')));
   });
-  it('still returns a single message larger than the page budget so the cursor advances', async () => {
-    await bulk(2, 'x'.repeat(1200000));
-    const first = await (await call('/subjects/export', { body: await exp() })).json() as Payload & { manifest: { complete: boolean } };
-    expect(first.messages.map(m => m.id)).toEqual(['page_0000']); expect(first.manifest.complete).toBe(false);
-    const second = await (await call('/subjects/export', { body: await exp({ cursor: first.cursor }) })).json();
-    expect(second.messages.map(m => m.id)).toEqual(['page_0001']); expect(second.cursor).toBeNull();
+  // Review finding 6: a single message whose evidence exceeds the panel read limit (8 MiB) arrives complete in pages of at most 1 MiB.
+  const exportAll = async () => {
+    const entries: (Payload['messages'][number] & { part: { offset: number; total: number }; continued?: true; events: { id: string }[]; evidence: { events: { id: string; evidence_sealed: string }[] } })[] = [];
+    let cursor: string | null = null, pages = 0;
+    do {
+      const response = await call('/subjects/export', { body: await exp({ cursor }) });
+      expect(response.status).toBe(200);
+      const text = await response.text(); expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(1048576);
+      const page = JSON.parse(text) as { messages: typeof entries; cursor: string | null; manifest: { complete: boolean; cursor: string | null } };
+      expect(page.manifest).toMatchObject({ cursor: page.cursor, complete: page.cursor === null });
+      entries.push(...page.messages); cursor = page.cursor; pages++;
+    } while (cursor && pages < 100);
+    return { entries, pages };
+  };
+  it('exports one message with over 8 MiB of evidence completely in pages of at most 1 MiB', async () => {
+    await bulk(1, 'e'.repeat(250000));
+    for (let i = 1; i < 36; i++) await sql`insert into events(id,message_id,source,source_event_id,type,occurred_at,received_at,auth,summary,evidence_sealed)
+      values(${'evt_' + String(i).padStart(3, '0')},'page_0000','ses-sns',${'source_' + i},'delay',${now + i},${now + i},'sns-sig-v2','summary',${String(i % 10).repeat(250000)})`.execute(store.db);
+    await bulk(1, 'sealed-evidence', 'tail_');
+    const { entries, pages } = await exportAll();
+    expect(pages).toBeGreaterThan(8);
+    const first = entries.filter(e => e.id === 'page_0000');
+    expect(first[0]).toMatchObject({ part: { offset: 0, total: 36 }, content: { sealed: 'sealed-contents' }, replay: { sealed: 'sealed-replays' } });
+    expect(first.slice(1).every(e => e.continued && e.content === undefined && e.part.total === 36)).toBe(true);
+    let offset = 0;
+    for (const e of first) { expect(e.part.offset).toBe(offset); offset += e.events.length; expect(e.evidence.events.map(v => v.id)).toEqual(e.events.map(v => v.id)); }
+    expect(offset).toBe(36);
+    const evidence = first.flatMap(e => e.evidence.events);
+    expect(evidence.map(e => e.id)).toEqual(['page_0000', ...Array.from({ length: 35 }, (_, i) => 'evt_' + String(i + 1).padStart(3, '0'))]);
+    expect(evidence.reduce((n, e) => n + e.evidence_sealed.length, 0)).toBe(36 * 250000);
+    expect(entries.filter(e => e.id === 'tail_0000')).toMatchObject([{ part: { offset: 0, total: 1 } }]);
   });
-  it.each([btoa('bad id!'), btoa('x'.repeat(129)), 'not base64!'])('rejects a malformed export cursor: %s', async cursor => {
+  it('refuses an evidence record that alone exceeds the page budget instead of returning an oversized page', async () => {
+    await bulk(1, 'x'.repeat(1100000));
+    const first = await call('/subjects/export', { body: await exp() });
+    const page = await first.json() as unknown as { messages: { events: unknown[]; part: unknown }[]; cursor: string };
+    expect(page.messages).toMatchObject([{ events: [], part: { offset: 0, total: 1 } }]); expect(atob(page.cursor)).toBe('page_0000.0');
+    const response = await call('/subjects/export', { body: await exp({ cursor: page.cursor }) });
+    expect(response.status).toBe(503);
+    expect((await response.text()).length).toBeLessThan(1000);
+  });
+  it.each([btoa('bad id!'), btoa('x'.repeat(129)), 'not base64!', btoa('page_0000.x'), btoa('page_0000.1234567'), btoa('page_0000.')])('rejects a malformed export cursor: %s', async cursor => {
     expect((await call('/subjects/export', { body: await exp({ cursor }) })).status).toBe(400);
   });
   it('binds signed assertions to body and query and checks the signature', async () => {

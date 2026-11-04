@@ -10,6 +10,7 @@ import { blindIndex } from '../src/core/crypto';
 import { parseConfig } from '../src/core/config/schema';
 import { loadExtensions } from '../src/runtime/extensions';
 import { keysOnly } from './fixtures/keys';
+import { limitedD1 } from './fixtures/limited-d1';
 import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import { tokenSha256 } from '../src/clients';
 import type { PanelPrincipal } from '../src/core/panel';
@@ -22,20 +23,6 @@ const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey])
 const token = 'msk_panel_' + 'b'.repeat(43), far = Date.now() + 86400000;
 const cfg = parseConfig(example);
 interface JobRow { id: string; state: string; cursor: string | null; result: string | null; run_after: number }
-
-/** A D1 binding that, like a Free Worker invocation, refuses more than `limit` queries; a batch is one query (D1 limits). */
-function limitedD1(binding: D1Database) {
-  let calls = 0, limit = Infinity;
-  const tick = () => { if (++calls > limit) throw new Error('Too many API requests by single Worker invocation'); };
-  const real = new WeakMap<object, D1PreparedStatement>();
-  const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
-    const wrapped = { bind: (...values: unknown[]) => wrap(statement.bind(...values)), all: async () => { tick(); return statement.all(); } } as unknown as D1PreparedStatement;
-    real.set(wrapped, statement); return wrapped;
-  };
-  const db = { prepare: (query: string) => wrap(binding.prepare(query)),
-    batch: async (statements: D1PreparedStatement[]) => { tick(); return binding.batch(statements.map(s => real.get(s)!)); } } as unknown as D1Database;
-  return { db, invocation(max: number) { calls = 0; limit = max; } };
-}
 
 for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`, () => {
   let store: KyselyStore, mf: Miniflare | undefined, binding: D1Database;

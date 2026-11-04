@@ -5,6 +5,7 @@ import { createVerifier } from "./events/sns";
 import type { KyselyStore } from "./core/store";
 import { createD1Store } from "./core/store/d1";
 import { runJobs } from "./core/jobs";
+import { metered } from "./core/budget";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
@@ -25,6 +26,8 @@ import type { KeyProvider } from "./clients";
 import type { EmitEvent } from "./core/extensions";
 
 const verifySns = createVerifier();
+// D1 queries per invocation (Free 50, Paid 1000; D1 limits), minus room for calls the meter does not see (license refresh, DoH).
+const INVOCATION_OPS = config.cloudflare?.plan === "paid" ? 990 : 40;
 
 const defaultDeps: SendDeps = {
   logging: config.logging,
@@ -190,6 +193,9 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
     /** Profile (a): the panel Worker's service binding to the `Internal` entrypoint (`src/worker.ts`); only `/internal/*`. */
     internal: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx, true),
   };
-  return app;
+  // Every invocation, with its background work, spends one operation budget (A 3.4.3); the service binding is an invocation too.
+  return { scheduled: (...args: Parameters<typeof app.scheduled>) => metered(INVOCATION_OPS, () => app.scheduled(...args)),
+    fetch: (req: Request, env: Env, ctx: ExecutionContext) => metered(INVOCATION_OPS, () => app.fetch(req, env, ctx)),
+    internal: (...args: Parameters<typeof app.internal>) => metered(INVOCATION_OPS, () => app.internal(...args)) };
 }
 export default createApp();

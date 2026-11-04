@@ -196,7 +196,7 @@ if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_ha
 let reason;
 const sender=${JSON.stringify(delivery)}==='ses'?budgetSender(async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('budget storage');return r.results;},sendEmail,${JSON.stringify(limits)}):disabled;
 const app=createApp({sendEmail:async(...args)=>{const r=await sender(...args);if(!r.ok&&r.response.startsWith('staging_'))reason=r.response;return r;}});
-const r=await app.fetch(req,env,ctx,bound);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
+const r=await (bound?app.internal(req,env,ctx):app.fetch(req,env,ctx));const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
 if(${JSON.stringify(delivery)}==='disabled'&&r.status===502)return Response.json({success:false,message:'staging delivery disabled',code:'delivery_disabled'},{status:503,headers:h});
 return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
 export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(query(env)));return createApp({sendEmail:disabled}).scheduled(event,env,ctx);},fetch:(req,env,ctx)=>serve(req,env,ctx,false)};

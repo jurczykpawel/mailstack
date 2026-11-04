@@ -1,12 +1,23 @@
 // Restores an age-encrypted copy into a NEW database only: a new SQLite file or an empty D1 database.
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import Database from 'better-sqlite3';
 import { Decrypter } from 'age-encryption';
-import { runWrangler, withTempDir } from './export.mjs';
 
+// Restore runs on the owner's computer from a development checkout, where Wrangler is installed.
+export function runWrangler(args) {
+  const result = spawnSync('npx', ['wrangler', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  if (result.status !== 0) throw new Error(`wrangler ${args.slice(0, 2).join(' ')} failed`);
+  return result.stdout;
+}
+async function withTempDir(use) {
+  const dir = await mkdtemp(join(tmpdir(), 'mailstack-backup-'));
+  try { return await use(dir); } finally { await rm(dir, { recursive: true, force: true }); }
+}
 const SQLITE_HEADER = Buffer.from('SQLite format 3\0');
 const TABLES_IN_USE = "SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'";
 

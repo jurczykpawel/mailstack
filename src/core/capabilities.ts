@@ -17,7 +17,6 @@ export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Pro
 type Feature = { state: 'enabled' } | { state: 'disabled' | 'unavailable'; reason: string };
 const FEATURES = ['panel', 'webhooks', 'resend.replay', 'resend.source', 'aws.status', 'aws.test'] as const;
 type Name = typeof FEATURES[number];
-const FREE_PLAN: Name[] = ['panel', 'webhooks', 'resend.source', 'aws.test'];
 // Outbound HTTP on the Worker needs the egress service (URL, signing keys, Access token); without it these stay off instead of falling back to fetch.
 const EGRESS: Name[] = ['webhooks', 'resend.source'];
 
@@ -41,7 +40,6 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
   const state = (name: Name): Feature => {
     const off = (reason: string, s: 'disabled' | 'unavailable' = 'disabled') => ({ state: s, reason });
     if (panel.denied) return off('license');
-    if (free && FREE_PLAN.includes(name)) return off('platform:free_plan');
     if (name === 'panel') return { state: 'enabled' };
     if (!pro) return failed ? off(failed.reason, 'unavailable') : off('not_configured');
     if (host.platform === 'worker' && !['EGRESS_URL', 'EGRESS_KEYS', 'EGRESS_ACCESS_CLIENT_ID', 'EGRESS_ACCESS_CLIENT_SECRET'].every(k => Reflect.get(env, k)) && EGRESS.includes(name)) return off('platform:secure_egress_unavailable');
@@ -64,7 +62,8 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
     principal: { role: panel.role, brands: panel.brands, templates: panel.templates },
     features: { ...Object.fromEntries(FEATURES.map(name => [name, state(name)])), events },
     limits: LIMITS,
-    // Provider-side copies outlive an erasure: D1 Time Travel keeps 30 days (Paid) or 7 (Free); Node keeps its snapshots.
+    // The plan changes only how long provider-side copies outlive an erasure: D1 Time Travel keeps 30 days (Paid) or 7 (Free);
+    // every feature runs on Free (measured on staging, WP20S). Node keeps its snapshots.
     backupWindowDays: host.platform === 'node' ? NODE_SNAPSHOTS : free ? 7 : 30,
     jobs: await jobStats(store, now),
     transitKeys: transit.publicKeys,

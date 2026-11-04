@@ -29,3 +29,12 @@ it('N: the Internal entrypoint applies the panel gate to /internal/* and serves 
   expect((await api.fetch('https://api.internal/internal/v2/capabilities', { headers: { authorization: 'Bearer full-key' } })).status).toBe(404);
   expect((await api.fetch('https://api.internal/health')).status).toBe(200);
 });
+
+it('meters the Internal entrypoint like the public entry: each binding call spends one invocation budget', async () => {
+  const budget = await import('../src/core/budget');
+  const spy = vi.spyOn(budget, 'metered');
+  const { createApp } = await import('../src/index');
+  const app = createApp();
+  await app.internal(new Request('https://api.internal/health'), {} as never, { waitUntil() {}, passThroughOnException() {} } as never);
+  expect(spy).toHaveBeenCalledWith(40, expect.any(Function));
+});

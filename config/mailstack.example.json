@@ -52,6 +52,9 @@
       "licenseActivationUrls": {}
     }
   },
+  "cloudflare": {
+    "plan": "free"
+  },
   "logging": {
     "defaults": {
       "level": "meta",
