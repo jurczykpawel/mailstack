@@ -113,11 +113,13 @@ describe('capabilities', () => {
     expect((await send(sendToken)).status).toBe(403);
   });
 
-  it('N: the Free plan disables Pro features the platform cannot carry', async () => {
+  it('the Free plan keeps every feature and only shortens the provider backup window', async () => {
+    await configure({ cloudflare: { plan: 'paid' } });
+    const paid = await caps();
     await configure({ cloudflare: { plan: 'free' } });
-    const { features } = await caps();
-    for (const name of ['panel', 'webhooks', 'resend.source', 'aws.test']) expect(features[name]).toEqual({ state: 'disabled', reason: 'platform:free_plan' });
-    expect(features['resend.replay']).toEqual({ state: 'enabled' });
+    const free = await caps();
+    expect(free.features).toEqual(paid.features);
+    expect(Object.values(free.features).some(f => JSON.stringify(f).includes('free_plan'))).toBe(false);
     expect(() => parseConfig({ ...example, cloudflare: { plan: 'enterprise' } })).toThrow('$.cloudflare.plan');
   });
 
@@ -146,7 +148,7 @@ describe('capabilities', () => {
       workerEnv, { waitUntil() {} } as unknown as ExecutionContext);
     const body = await (await request()).json() as Caps;
     expect(body.api).toMatchObject({ platform: 'worker', audience: 'internal.example', proCommit: 'pro9' });
-    expect(body.backupWindowDays).toBe(30);
+    expect(body.backupWindowDays).toBe(7);
     licensed = false;
     expect((await (await request()).json() as Caps).license).toEqual({ state: 'invalid' });
   });
@@ -160,8 +162,8 @@ describe('capabilities', () => {
     expect(body.features).toMatchObject({ webhooks: { state: 'disabled', reason: 'platform:secure_egress_unavailable' },
       'resend.source': { reason: 'platform:secure_egress_unavailable' }, 'resend.replay': { state: 'unavailable', reason: 'host' },
       'aws.status': { state: 'enabled' }, 'aws.test': { state: 'enabled' } });
-    expect(body.backupWindowDays).toBe(30);
-    expect((await worker(ready, { ...cfg, cloudflare: { plan: 'free' } })).backupWindowDays).toBe(7);
+    expect(body.backupWindowDays).toBe(7);
+    expect((await worker(ready, { ...cfg, cloudflare: { plan: 'paid' } })).backupWindowDays).toBe(30);
     // With URL, keys and Access token the egress rule no longer applies; one missing secret keeps it.
     const egress = { EGRESS_URL: 'https://egress.example', EGRESS_KEYS: '[]', EGRESS_ACCESS_CLIENT_ID: 'id', EGRESS_ACCESS_CLIENT_SECRET: 's' };
     const bound = await capabilities({ ...env, ...egress }, store, cfg, principal, { platform: 'worker', extensions: async () => ({ features: () => ready, resendSource: undefined }) });

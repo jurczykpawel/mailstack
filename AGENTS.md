@@ -189,7 +189,7 @@ client, answers `403 license_required` on send, hooks and every internal route e
 `GET /internal/v2/capabilities` (panel scope + assertion), which reports
 `license.state: invalid` and all Pro features `disabled: license` (`src/core/capabilities.ts`;
 also protocol range, platform, feature reasons, limits, `backupWindowDays`, job stats and
-public `TRANSIT_KEYS`; `cloudflare.plan: "free"` disables features Free cannot carry).
+public `TRANSIT_KEYS`; `cloudflare.plan: "free"` keeps every feature and only sets `backupWindowDays` to 7).
 The full key never depends on licensing. `clients` without a key provider stops
 Node startup and `npm run setup`; a configured extension that fails to import or
 initialize is only marked unavailable (`createExtensionHost` in
@@ -508,6 +508,9 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
    from it. It passes HEAD as `BUILD_COMMIT` to Wrangler. Export `MAILSTACK_HEALTH_URL`
    (the full `/health` URL) to verify the deployed commit; without it the check is
    explicitly skipped. `/health.version` comes from package.json; commit defaults to `dev`.
+   With schema changes run `npm run release`: setup from the external config (+ `MAILSTACK_PRO_PATH`),
+   migration manifest check, `wrangler d1 migrations apply DB --remote`, manifest recheck, then the
+   guarded deploy of the same files; no example generator (`npm test`/typecheck) in between.
    Release tags `v*` run checks and publish the container image; the private-config
    Worker deploy workflow is deferred. See README for release tags and local Compose.
    With Mailstack Pro, `MAILSTACK_EGRESS_URL` in `.env` (plus secrets `EGRESS_KEYS`, `EGRESS_ACCESS_CLIENT_ID`,
