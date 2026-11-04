@@ -142,6 +142,7 @@ if (command.startsWith('hmac-')) {
     secrets.STAGING_SEND_TOKEN ??= `msk_st-send_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_PANEL_TOKEN ??= `msk_st-panel_${randomBytes(32).toString('base64url')}`;
+    secrets.STAGING_PANEL_WORKER_TOKEN ??= `msk_st-panel-worker_${randomBytes(32).toString('base64url')}`;
     secrets.PANEL_ASSERTION_KEYS ??= JSON.stringify([{ kid: 'st-panel-1', key: secrets.PANEL_ASSERTION_KEY ?? randomBytes(32).toString('base64url') }]);
     delete secrets.PANEL_ASSERTION_KEY;
     cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
@@ -152,6 +153,7 @@ if (command.startsWith('hmac-')) {
       { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'] },
       { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
       { id: 'st-panel', tokenSha256: digest(secrets.STAGING_PANEL_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
+      { id: 'st-panel-worker', tokenSha256: digest(secrets.STAGING_PANEL_WORKER_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
     ];
   }
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
@@ -172,7 +174,8 @@ if (command.startsWith('hmac-')) {
   const fixture = existsSync(`${state}/fixture-jwks.json`) ? JSON.parse(readFileSync(`${state}/fixture-jwks.json`)) : { keys: [] };
   const limits = { day: Number(process.env.MAILSTACK_STAGING_SES_DAY ?? 50), hour: Number(process.env.MAILSTACK_STAGING_SES_HOUR ?? 10) };
   if (![limits.day,limits.hour].every(n=>Number.isSafeInteger(n)&&n>0)||limits.day>50||limits.hour>10) throw Error('Invalid staging allocation');
-  const contents = `import {sendEmail} from './src/ses.ts';
+  const contents = `import {WorkerEntrypoint} from 'cloudflare:workers';
+import {sendEmail} from './src/ses.ts';
 import {createApp} from './src/index.ts';
 import {receiver,receiverCleanup} from ${JSON.stringify(resolve(root,'scripts/staging/receiver.ts'))};
 const query=env=>async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('staging storage');return r.results;};
@@ -181,21 +184,24 @@ ${egress ? `import {workerEgress} from ${JSON.stringify(`${proSource}/src/egress
 const probe=async(req,env)=>{const o=await req.json(),t=Date.now(),e=workerEgress(env),ready=await e.ready(),readyMs=Date.now()-t,s=Date.now();
 try{const result=await e.post({attemptId:crypto.randomUUID(),url:o.url,headers:{'content-type':'application/json'},body:'{}',notAfter:Date.now()+(o.ms??10000)});return Response.json({ready,readyMs,postMs:Date.now()-s,result});}catch(err){return Response.json({ready,readyMs,postMs:Date.now()-s,error:err.message});}};` : 'const probe=null;'}
 const disabled=async()=>({ok:false,status:503,response:'staging_delivery_disabled'});
-export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(query(env)));return createApp({sendEmail:disabled}).scheduled(event,env,ctx);},async fetch(req,env,ctx){
+async function serve(req,env,ctx,bound){
 const path=new URL(req.url).pathname;
-const captured=await receiver(query(env),{token:env.STAGING_RECEIVER_TOKEN,key:env.STAGING_RECEIVER_KEY})(req);if(captured)return captured;
+if(!bound){const captured=await receiver(query(env),{token:env.STAGING_RECEIVER_TOKEN,key:env.STAGING_RECEIVER_KEY})(req);if(captured)return captured;
 if(probe&&path==='/_staging/egress'&&req.method==='POST'&&req.headers.get('authorization')==='Bearer '+env.STAGING_RECEIVER_KEY)return probe(req,env);
 if(probe&&path==='/_staging/redirect')return new Response(null,{status:302,headers:{location:'https://10.0.0.1/'}});
 if(probe&&path==='/_staging/slow')return new Promise(done=>setTimeout(()=>done(new Response('late')),15000));
 if(probe&&path==='/_staging/stream')return new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(Number(new URL(req.url).searchParams.get('n'))));c.close();}}));
 if(req.method==='GET'&&path==='/_staging/jwks')return Response.json(${JSON.stringify(fixture)});
-if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});
+if(req.method==='GET'&&path==='/_staging/revoked')return Response.json({order_hashes:[]});}
 let reason;
 const sender=${JSON.stringify(delivery)}==='ses'?budgetSender(async(sql,values=[])=>{const r=await env.DB.prepare(sql).bind(...values).all();if(!r.success)throw Error('budget storage');return r.results;},sendEmail,${JSON.stringify(limits)}):disabled;
 const app=createApp({sendEmail:async(...args)=>{const r=await sender(...args);if(!r.ok&&r.response.startsWith('staging_'))reason=r.response;return r;}});
-const r=await app.fetch(req,env,ctx);const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
+const r=await (bound?app.internal(req,env,ctx):app.fetch(req,env,ctx));const h=new Headers(r.headers);h.set('X-Mailstack-Delivery',${JSON.stringify(delivery)});
 if(${JSON.stringify(delivery)}==='disabled'&&r.status===502)return Response.json({success:false,message:'staging delivery disabled',code:'delivery_disabled'},{status:503,headers:h});
-return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}};`;
+return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
+export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(query(env)));return createApp({sendEmail:disabled}).scheduled(event,env,ctx);},fetch:(req,env,ctx)=>serve(req,env,ctx,false)};
+// Profile (a): the staging panel Worker's service binding; only /internal/* (app.internal), same staging sender.
+export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.env,this.ctx,true);}}`;
   await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`, ...pro ? [`${pro}/node_modules`] : []], alias: { mailstack: source, zod: `${root}/node_modules/zod` }, conditions: ['workerd', 'worker', 'browser'], external: ['node:*', 'cloudflare:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
     b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
@@ -217,7 +223,7 @@ return budgetResponse(new Response(r.body,{status:r.status,headers:h}),reason);}
     const applied = new Set((await query(`SELECT version FROM ext_migrations WHERE extension='${ext}'`)).map(r => r.version));
     for (const m of await compileMigrations(ext, migrations)) if (!applied.has(m.version)) await mutate(`migrate-${m.file}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migrationFile(m) });
   }
-  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));

@@ -43,3 +43,12 @@ it('passes the egress service origin as a var and refuses anything but an https 
     for (const bad of ['http://egress.example.com', 'https://egress.example.com/post', 'https://egress.example.com?x=1']) expect(() => gen(bad), bad).toThrow();
   } finally { writeFileSync('wrangler.toml', previous); }
 });
+it('N: the Worker entry exports the Internal entrypoint and passes only a valid panel audience', () => {
+  const previous = readFileSync('wrangler.toml', 'utf8'), env = { ...process.env, MAILSTACK_ROUTE: '', MAILSTACK_INTERNAL_ROUTE: '' };
+  const gen = (value) => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_PANEL_AUDIENCE: value }, stdio: 'pipe' });
+  try {
+    gen('mailstack.acme:1'); const out = readFileSync('wrangler.toml', 'utf8');
+    expect(out).toContain('main = "src/worker.ts"'); expect(out).toContain('PANEL_AUDIENCE = "mailstack.acme:1"');
+    for (const bad of ['a b', 'x"\nAPI_KEY = "y', 'a'.repeat(254)]) expect(() => gen(bad), bad).toThrow();
+  } finally { writeFileSync('wrangler.toml', previous); }
+});

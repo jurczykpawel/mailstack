@@ -136,6 +136,25 @@ scripts/staging/worker.sh deploy
 
 The deploy adds a webhook endpoint `st-receiver` (event `message.sent`, brand `acme`) pointing at the staging receiver run `m8`. Gate E5: `MAILSTACK_STAGING_EGRESS_URL=https://mailstack-test.techskills.academy MAILSTACK_STAGING_EGRESS_KEY=<STAGING_RECEIVER_KEY> MAILSTACK_STAGING_DENIED=mailpit.automagicznie.pl,65.108.2.217,2a01:4f9:6a:5210::293 npx vitest run test/staging-egress.test.ts`.
 
+### Panel Worker, profile (a) (WP29B)
+
+A second staging Worker `mailstack-panel-staging` runs the Pro panel with its own D1 (`mailstack-panel-staging`) on `mailstack-panel-worker-test.techskills.academy`, behind the Access application `Mailstack staging panel Worker` (owner e-mail, 8 h). It has no Cron Trigger (the account's five are in use) and reaches `mailstack-staging` only through a service binding to the `Internal` entrypoint, which the staging entry exports next to the public handler; the binding serves `/internal/*` only, without the receiver and the other `/_staging/*` routes. The API Worker keeps the internal host for profile (b), so both panels sign for the same audience `mailstack-internal-test.techskills.academy` (`INTERNAL_HOST` and `PANEL_AUDIENCE`). Each panel has its own client: `st-panel` (profile b) and `st-panel-worker` (token `STAGING_PANEL_WORKER_TOKEN`).
+
+The panel Worker is installed with Pro's documented commands ("Panel on a Cloudflare Worker"), run from the Pro checkout with the core checkout's `wrangler` on `PATH`:
+
+```sh
+PANEL_WORKER_NAME=mailstack-panel-staging PANEL_WORKER_ROUTE=mailstack-panel-worker-test.techskills.academy \
+PANEL_API_AUDIENCE=mailstack-internal-test.techskills.academy PANEL_API_WORKER=mailstack-staging PANEL_D1_ID=<id> \
+PANEL_LICENSE_OPTIONS='{"product":"mailstack-pro-test","host":"mailstack-test.techskills.academy","seller":"staging-fixture","jwksUrl":"https://mailstack-license-test.techskills.academy/_staging/jwks","revocationUrl":"https://mailstack-license-test.techskills.academy/_staging/revoked"}' \
+npm run build:panel-worker
+npx wrangler d1 migrations apply PANEL_DB --remote --config wrangler.panel.toml
+npx wrangler deploy --config wrangler.panel.toml --secrets-file <0600 JSON: PANEL_API_TOKEN, PANEL_ASSERTION_KEYS, MAILSTACK_LICENSE, PANEL_NTFY_URL>
+```
+
+`PANEL_API_TOKEN` is `STAGING_PANEL_WORKER_TOKEN`, `PANEL_ASSERTION_KEYS` and `MAILSTACK_LICENSE` come from the Worker staging state, and `PANEL_NTFY_URL` is the staging receiver run `panel-ntfy`. Always set `PANEL_API_WORKER`: its default is the production Worker `mailstack`. Check `service` and `database_id` in `wrangler.panel.toml` before deploying. Ids and the Access application record are in `~/.config/mailstack-staging/wp29b/` (0700).
+
+For browser requests (`Accept: text/html`) Cloudflare adds two inline GTM scripts (`google_tags_first_party`) to HTML responses on the `techskills.academy` zone, most likely its Google tag gateway setting (the deploy token cannot read it). The panel's CSP (`script-src 'self'`) blocks both; the browser console reports two `script-src` violations on every page. This is a zone setting and was left unchanged.
+
 The account is on Workers Free with a limit of five Cron Triggers, all in use; each Mailstack Worker, staging included, takes exactly one (`* * * * *`). Minute 17 UTC runs only retention (no job drain in that minute), every other minute only the job drain, so the two never add up in one invocation.
 
 ### Simulator-only SES delivery

@@ -20,6 +20,7 @@ import { proExtension, proKeys } from "./core/pro.generated";
 import { createExtensionHost, type ExtensionHost } from "./core/extension-host";
 import { internalFetch } from "./core/internal";
 import { authorizePanel } from "./core/panel";
+import { transitAudience } from "./core/capabilities";
 import { createAccessVerifier, type AccessVerifier } from "./core/access";
 import type { KeyProvider } from "./clients";
 import type { EmitEvent } from "./core/extensions";
@@ -84,6 +85,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       req: Request,
       env: Env,
       ctx: ExecutionContext,
+      bound = false,
     ): Promise<Response> {
       const store = overrides.store ?? (env.DB ? createD1Store(env.DB) : undefined);
       keys ??= Promise.resolve().then(() => pro?.(config, env)).catch(() => undefined).then(k => loaded = k);
@@ -97,6 +99,8 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       };
       const url = new URL(req.url);
       const { pathname } = url;
+      const ext = pathname.startsWith("/internal/ext/"), internal = ext || pathname.startsWith("/internal/v2/");
+      if (bound && !internal) return notFound();
 
       if (pathname === "/health" && req.method === "GET") {
         let storeState = "down";
@@ -164,10 +168,11 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         return handleSourceHook(req, env, deps, sourceId);
       }
 
-      const ext = pathname.startsWith("/internal/ext/");
-      if ((ext || pathname.startsWith("/internal/v2/")) && store && env.PANEL_ASSERTION_KEYS && env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST) {
-        if (!await access(req, env)) return Response.json({ success: false }, { status: 403 });
-        const panel = await authorizePanel(req, env, config, { audience: env.INTERNAL_HOST, store, keys: deps.keys, defer: deps.waitUntil });
+      const audience = transitAudience(env, { platform: "worker" });
+      if (internal && store && env.PANEL_ASSERTION_KEYS && audience && (bound || (env.INTERNAL_HOST && url.hostname === env.INTERNAL_HOST))) {
+        // A service binding has no public route and no Access identity (R7); token and assertion v2 apply to both.
+        if (!bound && !await access(req, env)) return Response.json({ success: false }, { status: 403 });
+        const panel = await authorizePanel(req, env, config, { audience, store, keys: deps.keys, defer: deps.waitUntil });
         if (panel instanceof Response) return panel;
         if (ext) return (await extensions(store)).route(req, env, panel, deps);
         const response = await internalFetch(req, env, store, config, panel, { platform: "worker", extensions: () => extensions(store) });
@@ -185,9 +190,12 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       }
       return notFound();
     },
+    /** Profile (a): the panel Worker's service binding to the `Internal` entrypoint (`src/worker.ts`); only `/internal/*`. */
+    internal: (req: Request, env: Env, ctx: ExecutionContext) => app.fetch(req, env, ctx, true),
   };
-  // Every invocation, with its background work, spends one operation budget (A 3.4.3).
+  // Every invocation, with its background work, spends one operation budget (A 3.4.3); the service binding is an invocation too.
   return { scheduled: (...args: Parameters<typeof app.scheduled>) => metered(INVOCATION_OPS, () => app.scheduled(...args)),
-    fetch: (...args: Parameters<typeof app.fetch>) => metered(INVOCATION_OPS, () => app.fetch(...args)) };
+    fetch: (req: Request, env: Env, ctx: ExecutionContext) => metered(INVOCATION_OPS, () => app.fetch(req, env, ctx)),
+    internal: (...args: Parameters<typeof app.internal>) => metered(INVOCATION_OPS, () => app.internal(...args)) };
 }
 export default createApp();
