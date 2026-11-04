@@ -53,13 +53,13 @@ it('adds only the tables an older staging database lacks', () => {
   const { child, dir } = run('deploy', false, false, 'messages,audit,events');
   expect(child.status, child.stderr).toBe(0);
   const labels = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')).label);
-  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events']);
+  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes']);
 });
 it('deploys isolated resources with a record for each write', () => {
   const { child, dir } = run('deploy');
   expect(child.status, child.stderr).toBe(0);
   const records = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
-  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-messages', 'migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
+  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-messages', 'migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
   expect(records.every(value => value.identical)).toBe(true);
   expect(child.stdout).not.toContain('synthetic');
   const [commit] = readdirSync(join(dir, 'source'));
