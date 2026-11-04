@@ -29,9 +29,9 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE UNIQUE INDEX IF NOT EXISTS messages_idem ON messages(client_id, idem_key_hash) WHERE idem_key_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS messages_brand_time ON messages(brand, created_at);
 CREATE INDEX IF NOT EXISTS messages_status_time ON messages(status, created_at);
-CREATE INDEX IF NOT EXISTS messages_provider ON messages(provider_account, provider_message_id);
-CREATE INDEX IF NOT EXISTS messages_ref ON messages(ref_idx);
-CREATE INDEX IF NOT EXISTS messages_resend_root ON messages(resend_root);
+CREATE INDEX IF NOT EXISTS messages_provider_set ON messages(provider_account, provider_message_id) WHERE provider_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS messages_ref_set ON messages(ref_idx) WHERE ref_idx IS NOT NULL;
+CREATE INDEX IF NOT EXISTS messages_resend_root_set ON messages(resend_root) WHERE resend_root IS NOT NULL;
 CREATE INDEX IF NOT EXISTS messages_meta_exp ON messages(meta_expires_at);
 
 CREATE TABLE IF NOT EXISTS recipients (
@@ -196,4 +196,12 @@ CREATE TABLE IF NOT EXISTS ext_event_gaps (
   at        INTEGER NOT NULL,
   PRIMARY KEY (extension, from_seq)
 );
+`;
+
+/** Columns empty on most sends are indexed only when set (one index write less per insert each); queries compare them with `=`/`IN`. */
+export const PARTIAL_INDEX_SCHEMA = `
+DROP INDEX IF EXISTS messages_provider;
+DROP INDEX IF EXISTS messages_ref;
+DROP INDEX IF EXISTS messages_resend_root;
+${INITIAL_SCHEMA.split('\n').filter(line => line.includes('_set ON messages')).join('\n')}
 `;

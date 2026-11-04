@@ -12,6 +12,7 @@ import { applyMigrations, compileMigrations, reconcileDone, reconcilers, sandbox
 import { runRetention } from './retention';
 import { ensureJob, runJobs, type JobHooks, type JobKind } from './jobs';
 import { JOB_KINDS } from './job-kinds';
+import { currentInvocation } from './budget';
 import type { EventConsumer } from './events';
 import { panelAllows, type PanelPrincipal } from './panel';
 import { requireKeyProvider, type KeyProvider } from '../clients';
@@ -184,9 +185,21 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
   };
   const jobs: JobHooks = { beforeDelete, consumers: fanout, registry: options.registry, kinds: { ...JOB_KINDS, ...kinds,
     ...cleanupBlocked ? { erase: { ...JOB_KINDS.erase, ready: async () => false } } : {} } };
+  // One drain per invocation: a kick during a running drain (auto-reply after the main send) asks it for one more pass.
+  const drains = new WeakMap<object, { again: boolean; run?: Promise<void> }>();
+  const kick = (): Promise<void> => {
+    const call = currentInvocation() ?? {}, running = drains.get(call);
+    if (running) { running.again = true; return running.run!; }
+    const state: { again: boolean; run?: Promise<void> } = { again: false };
+    drains.set(call, state);
+    return state.run = (async () => {
+      do { state.again = false; await runJobs(store, 'request', jobs).catch(() => {}); } while (state.again);
+      drains.delete(call);
+    })();
+  };
   const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]): Promise<unknown> => {
     const { type, at, brand, template, status, ref, messageId, durable } = input;
-    if (durable) return options.kickJobs && fanout.size ? runJobs(store, 'request', jobs).catch(() => {}) : Promise.resolve();
+    if (durable) return options.kickJobs && fanout.size ? kick() : Promise.resolve();
     const event = { id: eventId(at), type, at, brand, template, status, messageId, ...(ref === undefined ? {} : { ref }) };
     const task = Promise.all(extensions.map(extension => bounded(async () => {
       const ack = await extension.onEvent?.(structuredClone(event), contexts.get(extension)!);
