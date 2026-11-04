@@ -189,7 +189,7 @@ it('logs public submissions and auto-replies without adding response fields', as
   }), env, deps);
   expect(await res.json()).toEqual({ success: true });
   await Promise.all(tasks);
-  expect(await rows()).toMatchObject([{ client_id: 'public', template: 'contact', status: 'sent' }, { client_id: 'public', template: 'received', status: 'sent' }]);
+  expect((await rows()).sort((x, y) => x.template.localeCompare(y.template))).toMatchObject([{ client_id: 'public', template: 'contact', status: 'sent' }, { client_id: 'public', template: 'received', status: 'sent' }]);
   expect(vi.mocked(deps.sendEmail).mock.calls[0][1].html).not.toMatch(/resendOf|attachments/);
 });
 
@@ -231,7 +231,7 @@ it('scopes a shared key to each authenticated client', async () => {
     const first = await (await other()).json() as { id: string };
     expect(await (await other()).json()).toEqual({ success: true, id: first.id, idempotent: true });
     expect(deps.sendEmail).toHaveBeenCalledTimes(2);
-    expect((await rows()).map(r => r.client_id)).toEqual(['legacy', 'sender']);
+    expect((await rows()).map(r => r.client_id).sort()).toEqual(['legacy', 'sender']);
   } finally { config.clients = previous; }
 });
 
@@ -250,7 +250,7 @@ it('records a fresh attempt when a conflicting insert resolves to a failed messa
   expect((await send()).status).toBe(502);
   vi.spyOn(store, 'findByIdempotency').mockResolvedValueOnce(undefined);
   expect((await send()).status).toBe(200);
-  expect(await rows()).toMatchObject([{ status: 'send_failed', idem_key_hash: null }, { status: 'sent' }]);
+  expect((await rows()).sort((x, y) => x.status.localeCompare(y.status))).toMatchObject([{ status: 'send_failed', idem_key_hash: null }, { status: 'sent' }]);
   expect(deps.sendEmail).toHaveBeenCalledTimes(2);
 });
 

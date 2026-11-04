@@ -206,3 +206,24 @@ DROP INDEX IF EXISTS messages_ref;
 DROP INDEX IF EXISTS messages_resend_root;
 ${INITIAL_SCHEMA.split('\n').filter(line => line.includes('_set ON messages')).join('\n')}
 `;
+
+/** Hot tables keyed by text or composite keys, stored WITHOUT ROWID (R12): the key is the table b-tree itself, so an insert
+ * writes one row less (no separate primary-key index). Same columns, keys and index names, so older code runs unchanged.
+ * `contents`, `replays` and `events` keep a rowid: their ~2 KB sealed rows exceed the ~1 KB a WITHOUT ROWID page holds
+ * locally, so each would take its own overflow page (measured: more than twice the size). */
+export const WITHOUT_ROWID_TABLES = ['messages', 'recipients', 'subjects', 'guards', 'jobs'];
+
+/** Rebuilds one table: new table, copy in rowid ranges (each statement far inside D1's 30 s query limit), drop, rename,
+ * recreate indexes. Explicit columns: a database whose table differs from this schema fails and rolls back. */
+export function withoutRowid(table: string): string[] {
+  const schema = INITIAL_SCHEMA + JOBS_SCHEMA, body = new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\(\\n([\\s\\S]*?)\\n\\);`).exec(schema)![1];
+  const columns = body.split('\n').map(line => line.trim().split(/\s/)[0]).filter(name => name !== 'PRIMARY').join(', ');
+  const ranges = Array.from({ length: 20 }, (_, i) => `rowid > ${i * 50000}${i < 19 ? ` AND rowid <= ${(i + 1) * 50000}` : ''}`);
+  return [`CREATE TABLE ${table}_wr (\n${body}\n) WITHOUT ROWID`,
+    ...ranges.map(range => `INSERT INTO ${table}_wr (${columns}) SELECT ${columns} FROM ${table} WHERE ${range}`),
+    `DROP TABLE ${table}`, `ALTER TABLE ${table}_wr RENAME TO ${table}`,
+    ...schema.split('\n').filter(line => line.includes(` ON ${table}(`)).map(line => line.replace(/;$/, ''))];
+}
+
+/** D1 migration 0008 and the Node conversion of tables still stored with a rowid. */
+export const WITHOUT_ROWID_SCHEMA = WITHOUT_ROWID_TABLES.flatMap(withoutRowid).join(';\n') + ';\n';

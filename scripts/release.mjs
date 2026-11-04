@@ -9,7 +9,7 @@ import { loadEnv } from "./env.ts";
 import { compileMigrations, migrationFile } from "../src/core/ext-migrations.ts";
 
 const sha = (data) => createHash("sha256").update(data).digest("hex");
-const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql"];
+const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql"];
 
 /** Extension migration file -> sha256 that setup compiles for this configuration; none without a Pro schema (e.g. no webhooks). */
 export async function extensionManifest(json, proPath) {
