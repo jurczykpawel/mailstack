@@ -2,6 +2,8 @@
 import { AwsClient } from 'aws4fetch';
 import { Decrypter, Encrypter } from 'age-encryption';
 import type { Tombstone } from './erase';
+import { sql, type CompiledQuery } from 'kysely';
+import type { KyselyStore } from './store';
 
 type Vars = Record<string, unknown>;
 const XML: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
@@ -14,18 +16,23 @@ export function b2Client({ B2_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APP_KEY }: Vars
   // No retries inside a call: every attempt is a Worker subrequest; the job engine and the daily loop retry instead.
   // Workers reject `redirect: 'error'`; a manual 3xx is not `ok`, so a redirect fails like any other refusal.
   const call = async (path: string, init: RequestInit = {}) => {
-    const response = await client.fetch(new URL(`/${B2_BUCKET}/${path}`, endpoint), { ...init, redirect: 'manual' });
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`B2 ${init.method ?? 'GET'} failed: HTTP ${response.status}`); }
-    return response;
+    const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>;
+    try {
+      return await Promise.race([(async () => {
+        const response = await client.fetch(new URL(`/${B2_BUCKET}/${path}`, endpoint), { ...init, redirect: 'manual', signal: controller.signal });
+        if (!response.ok) { await response.body?.cancel(); throw new Error(`B2 ${init.method ?? 'GET'} failed: HTTP ${response.status}`); }
+        return init.method === 'PUT' ? (await response.body?.cancel(), new Uint8Array()) : new Uint8Array(await response.arrayBuffer());
+      })(), new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('B2 deadline')); }, 2000); })]);
+    } finally { clearTimeout(timer!); }
   };
   return {
-    put: async (key: string, body: Uint8Array) => { await (await call(key, { method: 'PUT', body })).body?.cancel(); },
-    get: async (key: string) => new Uint8Array(await (await call(key)).arrayBuffer()),
+    put: async (key: string, body: Uint8Array) => { await call(key, { method: 'PUT', body }); },
+    get: (key: string) => call(key),
     /** Every key under the prefix; a truncated page without a continuation token is an error, never a shorter list. */
     async list(prefix: string) {
       const keys: string[] = [];
       for (let token: string | undefined, more = true; more;) {
-        const xml = await (await call('?' + new URLSearchParams({ 'list-type': '2', prefix, ...token ? { 'continuation-token': token } : {} }))).text();
+        const xml = new TextDecoder().decode(await call('?' + new URLSearchParams({ 'list-type': '2', prefix, ...token ? { 'continuation-token': token } : {} })));
         keys.push(...text(xml, 'Key'));
         more = text(xml, 'IsTruncated')[0] === 'true'; token = text(xml, 'NextContinuationToken')[0];
         if (more && !token) throw new Error('B2 listing truncated without a continuation token');
@@ -35,36 +42,80 @@ export function b2Client({ B2_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APP_KEY }: Vars
   };
 }
 
-/** age-encrypts for the owner's public key; the writer cannot read anything back. */
+/** Encrypts to the owner's public age key; only the owner can decrypt the payload. */
 export async function seal(recipient: string, bytes: Uint8Array | string) {
   const encrypter = new Encrypter(); encrypter.addRecipient(recipient);
   return encrypter.encrypt(bytes);
 }
 
-export type TombstoneRegistry = (job: string, tombstones: Tombstone[]) => Promise<void>;
+export type TombstoneRegistry = (job: string, tombstones: Tombstone[], store: KyselyStore) => Promise<{ registered: boolean; writes?: CompiledQuery[] }>;
 export interface RegisteredErasure { job: string; tombstones: Tombstone[] }
-const REGISTRY = ['B2_ENDPOINT', 'B2_BUCKET', 'B2_KEY_ID', 'B2_APP_KEY', 'BACKUP_AGE_RECIPIENT'];
+const REGISTRY = ['B2_ENDPOINT', 'B2_BUCKET', 'B2_KEY_ID', 'B2_APP_KEY', 'BACKUP_AGE_RECIPIENT', 'TOMBSTONE_REGISTRY_ID'];
 const prefix = (env: Vars) => typeof env.TOMBSTONE_PREFIX === 'string' && env.TOMBSTONE_PREFIX ? env.TOMBSTONE_PREFIX : 'tombstones/';
-
-/** The API's writer of `<prefix><job>.age`; undefined without any register variable, an error for a partial set. */
-export function tombstoneRegistry(env: object): TombstoneRegistry | undefined {
-  const vars = env as Vars, missing = REGISTRY.filter(k => typeof vars[k] !== 'string' || !vars[k]);
-  if (missing.length === REGISTRY.length) return undefined;
-  if (missing.length) throw new Error(`The erasure register needs ${missing.join(', ')}`);
-  const b2 = b2Client(vars);
-  return async (job, tombstones) => b2.put(`${prefix(vars)}${job}.age`, await seal(vars.BACKUP_AGE_RECIPIENT as string, JSON.stringify({ job, tombstones })));
+const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+const digest = async (value: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', value))].map(b => b.toString(16).padStart(2, '0')).join('');
+interface Head { registry: string; seq: number; hash: string }
+interface RecordRow { seq: number; job: string; sealed: string; hash: string; confirmed: number }
+export const erasureAvailable = (env: object) => REGISTRY.every(k => typeof Reflect.get(env, k) === 'string' && Reflect.get(env, k))
+  ? /^[\w-]{16,128}$/.test(String(Reflect.get(env, 'TOMBSTONE_REGISTRY_ID')))
+  : REGISTRY.every(k => !Reflect.get(env, k)) && Reflect.get(env, 'MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY') === 'true';
+const registryId = (vars: Vars) => {
+  if (typeof vars.TOMBSTONE_REGISTRY_ID !== 'string' || !/^[\w-]{16,128}$/.test(vars.TOMBSTONE_REGISTRY_ID)) throw new Error('TOMBSTONE_REGISTRY_ID required');
+  return vars.TOMBSTONE_REGISTRY_ID;
+};
+async function registryHead(vars: Vars) {
+  const b2 = b2Client(vars), p = prefix(vars), registry = registryId(vars);
+  const rawGenesis = await b2.get(p + 'genesis'), genesis = JSON.parse(new TextDecoder().decode(rawGenesis));
+  const head = JSON.parse(new TextDecoder().decode(await b2.get(p + 'head'))) as Head;
+  if (genesis.registry !== registry || head.registry !== registry || !Number.isSafeInteger(head.seq) || head.seq < 0 || head.seq === 0 && head.hash !== await digest(rawGenesis) || !/^[a-f0-9]{64}$/.test(head.hash)) throw new Error('Invalid erasure register head');
+  return { b2, p, head };
+}
+/** Installation only: the caller must choose a fresh, empty prefix and retain its registry id with the backups. */
+export async function initTombstoneRegistry(env: object) {
+  const vars = env as Vars, b2 = b2Client(vars), p = prefix(vars), registry = registryId(vars);
+  if ((await b2.list(p)).length) throw new Error('Erasure register prefix is not empty');
+  const genesis = bytes({ registry });
+  await b2.put(p + 'genesis', genesis);
+  await b2.put(p + 'head', bytes({ registry, seq: 0, hash: await digest(genesis) }));
 }
 
-/** Every registered erasure. Refuses, instead of skipping, an object it cannot account for. */
+export function tombstoneRegistry(env: object): TombstoneRegistry {
+  const vars = env as Vars, missing = REGISTRY.filter(k => typeof vars[k] !== 'string' || !vars[k]);
+  if (missing.length === REGISTRY.length && vars.MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY === 'true') return async () => ({ registered: true });
+  if (missing.length) throw new Error(`The erasure register needs ${missing.join(', ')}`);
+  registryId(vars);
+  return async (job, tombstones, store) => {
+    const { b2, p, head } = await registryHead(vars);
+    const rows = (await sql<RecordRow>`select * from erasure_registry order by seq desc limit 1`.execute(store.db)).rows, last = rows[0];
+    const own = (await sql<RecordRow>`select * from erasure_registry where job=${job}`.execute(store.db)).rows[0];
+    if (!own) {
+      if (last && (!last.confirmed || head.seq < last.seq || head.seq === last.seq && head.hash !== last.hash)) throw new Error('Erasure register awaiting confirmation');
+      const seq = head.seq + 1, entry = { registry: head.registry, seq, prev: head.hash, job, tombstones };
+      const sealed = await seal(vars.BACKUP_AGE_RECIPIENT as string, bytes(entry)), hash = await digest(sealed);
+      return { registered: false, writes: [sql`insert into erasure_registry(seq,job,sealed,hash,confirmed)
+        values(${seq},${job},${btoa(String.fromCharCode(...sealed))},${hash},0)`.compile(store.db)] };
+    }
+    if (head.seq !== own.seq - 1 && !(head.seq === own.seq && head.hash === own.hash)) throw new Error('Erasure register head changed');
+    await b2.put(`${p}${own.seq}.age`, Uint8Array.from(atob(own.sealed), c => c.charCodeAt(0)));
+    await b2.put(p + 'head', bytes({ registry: head.registry, seq: own.seq, hash: own.hash }));
+    return { registered: true, writes: [sql`update erasure_registry set confirmed=1 where seq=${own.seq}`.compile(store.db)] };
+  };
+}
+
+/** Independent of both databases: genesis, head, numbered objects and their ciphertext hashes must agree. */
 export async function readTombstones(env: object, identity: string): Promise<RegisteredErasure[]> {
-  const vars = env as Vars, b2 = b2Client(vars), decrypter = new Decrypter(), entries: RegisteredErasure[] = [];
+  const vars = env as Vars, { b2, p, head } = await registryHead(vars), decrypter = new Decrypter(), entries: RegisteredErasure[] = [];
   decrypter.addIdentity(identity);
-  for (const key of await b2.list(prefix(vars))) {
-    const job = /^(job_[a-f0-9]{32})\.age$/.exec(key.slice(prefix(vars).length))?.[1];
-    if (!job) throw new Error(`Unexpected object ${key} in the erasure register`);
-    const entry = JSON.parse(await decrypter.decrypt(await b2.get(key), 'text')) as RegisteredErasure;
-    if (entry?.job !== job || !Array.isArray(entry.tombstones) || !entry.tombstones.length) throw new Error(`Invalid erasure register entry ${key}`);
-    entries.push(entry);
+  const keys = new Set(await b2.list(p));
+  if (keys.size !== head.seq + 2 || !keys.has(p + 'genesis') || !keys.has(p + 'head')) throw new Error('Incomplete erasure register');
+  let prev = await digest(await b2.get(p + 'genesis'));
+  for (let seq = 1; seq <= head.seq; seq++) {
+    const key = `${p}${seq}.age`;
+    if (!keys.has(key)) throw new Error(`Missing erasure register entry ${key}`);
+    const sealed = await b2.get(key), entry = JSON.parse(await decrypter.decrypt(sealed, 'text'));
+    if (entry.registry !== head.registry || entry.seq !== seq || entry.prev !== prev || !/^job_[a-f0-9]{32}$/.test(entry.job) || !Array.isArray(entry.tombstones) || !entry.tombstones.length) throw new Error(`Invalid erasure register entry ${key}`);
+    entries.push({ job: entry.job, tombstones: entry.tombstones }); prev = await digest(sealed);
   }
+  if (prev !== head.hash) throw new Error('Erasure register hash mismatch');
   return entries;
 }

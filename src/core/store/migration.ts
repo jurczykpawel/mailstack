@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS ses_status (
 `;
 
 export const JOBS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS erasure_registry (
+  seq INTEGER PRIMARY KEY, job TEXT NOT NULL UNIQUE, sealed TEXT NOT NULL, hash TEXT NOT NULL, confirmed INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS jobs (
   id          TEXT PRIMARY KEY,
   kind        TEXT NOT NULL,

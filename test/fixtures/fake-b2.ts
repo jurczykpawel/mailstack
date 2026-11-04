@@ -1,7 +1,7 @@
 // An in-memory S3 bucket behind `fetch` (PUT, GET, ListObjectsV2 in pages), for code that talks to B2 through aws4fetch.
 import { vi } from 'vitest';
 
-export const b2Env = { B2_ENDPOINT: 'https://s3.eu-central-003.backblazeb2.com', B2_BUCKET: 'mailstack-test', B2_KEY_ID: 'key', B2_APP_KEY: 'secret' };
+export const b2Env = { B2_ENDPOINT: 'https://s3.eu-central-003.backblazeb2.com', B2_BUCKET: 'mailstack-test', B2_KEY_ID: 'key', B2_APP_KEY: 'secret', TOMBSTONE_REGISTRY_ID: 'test-register-0001' };
 
 export function fakeB2({ page = 1000 } = {}) {
   const objects = new Map<string, Uint8Array>(), b2 = { objects, down: false, puts: 0 };

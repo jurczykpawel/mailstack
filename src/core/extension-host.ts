@@ -49,10 +49,10 @@ function extensionDb(store: KyselyStore, prefix: string, kinds: string[] = []): 
   }
   const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect: sqliteDialect(new ExtensionDriver()) });
   const jobs = new WeakSet<CompiledQuery>();
-  function enqueue(kind: string, key: string, payload: unknown) {
+  function enqueue(kind: string, key: string, payload: unknown, source?: Query) {
     const name = `ext:${prefix.slice(4, -1)}:${kind}`;
     if (!kinds.includes(kind) || !/^[\w.:-]{1,128}$/.test(key)) throw new Error('Invalid extension job');
-    const query = ensureJob(store, name, `${name}:${key}`, payload, Date.now());
+    const query = ensureJob(store, name, source ? `${name}:` : `${name}:${key}`, payload, Date.now(), source && sandboxed(source.compile(), prefix));
     jobs.add(query);
     return { compile: () => query };
   }

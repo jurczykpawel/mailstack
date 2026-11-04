@@ -1,3 +1,4 @@
+import { erasureAvailable } from './offsite';
 import { version } from '../../package.json';
 import { jobStats } from './jobs';
 import { parseTransitKeys } from './keyring';
@@ -60,7 +61,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
       audience: transitAudience(env, host) ?? null },
     license: { state: panel.denied ? 'invalid' : 'valid' },
     principal: { role: panel.role, brands: panel.brands, templates: panel.templates },
-    features: { ...Object.fromEntries(FEATURES.map(name => [name, state(name)])), events },
+    features: { ...Object.fromEntries(FEATURES.map(name => [name, state(name)])), events, 'subjects.erase': panel.denied ? { state: 'disabled', reason: 'license' } : !erasureAvailable(env) ? { state: 'disabled', reason: 'erasure_registry_unavailable' } : !admin ? { state: 'disabled', reason: 'role' } : { state: 'enabled' } },
     limits: LIMITS,
     // The plan changes only how long provider-side copies outlive an erasure: D1 Time Travel keeps 30 days (Paid) or 7 (Free);
     // every feature runs on Free (measured on staging, WP20S). Node keeps its snapshots.

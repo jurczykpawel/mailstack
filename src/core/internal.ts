@@ -1,3 +1,4 @@
+import { erasureAvailable } from './offsite';
 import { sql, type RawBuilder } from 'kysely';
 import { appendAudit, AUDIT_GENESIS, type AuditRow } from './audit';
 import { auditHead } from './store/audit';
@@ -76,6 +77,7 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
   };
   // The job row commits in the audit entry's batch and only if that entry was written.
   const erase = async (scope: EraseScope, details: Record<string, unknown>) => {
+    if (!erasureAvailable(env)) return response({ error: 'erasure_registry_unavailable' }, 503);
     const job = newJobId();
     await audit('privacy.erase', 'subject:' + scope.indices[0].index.slice(0, 8), { ...details, job }, row =>
       [enqueueJob(store, 'erase', scope, now, sql`exists(select 1 from audit where seq=${row.seq} and hash=${row.hash})`, job).query]);

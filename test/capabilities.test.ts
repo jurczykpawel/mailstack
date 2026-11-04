@@ -72,7 +72,7 @@ describe('capabilities', () => {
     expect(JSON.stringify(body)).not.toContain(String(transit.keys[0].d));
     expect(body.features).toEqual({ panel: { state: 'enabled' }, webhooks: { state: 'enabled' }, 'resend.replay': { state: 'enabled' },
       'resend.source': { state: 'disabled', reason: 'not_configured' }, 'aws.status': { state: 'disabled', reason: 'role' }, 'aws.test': { state: 'disabled', reason: 'role' },
-      events: { durable: false, reason: 'not_configured' } });
+      events: { durable: false, reason: 'not_configured' }, 'subjects.erase': { state: 'disabled', reason: 'erasure_registry_unavailable' } });
     expect((await caps('viewer')).features).toMatchObject({ webhooks: { reason: 'role' }, 'resend.replay': { reason: 'role' } });
   });
 
@@ -95,7 +95,7 @@ describe('capabilities', () => {
     const body = await caps();
     expect(body.license).toEqual({ state: 'invalid' });
     const { events: _, ...pro } = body.features;
-    expect(Object.values(pro)).toEqual(Array(6).fill({ state: 'disabled', reason: 'license' }));
+    expect(Object.values(pro)).toEqual(Array(7).fill({ state: 'disabled', reason: 'license' }));
     for (const [path, method] of [['/internal/v2/messages', 'GET'], ['/internal/v2/audit/head', 'GET'], ['/internal/ext/pro/webhooks', 'GET'],
       ['/internal/v2/capabilities', 'POST'], ['/internal/v2/subjects/export', 'POST']]) {
       const response = await call(path, 'admin', panelToken, method);

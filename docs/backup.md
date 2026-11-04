@@ -76,33 +76,66 @@ Notes:
 
 ## Erasure register
 
-A restored copy must not bring back messages erased after it was taken. Every API
-erase job therefore first writes its scope to `<TOMBSTONE_PREFIX><job id>.age` in
-the same bucket: `{job, tombstones: [{kid, index, at, brands, templates}]}`,
-encrypted with age to `BACKUP_AGE_RECIPIENT`. It holds blind indexes, brand and
-template selections and the time bound, never an address. The object is written
-before the job hides or deletes anything; while B2 refuses, the job keeps its data
-and retries after 1 minute, 10 minutes, 1 hour and 6 hours. After five failed
-attempts the job ends `dead` with nothing erased, and the erasure must be repeated
-from the panel. The job runs in the API (Worker cron or Node job clock), so neither
-the panel nor a browser has to stay connected.
+A restored copy must not bring back messages erased after it was taken. Before hiding
+or deleting data, the API records each erasure in B2. `genesis` identifies the
+register, `head` records its sequence and hash, and `1.age`, `2.age`, ... contain
+age-encrypted `{registry, seq, prev, job, tombstones}`. `prev` is the SHA-256 of the
+previous ciphertext (for entry 1, of `genesis`). The API keeps the exact ciphertext
+and allocated sequence in its database, atomically with the erase job cursor.
+Independent API instances share that database; a unique sequence allows only one
+allocation, and the next waits for confirmation of the previous entry and head.
+The private age key stays on the owner's computer.
 
 Setup on the API (Worker secrets with `npx wrangler secret put`, Node `api.env`):
 
 | Variable | Meaning |
 |---|---|
 | `B2_ENDPOINT`, `B2_BUCKET` | the backup bucket |
-| `B2_KEY_ID`, `B2_APP_KEY` | a separate application key: this bucket, name prefix `tombstones/`, only `writeFiles` |
-| `BACKUP_AGE_RECIPIENT` | the owner public key |
-| `TOMBSTONE_PREFIX` | optional, default `tombstones/`; staging uses its own, e.g. `staging-tombstones/` |
+| `B2_KEY_ID`, `B2_APP_KEY` | separate key restricted to this bucket and register prefix, with `writeFiles` and `readFiles`; no `deleteFiles` |
+| `BACKUP_AGE_RECIPIENT` | owner public age key |
+| `TOMBSTONE_REGISTRY_ID` | stable random installation id (16–128 letters, digits, `_` or `-`); keep it with the configuration and all backups |
+| `TOMBSTONE_PREFIX` | optional, default `tombstones/`; use a distinct prefix for staging |
 
-Without any of these variables the register is off and erasures run without it
-(development only). A partial set stops the Node API at start and holds erase
-jobs on the Worker. The API key cannot read or delete register objects.
+On the owner's computer, choose an empty prefix and set the variables above.
+Generate an id once, for example `openssl rand -hex 16`, retain it, then explicitly
+initialize the register using an installation key with `listFiles`, `readFiles`
+and `writeFiles` on that prefix:
 
-Keep register objects longer than any copy that predates them: at least the copy
-retention and the provider history (30 days each) plus a margin, for example
-`{"fileNamePrefix": "tombstones/", "daysFromUploadingToHiding": 45, "daysFromHidingToDeleting": 1}`.
+```bash
+node scripts/backup/init-register.mjs
+```
+
+This refuses a nonempty prefix. Run it with a single installer while the API is
+stopped; a failed initialization requires inspecting the objects before a manual
+retry. Neither a 404 nor an erasure automatically initializes a register. Existing
+unnumbered registers are refused: retain them and complete their restore procedure
+with the matching previous release before moving to a fresh register.
+
+Missing or partial configuration makes erasure unavailable (`subjects.erase` in
+capabilities: `erasure_registry_unavailable`, requests return 503 before creating a
+job). Sending remains available. Local development may explicitly set
+`MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY=true` with no registry variables; never set
+this on a production installation.
+
+B2 requests have a two-second deadline covering headers and response consumption.
+The erase job reserves twelve seconds before starting a step (at most four B2
+requests); its lease is thirty seconds. If publication fails or its outcome is
+uncertain, data stays intact and the job republishes the same sequence and exact
+ciphertext, then the head, before proceeding. Retries are after 1 minute, 10
+minutes, 1 hour and 6 hours. After five failures the job is `dead`. Restore B2 and
+resume **that same job** before accepting further erasures; do not abandon its
+allocated sequence. An operator can reset its state to `pending`, attempts to 0,
+and run_after to the current epoch milliseconds in the isolated API database.
+The job clock runs in the API, independently of panel/browser connections.
+
+Keep genesis, head and **every numbered entry** for the lifetime of the register;
+do not apply an age-based lifecycle rule to this prefix. Copies, jobs and panel
+state cannot establish its completeness. Restore requires the retained
+`TOMBSTONE_REGISTRY_ID`, matching genesis/head, all entries 1..head, and the entire
+hash chain. Missing roots, a gap, unknown objects, a head behind the last entry,
+or a different register cause refusal before any replay, including with
+`--allow-missing`. A delayed old head write may require operator repair from the
+retained numbered chain; it must never be treated as a complete shorter register.
 
 ## Restore
 

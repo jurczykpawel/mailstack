@@ -23,8 +23,8 @@ it.each([[202, 1], [200, 0], [409, 0]])('starts background jobs only after accep
   await Promise.all(waitUntil.mock.calls.map(([task]) => task));
   // The drain gets the extension host's cleanup, so erase jobs on the Worker run extension `onBeforeDelete`.
   expect(vi.mocked(runJobs).mock.calls).toEqual(kicks ? [[store, 'request', { beforeDelete: expect.any(Function), consumers: expect.any(Map), registry: expect.any(Function), kinds: expect.objectContaining({ erase: expect.anything() }) }]] : []);
-  // No register variables in this deployment: erase jobs run without a register.
-  if (kicks) expect(vi.mocked(runJobs).mock.calls[0][2]!.registry!()).toBeUndefined();
+  // An accepted request still needs a configured register when its job runs.
+  if (kicks) expect(() => vi.mocked(runJobs).mock.calls[0][2]!.registry!()).toThrow();
 });
 
 it('passes the extension cleanup to the minute cron drain', async () => {
