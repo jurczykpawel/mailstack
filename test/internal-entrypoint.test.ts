@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
-import { fileURLToPath } from 'node:url';
 import { panelEnv } from './fixtures/panel';
 
 vi.setConfig({ testTimeout: 60000 });
-const root = fileURLToPath(new URL('..', import.meta.url));
+const root = process.cwd() + '/';
 let mf: Miniflare;
 // The deployed entry (`main = "src/worker.ts"`) in workerd: a second Worker reaches `Internal` only through its service binding.
 beforeAll(async () => {

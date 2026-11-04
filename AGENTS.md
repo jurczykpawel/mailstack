@@ -6,7 +6,7 @@ validates and renders a branded email, and sends it via **Amazon SES** or **SMTP
 design — each "brand" has its own sender, fixed recipient, origin allowlist, and theme.
 
 Stack: TypeScript (strict), `aws4fetch` for SES SigV4, Nodemailer for SMTP, Kysely with
-D1/SQLite for logging and atomic guards. Worker entry: `src/index.ts`; Node entry:
+D1/SQLite for logging and atomic guards. Worker entry: `src/worker.ts` (the `src/index.ts` app plus the `Internal` entrypoint for the panel Worker's service binding, profile a); Node entry:
 `src/runtime/node-api.ts`. Installation, keys, policies, event setup, retention and
 ntfy operations are documented in [README.md](README.md).
 
