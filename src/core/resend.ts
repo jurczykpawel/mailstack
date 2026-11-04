@@ -6,7 +6,7 @@ import type { Env, SendDeps, SendResult, Attachment } from '../types';
 import type { Config } from './config/schema';
 import { blindIndex, canonicalJson, createMac, refIndex, verifyMac } from './crypto';
 import { parseKeyring, parseTransitKeys } from './keyring';
-import { openTransit, TransitError } from './transit';
+import { MAX_OPENED, openTransit, TransitError } from './transit';
 import { appendAudit } from './audit';
 import { panelAllows, type PanelPrincipal } from './panel';
 import { resolvePolicy } from './logging/policy';
@@ -58,7 +58,7 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
   }
   async function validate(id: string, value: unknown, mac?: string | null): Promise<ResendPayload> {
     const parsed = resendPayload.safeParse(value);
-    if (!parsed.success || canonicalJson(value).length > 65536) return fail(409, 'resend_mismatch');
+    if (!parsed.success || new TextEncoder().encode(canonicalJson(value)).length > MAX_OPENED) return fail(409, 'resend_mismatch');
     const payload = parsed.data;
     const keys = parseKeyring(env).indexKeys;
     if (mac && !await verifyMac(value, JSON.parse(mac), keys)) fail(409, 'resend_mismatch');

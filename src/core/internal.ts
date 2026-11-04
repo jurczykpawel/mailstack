@@ -183,41 +183,64 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
         return await erase({ indices: indices.map(({ kid, index }) => ({ kid, index })), brands: panel.brands, templates: panel.templates, at: now }, {});
       }
       const limit = input.limit === undefined ? 25 : input.limit;
-      let after = '';
+      // The cursor is `<id>` (after that message) or `<id>.<n>` (that message continues at its event n).
+      let after = '', resume: { id: string; offset: number } | undefined;
       if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > LIMITS.exportPageMessages) return fail(400);
       if (input.cursor !== undefined && input.cursor !== null) {
         try {
           if (typeof input.cursor !== 'string' || input.cursor.length > 256) return fail(400);
-          after = atob(input.cursor);
-          if (!/^[A-Za-z0-9_-]{1,128}$/.test(after)) return fail(400);
+          const [, id, offset] = /^([A-Za-z0-9_-]{1,128})(?:\.(\d{1,6}))?$/.exec(atob(input.cursor)) ?? fail(400) as never;
+          if (offset === undefined) after = id; else resume = { id, offset: +offset };
         } catch { return fail(400); }
       }
       const subject = sql`exists(select 1 from subjects s where s.message_id=m.id and (${sql.join(indices.map(i => sql`(s.idx_kid=${i.kid} and s.addr_idx=${i.index})`), sql` or `)}))`;
       const matched = (await run<{ count: number }>(sql`select count(*) count from messages m where ${scope} and ${subject} and ${live}`))[0].count;
       await audit('privacy.export', 'subject:' + indices[0].index.slice(0, 8), { count: matched });
-      const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} and m.id > ${after} order by m.id limit ${Number(limit) + 1}`);
+      const rows = await run<MessageRow>(sql`select m.* from messages m where ${scope} and ${live} and ${subject} and ${resume ? sql`m.id >= ${resume.id}` : sql`m.id > ${after}`} order by m.id limit ${Number(limit) + 1}`);
       const more = rows.length > Number(limit); rows.splice(Number(limit));
       const blobs = (table: 'contents' | 'replays') => pageRows<{ message_id: string; sealed: string; expires_at: number }>(ids => sql`select b.message_id,b.sealed,b.expires_at
         from ${sql.table(table)} b join messages m on m.id=b.message_id where b.message_id in (${ids}) and ${contentLive} and b.expires_at > ${now}`, rows);
       const recipients = await pageRows<{ message_id: string }>(ids => sql`select message_id,pos,role,addr_sealed,addr_hint,status,last_event_at from recipients
         where message_id in (${ids}) order by message_id,pos`, rows);
-      const events = await pageRows<{ message_id: string; id: string; evidence_sealed: string | null }>(ids => sql`select message_id,id,recipient_pos,type,occurred_at,received_at,source,auth,summary,evidence_sealed
+      // Evidence lengths first: only the records that fit this page are read.
+      const events = await pageRows<{ message_id: string; id: string; evidence_length: number | null }>(ids => sql`select message_id,id,recipient_pos,type,occurred_at,received_at,source,auth,summary,length(evidence_sealed) evidence_length
         from events where message_id in (${ids}) order by message_id,occurred_at,id`, rows);
       const contents = await blobs('contents'), replays = await blobs('replays');
-      const messages = [], encoder = new TextEncoder();
-      let bytes = 0, truncated = false;
+      const encoder = new TextEncoder(), size = (v: unknown) => encoder.encode(JSON.stringify(v)).length + 1;
+      type Entry = Record<string, unknown> & { id: string; events: unknown[]; evidence: { events: { id: string; evidence_sealed: string }[]; provider_response_sealed?: string | null } };
+      const messages: Entry[] = [];
+      let bytes = 0, cursor: string | null = null;
+      // Every page stays within the budget: a message is split between its events, each continuation part carrying its offset and total.
       for (const m of rows) {
-        const own = events.get(m.id) ?? [];
-        const message = { ...describe(m, recipients.get(m.id) ?? [], own.map(({ evidence_sealed, ...event }) => event)),
-          content: contents.get(m.id)?.[0] ?? null, replay: replays.get(m.id)?.[0] ?? null, ref_sealed: m.ref_sealed,
-          evidence: { events: own.filter(e => e.evidence_sealed !== null).map(e => ({ id: e.id, evidence_sealed: e.evidence_sealed })), provider_response_sealed: m.provider_response_sealed ?? null } };
-        const size = encoder.encode(JSON.stringify(message)).length;
-        // A page stops before the byte budget is exceeded; the first message is always included so the cursor advances.
-        if (messages.length && bytes + size > PAGE_BYTES) { truncated = true; break; }
-        messages.push(message); bytes += size;
+        const own = events.get(m.id) ?? [], continued = resume?.id === m.id, start = continued ? resume!.offset : 0;
+        const part = { offset: start, total: own.length };
+        const entry: Entry = continued ? { id: m.id, brand: m.brand, template: m.template, continued: true, part, events: [], evidence: { events: [] } }
+          : { ...describe(m, recipients.get(m.id) ?? [], []), content: contents.get(m.id)?.[0] ?? null, replay: replays.get(m.id)?.[0] ?? null, ref_sealed: m.ref_sealed,
+            evidence: { events: [], provider_response_sealed: m.provider_response_sealed ?? null }, part };
+        let used = size(entry), i = start;
+        for (; i < own.length; i++) {
+          const { evidence_length, ...event } = own[i], cost = size(event) + (evidence_length === null ? 0 : size({ id: event.id, evidence_sealed: '' }) + evidence_length);
+          if (bytes + used + cost > PAGE_BYTES) break;
+          entry.events.push(event); if (evidence_length !== null) entry.evidence.events.push({ id: event.id, evidence_sealed: '' }); used += cost;
+        }
+        // A message that does not complete here starts the next page; only a message alone on its page is split, and a unit
+        // larger than an empty page fails closed instead of exceeding the budget.
+        if (i < own.length || bytes + used > PAGE_BYTES) {
+          if (messages.length) { cursor = messages.at(-1)!.id; break; }
+          if (bytes + used > PAGE_BYTES || (continued && i === start)) return fail(503);
+          cursor = m.id + '.' + i;
+        }
+        messages.push(entry); bytes += used;
+        if (cursor) break;
       }
-      const cursor = more || truncated ? btoa(messages.at(-1)!.id) : null;
-      return response({ messages, cursor, manifest: { range: { first: messages[0]?.id ?? null, last: messages.at(-1)?.id ?? null, count: messages.length }, bytes, cursor, complete: cursor === null } });
+      if (cursor === null && more) cursor = messages.at(-1)!.id;
+      const wanted = messages.flatMap(e => e.evidence.events.map(v => v.id));
+      if (wanted.length) {
+        const sealed = new Map((await run<{ id: string; evidence_sealed: string }>(sql`select id,evidence_sealed from events where id in (select value from json_each(${JSON.stringify(wanted)}))`)).map(r => [r.id, r.evidence_sealed]));
+        for (const e of messages) for (const v of e.evidence.events) v.evidence_sealed = sealed.get(v.id) ?? fail(503) as never;
+      }
+      const encoded = cursor === null ? null : btoa(cursor);
+      return response({ messages, cursor: encoded, manifest: { range: { first: messages[0]?.id ?? null, last: messages.at(-1)?.id ?? null, count: messages.length }, bytes, cursor: encoded, complete: encoded === null } });
     }
     if (['/audit', '/audit/head'].includes(path)) {
       if (panel.brands !== '*' || panel.templates !== '*') return fail(403);

@@ -134,8 +134,14 @@ verification or disclosing another selection's entries.
   25); each page is audited before returning data. Pass the returned opaque cursor
   with a new envelope for the same email on the next request until cursor is null. Pages use ascending
   message ID order, read at most limit + 1 messages and load their data sequentially.
-  Each response buffers only one page; clients must collect all pages to complete
-  an export. This is a live view: concurrent erasure/expiry may remove records and
+  Each response stays within 1 MiB, including a single message: a message whose
+  evidence does not fit is split between its events. Every part carries
+  `part: {offset, total}` over the message's events; later parts are
+  `{id, brand, template, continued: true, part, events, evidence: {events}}` and
+  the cursor then names the message and its next event. Join parts in order and
+  reject a gap, a changed total or an incomplete message. An evidence record larger
+  than an empty page returns 503 instead of an oversized page. Clients must collect
+  all pages to complete an export. This is a live view: concurrent erasure/expiry may remove records and
   new messages may appear on later pages.
 - `POST /internal/v2/subjects/erase` `{envelope, reason}` (envelope op `subjects.erase`, payload `{email}`): `202 {jobId}`. Reason is required
   (10–500 characters) but not persisted. One batch writes the `privacy.erase` audit
@@ -177,6 +183,11 @@ archives and replay payloads. Provider responses and event evidence follow metad
 retention, independently of archive expiry, both in evidence reads and subject
 exports. A source read can still return a retained sealed ref.
 Requests have a 64 KiB body limit and an 8 KiB URL limit. No route decrypts history.
+A request carrying a sealed resend replay may reach `TRANSIT_REQUEST_BYTES`
+(`src/core/transit.ts`, 152 KiB): the panel body limit for the resend form, the
+signed assertion and the Pro resend route all use this bound. The opened value inside
+an envelope is limited to `MAX_OPENED` (64 KiB plus 4 KiB for the structure a replay
+adds to an accepted 64 KiB send).
 
 ## Extension domain events
 

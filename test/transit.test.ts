@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Aes256Gcm, CipherSuite, HkdfSha256 } from '@hpke/core';
 import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
-import { openTransit, sealTransit, TransitError, TRANSIT_TTL_MS } from '../src/core/transit';
+import { MAX_OPENED, openTransit, sealTransit, TransitError, TRANSIT_TTL_MS } from '../src/core/transit';
 import { parseTransitKeys } from '../src/core/keyring';
 import { suite as coreSuite } from '../src/core/crypto';
 import type { ContentKey } from '../src/core/crypto';
@@ -104,8 +104,8 @@ describe('transit envelope', () => {
     await rejects(openTransit(value, replay, privateKeys, memoryStore(), now), 'transit_invalid', 400);
   });
 
-  it('limits the payload to 64 KiB on both sides', async () => {
-    const fits = 'x'.repeat(64 * 1024 - 2);
+  it('limits the payload to one opened value and its wrapper on both sides', async () => {
+    const fits = 'x'.repeat(MAX_OPENED + 11 - 2);
     expect(await openTransit(await sealTransit(fits, search, publicKey, now), search, privateKeys, memoryStore(), now)).toBe(fits);
     await expect(sealTransit(fits + 'x', search, publicKey, now)).rejects.toThrow(TransitError);
     const oversized = await independentEnvelope({ op: 'log.search', messageId: null, nonce: b64(new Uint8Array(16)), exp: now + 1000, payload: fits + 'x' });
@@ -116,7 +116,7 @@ describe('transit envelope', () => {
     const [v, kid, nonce, enc, ct] = (await sealTransit('x', search, publicKey, now)).split('.');
     const open = vi.spyOn(coreSuite, 'open');
     try {
-      await rejects(openTransit([v, kid, nonce, enc, ct + 'A'.repeat(128 * 1024)].join('.'), search, privateKeys, memoryStore(), now), 'transit_invalid', 400);
+      await rejects(openTransit([v, kid, nonce, enc, ct + 'A'.repeat(2 * MAX_OPENED)].join('.'), search, privateKeys, memoryStore(), now), 'transit_invalid', 400);
       expect(open).not.toHaveBeenCalled();
     } finally { open.mockRestore(); }
   });
