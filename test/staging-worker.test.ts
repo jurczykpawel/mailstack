@@ -16,12 +16,13 @@ const dirs: string[] = [];
 // mutation-<ms>-<sequence>.json in write order (a lexical sort puts -10 before -9).
 const mutations = (dir: string) => readdirSync(dir).filter(value => value.startsWith('mutation-')).sort((a, b) => Number(a.split(/[-.]/)[2]) - Number(b.split(/[-.]/)[2]));
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function run(command: string, change = false, ses = false, tables = '') {
+function run(command: string, change = false, ses = false, tables = '', extra: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-staging-')); dirs.push(dir);
   const preload = join(dir, 'mock.mjs');
   writeFileSync(preload, `let writes=0;
 const response=result=>Response.json({success:true,result});
 globalThis.fetch=async(url,options={})=>{
+if(url instanceof Request){(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'b2.log'))},url.method+' '+new URL(url.url).pathname+'\\n');return new Response('<ListBucketResult></ListBucketResult>');}
 const path=new URL(url).pathname;
 if(path.endsWith('/mailstack/deployments'))return response({id:${change ? "writes ? 'changed' : 'initial'" : "'initial'"}});
 if(path.endsWith('/d1/database')&&(!options.method||options.method==='GET'))return response([]);
@@ -39,7 +40,7 @@ writes++;return response({uuid:'staging-database'});
 };`);
   if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', database: 'staging-database' }));
   const child = spawnSync(process.execPath, ['--import', preload, 'scripts/staging/worker.mjs', command], {
-    encoding: 'utf8', env: { ...process.env, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
+    encoding: 'utf8', env: { ...process.env, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), ...extra, MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
   });
   return { child, dir };
 }
@@ -167,3 +168,37 @@ it('N: the staging bundle serves the panel binding through Internal with the pan
     expect((await api.fetch('https://api.internal/internal/v2/capabilities', full)).status).toBe(404);
   } finally { await mf.dispose(); }
 }, 60000);
+
+const REGISTER = { MAILSTACK_STAGING_B2_KEY_ID: 'synthetic-b2-id', MAILSTACK_STAGING_B2_APP_KEY: 'synthetic-b2-key', MAILSTACK_STAGING_AGE_RECIPIENT: 'age1synthetic' };
+it('configures and initializes the erasure register under the staging prefix', () => {
+  const { child, dir } = run('deploy', false, false, '', REGISTER);
+  expect(child.status, child.stderr).toBe(0);
+  const secrets = JSON.parse(readFileSync(join(dir, 'secrets.json'), 'utf8'));
+  expect(secrets).toMatchObject({ B2_KEY_ID: 'synthetic-b2-id', B2_APP_KEY: 'synthetic-b2-key', BACKUP_AGE_RECIPIENT: 'age1synthetic' });
+  expect(secrets.TOMBSTONE_REGISTRY_ID).toMatch(/^[a-f0-9]{32}$/);
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings).toEqual(expect.arrayContaining([{ name: 'TOMBSTONE_REGISTRY_ID', type: 'secret_text' }, { name: 'B2_APP_KEY', type: 'secret_text' },
+    { name: 'TOMBSTONE_PREFIX', type: 'plain_text', text: 'staging-tombstones/' }, { name: 'B2_BUCKET', type: 'plain_text', text: 'mailstack-staging-backup-f3c750' }]));
+  expect(readFileSync(join(dir, 'b2.log'), 'utf8').trim().split('\n')).toEqual(['GET /mailstack-staging-backup-f3c750/', 'PUT /mailstack-staging-backup-f3c750/staging-tombstones/genesis', 'PUT /mailstack-staging-backup-f3c750/staging-tombstones/head']);
+  expect(child.stdout + child.stderr).not.toContain('synthetic-b2-key');
+});
+it('N: without register inputs the deployment leaves the register unconfigured', () => {
+  const { child, dir } = run('deploy');
+  expect(child.status, child.stderr).toBe(0);
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings.map((b: { name: string }) => b.name)).not.toEqual(expect.arrayContaining(['TOMBSTONE_REGISTRY_ID']));
+  expect(bindings.map((b: { name: string }) => b.name)).not.toEqual(expect.arrayContaining(['B2_BUCKET']));
+});
+it('enables resend replay and source for acme in the Pro staging composition', async () => {
+  const script = readFileSync('scripts/staging/worker.mjs', 'utf8');
+  const assignment = script.match(/cfg\.logging\.brands = [^;]+;/)?.[0];
+  expect(assignment).toBeDefined();
+  const context = { cfg: structuredClone(example) };
+  runInNewContext(script.match(/cfg\.logging\.defaults = [^;]+;/)![0] + assignment!, context);
+  const cfg = parseConfig(context.cfg);
+  expect((await resolvePolicy(cfg.logging, 'acme', 'notice')).policy.resend).toBe('replay');
+  expect((await resolvePolicy(cfg.logging, 'acme', 'payment')).policy.resend).toBe('replay');
+  expect((await resolvePolicy(cfg.logging, 'acme', 'license')).policy.resend).toBe('source');
+  expect((await resolvePolicy(cfg.logging, 'demo', 'notice')).policy.resend).toBe('off');
+  expect(script).toMatch(/id: 'st-source'[^\n]+resendCallback: \{ url: `https:\/\/\$\{hostname\}\/_staging\/receiver\/\$\{secrets\.STAGING_RECEIVER_TOKEN\}\/resend`, secretEnv: 'STAGING_RESEND_SECRET' \}/);
+});

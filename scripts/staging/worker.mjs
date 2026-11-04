@@ -136,6 +136,13 @@ if (command.startsWith('hmac-')) {
   secrets.TRANSIT_KEYS ??= JSON.stringify({ keys: [{ ...generateKeyPairSync('x25519').privateKey.export({ format: 'jwk' }), kid: 'staging-transit' }] });
   delete secrets.SEND_TOKEN; delete secrets.HOOK_TOKEN;
   if (!existsSync(`${state}/secrets.json`)) put('content-private.json', { keys: [{ ...pair.privateKey.export({ format: 'jwk' }), kid }] });
+  secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
+  secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
+  // Erasure register (R5): a B2 key limited to the staging prefix and the owner's age recipient, given once; erasure stays off without them.
+  const b2 = { B2_KEY_ID: process.env.MAILSTACK_STAGING_B2_KEY_ID, B2_APP_KEY: process.env.MAILSTACK_STAGING_B2_APP_KEY, BACKUP_AGE_RECIPIENT: process.env.MAILSTACK_STAGING_AGE_RECIPIENT };
+  const register = Object.values(b2).every(Boolean);
+  if (register) Object.assign(secrets, b2, { TOMBSTONE_REGISTRY_ID: secrets.TOMBSTONE_REGISTRY_ID ?? randomBytes(16).toString('hex') });
+  const registerVars = secrets.TOMBSTONE_REGISTRY_ID ? { B2_ENDPOINT: 'https://s3.eu-central-003.backblazeb2.com', B2_BUCKET: 'mailstack-staging-backup-f3c750', TOMBSTONE_PREFIX: 'staging-tombstones/' } : {};
   if (pro) {
     if (process.env.MAILSTACK_STAGING_LICENSE) secrets.MAILSTACK_LICENSE = process.env.MAILSTACK_STAGING_LICENSE;
     if (!secrets.MAILSTACK_LICENSE) throw new Error('Set MAILSTACK_STAGING_LICENSE for the first Pro deploy');
@@ -143,6 +150,8 @@ if (command.startsWith('hmac-')) {
     secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_PANEL_TOKEN ??= `msk_st-panel_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_PANEL_WORKER_TOKEN ??= `msk_st-panel-worker_${randomBytes(32).toString('base64url')}`;
+    secrets.STAGING_SOURCE_TOKEN ??= `msk_st-source_${randomBytes(32).toString('base64url')}`;
+    secrets.STAGING_RESEND_SECRET ??= randomBytes(32).toString('base64url');
     secrets.PANEL_ASSERTION_KEYS ??= JSON.stringify([{ kid: 'st-panel-1', key: secrets.PANEL_ASSERTION_KEY ?? randomBytes(32).toString('base64url') }]);
     delete secrets.PANEL_ASSERTION_KEY;
     cfg.extensions = [{ module: 'mailstack-pro', options: { product: 'mailstack-pro-test', host: hostname, seller: 'staging-fixture',
@@ -154,10 +163,11 @@ if (command.startsWith('hmac-')) {
       { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
       { id: 'st-panel', tokenSha256: digest(secrets.STAGING_PANEL_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
       { id: 'st-panel-worker', tokenSha256: digest(secrets.STAGING_PANEL_WORKER_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
+      { id: 'st-source', tokenSha256: digest(secrets.STAGING_SOURCE_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['license'], resendCallback: { url: `https://${hostname}/_staging/receiver/${secrets.STAGING_RECEIVER_TOKEN}/resend`, secretEnv: 'STAGING_RESEND_SECRET' } },
     ];
+    // Panel resend (M9): replay for acme notice/payment; license (secret fields) only from its source through the receiver.
+    cfg.logging.brands = { acme: { templates: { notice: { resend: 'replay' }, payment: { resend: 'replay' }, license: { resend: 'source' } } } };
   }
-  secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
-  secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
   if (egress) {
     secrets.EGRESS_KEYS ??= JSON.stringify([{ kid: 'st-egress-1', key: randomBytes(32).toString('base64url') }]);
     secrets.EGRESS_ACCESS_CLIENT_ID = process.env.MAILSTACK_STAGING_EGRESS_ACCESS_ID ?? secrets.EGRESS_ACCESS_CLIENT_ID;
@@ -229,7 +239,8 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
     const applied = new Set((await query(`SELECT version FROM ext_migrations WHERE extension='${ext}'`)).map(r => r.version));
     for (const m of await compileMigrations(ext, migrations)) if (!applied.has(m.version)) await mutate(`migrate-${m.file}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migrationFile(m) });
   }
-  const vars = { ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  if (register) { await (await import(pathToFileURL(`${root}/src/core/offsite.ts`).href)).initTombstoneRegistry({ ...secrets, ...registerVars }); console.log('Erasure register ready'); }
+  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
