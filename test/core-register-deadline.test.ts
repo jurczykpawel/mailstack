@@ -21,7 +21,6 @@ it.each(['put', 'list', 'get'] as const)('finishes %s within the erasure step de
     expect(Date.now() - start).toBeLessThan(5500);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 }, 8000);
-
 it('requires an explicit mode when the erasure register is absent', () => {
   expect(() => tombstoneRegistry({})).toThrow();
 });
