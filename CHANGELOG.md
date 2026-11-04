@@ -4,6 +4,13 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- CI builds what a release ships without secrets: setup with the example configuration,
+  `wrangler deploy --dry-run`, the Node bundle and the container image with the release
+  smoke test (the previous `npm run setup` step failed without `MAILSTACK_CONFIG`).
+  Release tags reuse this workflow; the release smoke configuration includes `logging`.
+- Dependabot: grouped patch/minor PRs for runtime, dev and GitHub Actions merge
+  themselves when every check is green; majors, base images and packages named in
+  `overrides` stay open for review, and a red CI mentions the owner. Merging never deploys.
 - Replace the Sellf adapter with the configurable source preset in
   `docs/sources/sellf.json`, installed by default when `sources` is omitted.
 - Preserve valid email content and purchase licenses with closed `first`, `format`

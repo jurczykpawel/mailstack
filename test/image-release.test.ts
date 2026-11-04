@@ -14,7 +14,10 @@ function script(name: string) {
 it('gates publication on validation with scoped permissions and pinned actions', () => {
   expect(workflow).toMatch(/image:\n    needs: validate/);
   expect(workflow).toContain('permissions: {contents: read, packages: write}');
-  for (const action of workflow.matchAll(/uses: (.+)/g)) expect(action[1]).toMatch(/@[a-f0-9]{40} # v[0-9.]+$/);
+  // Validation reuses CI from the same commit; every external action is pinned.
+  expect(workflow).toMatch(/validate:\n    uses: \.\/\.github\/workflows\/ci\.yml\n/);
+  for (const action of workflow.matchAll(/uses: (.+)/g))
+    if (action[1] !== './.github/workflows/ci.yml') expect(action[1]).toMatch(/@[a-f0-9]{40} # v[0-9.]+$/);
   expect(workflow).toContain('platforms: linux/amd64,linux/arm64');
   expect(workflow).toContain('cache-from: type=gha');
   expect(workflow).toContain('cache-to: type=gha,mode=max');

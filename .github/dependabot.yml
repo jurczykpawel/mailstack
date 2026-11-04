@@ -1,18 +1,41 @@
 version: 2
-
+# One PR per ecosystem and dependency kind. Patch and minor updates of npm packages and
+# GitHub Actions merge by themselves once CI is green (dependabot-auto-merge.yml); CI
+# builds the Worker, the Node bundle and the container image, so a broken update stays
+# red. Majors, base images and anything named in package.json `overrides` (e.g. undici
+# under miniflare) stay open for review. Merging never deploys: production
+# changes only with a manual `npm run release`.
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "weekly"
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+      dev:
+        dependency-type: development
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        update-types: [minor, patch]
+  # Base images are always reviewed (they change the runtime of the published image);
+  # majors are ignored because the Node LTS line is pinned and bumped by hand.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      base-images:
+        patterns: ["*"]
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]

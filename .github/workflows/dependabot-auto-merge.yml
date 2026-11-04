@@ -1,0 +1,62 @@
+name: Dependabot Auto-Merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        id: metadata
+
+      # Merges patch/minor npm and GitHub Actions updates once every check is green; CI
+      # builds the Worker, the Node bundle and the image, and merging never deploys.
+      # Review: majors, base images (docker, or no semver type such as a digest) and
+      # packages named in `overrides` (pinned transitive fixes, e.g. undici). A red check
+      # pings the owner on any Dependabot PR. `gh pr merge --auto` needs required checks,
+      # which this repository does not have, so the job waits for the checks itself.
+      - name: Merge when green, ping on red
+        run: |
+          overridden=$(gh api "repos/$REPO/contents/package.json?ref=$BASE_REF" -q .content | base64 -d \
+            | jq -r '[.overrides // {} | .. | objects | keys[]] | unique | .[]')
+          hit=$(jq -rn --arg names "$NAMES" --arg o "$overridden" \
+            '($o | split("\n")) as $ov | [$names | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(IN($ov[]))] | join(",")')
+          merge=false
+          case "$ECOSYSTEM:$UPDATE_TYPE" in
+            npm_and_yarn:version-update:semver-patch|npm_and_yarn:version-update:semver-minor|\
+            github_actions:version-update:semver-patch|github_actions:version-update:semver-minor)
+              [ -z "$hit" ] && merge=true ;;
+          esac
+          echo "ecosystem=$ECOSYSTEM update=$UPDATE_TYPE names=$NAMES overrides=${hit:-none} merge=$merge"
+          sleep 90  # let the other workflows register their checks
+          for _ in $(seq 1 90); do
+            rollup=$(gh pr view "$PR_URL" --json statusCheckRollup -q \
+              '[.statusCheckRollup[] | select(.name != "auto-merge")]')
+            total=$(jq length <<<"$rollup")
+            pending=$(jq '[.[] | select(.status != "COMPLETED")] | length' <<<"$rollup")
+            bad=$(jq '[.[] | select(.conclusion | IN("FAILURE","CANCELLED","TIMED_OUT","ACTION_REQUIRED"))] | length' <<<"$rollup")
+            if [ "$bad" != 0 ]; then
+              gh pr comment "$PR_URL" --body "@${OWNER} CI failed on this dependency update, so it was not merged. Fix it or close it with \`@dependabot ignore this dependency\`."
+              exit 0
+            fi
+            if [ "$total" != 0 ] && [ "$pending" = 0 ]; then
+              if [ "$merge" = true ]; then gh pr merge "$PR_URL" --squash; else echo "Green; left for review."; fi
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Checks did not finish in time; not merging."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
