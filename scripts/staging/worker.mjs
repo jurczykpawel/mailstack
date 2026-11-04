@@ -219,6 +219,10 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
   for (const [table, sql] of steps) if (!tables.has(table)) await mutate(`migrate-${table}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql });
   // Idempotent (drop if exists, create if not exists), so it runs on every deploy of a source that has it.
   if (schema.PARTIAL_INDEX_SCHEMA) await mutate('migrate-partial-indexes', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: schema.PARTIAL_INDEX_SCHEMA });
+  // Tables still stored with a rowid are rebuilt once (one atomic query); a converted database skips this step.
+  const rowid = schema.WITHOUT_ROWID_TABLES ? (await query("SELECT name FROM sqlite_master WHERE type='table' AND sql NOT LIKE '%WITHOUT ROWID'"))
+    .map(r => r.name).filter(t => schema.WITHOUT_ROWID_TABLES.includes(t)) : [];
+  if (rowid.length) await mutate('migrate-without-rowid', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: rowid.flatMap(schema.withoutRowid).join(';\n') });
   if (pro) {
     const { compileMigrations, migrationFile } = await import(pathToFileURL(`${root}/src/core/ext-migrations.ts`).href);
     const { name: ext, migrations } = proWorker.workerMigrations(cfg.extensions[0].options);
