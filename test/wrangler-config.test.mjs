@@ -57,3 +57,16 @@ it('N: the Worker entry exports the Internal entrypoint and passes only a valid 
     expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...route, MAILSTACK_PANEL_AUDIENCE: 'mailstack.acme:1' }, stdio: 'pipe' })).toThrow(/must equal MAILSTACK_INTERNAL_ROUTE/);
   } finally { writeFileSync('wrangler.toml', previous); }
 });
+it('names the Worker and its database and sets the SES region from the environment, refusing invalid values', () => {
+  const previous = readFileSync('wrangler.toml', 'utf8'), env = { ...process.env, MAILSTACK_ROUTE: '', MAILSTACK_INTERNAL_ROUTE: '' };
+  const gen = (vars) => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...vars }, stdio: 'pipe' });
+  try {
+    gen({ MAILSTACK_WORKER_NAME: 'mailstack-staging', SES_REGION: 'eu-central-1' });
+    const out = readFileSync('wrangler.toml', 'utf8');
+    for (const line of ['name = "mailstack-staging"', 'database_name = "mailstack-staging"', 'SES_REGION = "eu-central-1"']) expect(out).toContain(line);
+    gen({ MAILSTACK_WORKER_NAME: '', SES_REGION: '' });
+    for (const line of ['name = "mailstack"', 'database_name = "mailstack"', 'SES_REGION = "eu-west-1"']) expect(readFileSync('wrangler.toml', 'utf8')).toContain(line);
+    for (const bad of [{ MAILSTACK_WORKER_NAME: 'Mail_Stack' }, { MAILSTACK_WORKER_NAME: 'a"b' }, { SES_REGION: 'eu-west-1"\nx = "y' }, { SES_REGION: 'EU' }])
+      expect(() => gen(bad)).toThrow();
+  } finally { writeFileSync('wrangler.toml', previous); }
+});

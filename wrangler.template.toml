@@ -1,9 +1,9 @@
 # Template for wrangler.toml — committed. DO NOT put real ids/domains/secrets here.
 # `npm run setup` (and predev/predeploy) generates wrangler.toml from this file by
 # substituting env vars from your gitignored .env (see .env.example):
-#   MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE, MAILSTACK_INTERNAL_ROUTE,
+#   MAILSTACK_WORKER_NAME, SES_REGION, MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE, MAILSTACK_INTERNAL_ROUTE,
 #   MAILSTACK_ACCESS_TEAM_DOMAIN, MAILSTACK_ACCESS_AUD, MAILSTACK_EGRESS_URL
-name = "mailstack"
+name = "${MAILSTACK_WORKER_NAME}"
 main = "src/worker.ts"
 compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
@@ -21,7 +21,7 @@ command = "node scripts/bundle-config.ts --verify"
 
 [vars]
 BUILD_CONFIG_SHA = "${BUILD_CONFIG_SHA}"
-SES_REGION = "eu-west-1"
+SES_REGION = ${SES_REGION}
 SES_CONFIGURATION_SET = ${SES_CONFIGURATION_SET}
 # Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
 SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"
@@ -37,7 +37,7 @@ EGRESS_URL = ${EGRESS_URL}
 
 [[d1_databases]]
 binding = "DB"
-database_name = "mailstack"
+database_name = "${MAILSTACK_WORKER_NAME}"
 database_id = "${MAILSTACK_D1_ID}"
 preview_database_id = "${MAILSTACK_D1_PREVIEW_ID}"
 migrations_dir = ".wrangler/migrations"

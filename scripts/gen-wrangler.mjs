@@ -7,7 +7,7 @@
  * fall back to harmless placeholders, so `typecheck`/`test`/`dev` still work without
  * an .env — only a real `deploy` needs the real values.
  *
- * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional);
+ * Vars: MAILSTACK_WORKER_NAME (Worker and database name, default mailstack), SES_REGION (default eu-west-1), MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional);
  * MAILSTACK_PANEL_AUDIENCE (profile a: panel Worker through a service binding, no internal route);
  * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD; MAILSTACK_EGRESS_URL is the https origin of the egress service (Pro webhooks, resend callbacks).
  */
@@ -26,6 +26,10 @@ const env = loadEnv(root);
 const d1Id = env.MAILSTACK_D1_ID || "PLACEHOLDER_D1_ID";
 const d1Preview = env.MAILSTACK_D1_PREVIEW_ID || "PLACEHOLDER_D1_PREVIEW_ID";
 const route = (env.MAILSTACK_ROUTE || "").trim();
+const workerName = (env.MAILSTACK_WORKER_NAME || "mailstack").trim();
+if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(workerName)) throw new Error("MAILSTACK_WORKER_NAME must be 1-63 lowercase letters, digits or hyphens");
+const sesRegion = (env.SES_REGION || "eu-west-1").trim();
+if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(sesRegion)) throw new Error("SES_REGION must be an AWS region such as eu-west-1");
 const sellfBrand = (env.SELLF_DEFAULT_BRAND || "acme").trim();
 
 const internal = (env.MAILSTACK_INTERNAL_ROUTE || "").trim();
@@ -48,6 +52,8 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("__ROUTES__", routesBlock + (proSchema ? `\n\n# Mailstack Pro resolves the core and zod from this checkout.\n[alias]\nmailstack = ${JSON.stringify(root)}\nzod = ${JSON.stringify(resolve(root, "node_modules/zod"))}` : ""))
   .replace("${SES_CONFIGURATION_SET}", JSON.stringify(env.SES_CONFIGURATION_SET || ""))
   .replace("${BUILD_CONFIG_SHA}", BUILD_CONFIG_SHA)
+  .replaceAll("${MAILSTACK_WORKER_NAME}", workerName)
+  .replace("${SES_REGION}", JSON.stringify(sesRegion))
   .replaceAll("${MAILSTACK_D1_ID}", d1Id)
   .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)
   .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand)
