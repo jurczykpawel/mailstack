@@ -19,7 +19,7 @@ afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 const EXT = { [PRO[1]]: createHash("sha256").update(`-- ${PRO[1]}`).digest("hex") };
 const go = ({ env = { MAILSTACK_CONFIG: config, MAILSTACK_PRO_PATH: "/opt/pro" }, files = [...CORE, ...PRO], between = () => {}, expected = EXT } = {}) => release({
   cwd, env, log: () => {}, expected: async () => expected,
-  guard: (dir, pro) => calls.push(`guard ${pro}`),
+  guard: (dir, pro, worker) => calls.push(`guard ${pro}${worker ? ` ${worker}` : ""}`),
   run: (cmd, args) => {
     calls.push([cmd, ...args].join(" "));
     if (args[1] === "setup") for (const f of files) writeFileSync(join(migrations(), f), `-- ${f}`);
@@ -31,6 +31,11 @@ const go = ({ env = { MAILSTACK_CONFIG: config, MAILSTACK_PRO_PATH: "/opt/pro" }
 it("runs guard, setup, the remote migrations and the deploy of the same set, in that order", async () => {
   await go();
   expect(calls).toEqual(["guard /opt/pro", "npm run setup", "npx wrangler d1 migrations apply DB --remote", "deploy /opt/pro"]);
+});
+
+it("passes the Worker name to the guard, so only production requires origin/main", async () => {
+  await go({ env: { MAILSTACK_CONFIG: config, MAILSTACK_PRO_PATH: "/opt/pro", MAILSTACK_WORKER_NAME: "mailstack-staging" } });
+  expect(calls[0]).toBe("guard /opt/pro mailstack-staging");
 });
 
 it("N: an example generator between the migrations and the deploy (Pro migrations removed) refuses the deploy", async () => {
