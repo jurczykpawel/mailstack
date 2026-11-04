@@ -153,6 +153,15 @@ describe('capabilities', () => {
     expect((await (await request()).json() as Caps).license).toEqual({ state: 'invalid' });
   });
 
+  it('profile (a) with the emergency internal route: one assertion audience for the binding and the Access host', async () => {
+    const pair = await accessKeyPair(), certs = certsFetch(async () => ({ keys: [await publicJwk(pair, 'k1')] }));
+    const worker = createApp({ store, keys: runtime.keys, access: createAccessVerifier(certs.fetcher) }), ctx = { waitUntil() {} } as unknown as ExecutionContext;
+    const workerEnv = { ...env, ...accessEnv, INTERNAL_HOST: 'internal.example', PANEL_AUDIENCE: 'internal.example' } as unknown as Env;
+    const signed = async (url: string) => signPanel(new Request(url, { headers: { 'cf-access-jwt-assertion': await signAccessJwt(pair.privateKey, Date.now()) } }), panelToken, panelClaims(), { aud: 'internal.example' });
+    expect((await worker.internal(await signed('https://api.internal/internal/v2/capabilities'), workerEnv, ctx)).status).toBe(200);
+    expect((await worker.fetch(await signed('https://internal.example/internal/v2/capabilities'), workerEnv, ctx)).status).toBe(200);
+  });
+
   it('N: profile (a) serves the panel only through the service binding, with token and assertion but no Access or internal host', async () => {
     const worker = createApp({ store, keys: runtime.keys, access: async () => false }), ctx = { waitUntil() {} } as unknown as ExecutionContext;
     const workerEnv = { ...env, INTERNAL_HOST: '' } as unknown as Env, url = 'https://api.internal/internal/v2/capabilities';

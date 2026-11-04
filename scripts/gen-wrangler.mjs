@@ -35,6 +35,8 @@ if (internal && !(team && aud)) throw new Error("MAILSTACK_INTERNAL_ROUTE requir
 if (team && !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) throw new Error("MAILSTACK_ACCESS_TEAM_DOMAIN must be <team>.cloudflareaccess.com");
 const panelAudience = (env.MAILSTACK_PANEL_AUDIENCE || "").trim();
 if (panelAudience && !/^[A-Za-z0-9.:_-]{1,253}$/.test(panelAudience)) throw new Error("MAILSTACK_PANEL_AUDIENCE must be 1-253 characters of A-Z a-z 0-9 . : _ -");
+// The internal host replaces PANEL_AUDIENCE as the audience (core transitAudience): an emergency route in profile (a) must not lock out the panel Worker.
+if (panelAudience && internal && panelAudience !== internal) throw new Error("MAILSTACK_PANEL_AUDIENCE must equal MAILSTACK_INTERNAL_ROUTE when both are set");
 const egress = (env.MAILSTACK_EGRESS_URL || "").trim();
 if (egress && !/^https:\/\/[a-z0-9.-]+$/i.test(egress)) throw new Error("MAILSTACK_EGRESS_URL must be an https origin (https://host)");
 // With a custom domain the workers.dev and preview URLs stay off, so only the listed hosts reach the Worker.

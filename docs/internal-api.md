@@ -53,9 +53,9 @@ role, times, `v: 2` and the SHA-256 operation binding over
 
 - `tokenHash` is the SHA-256 hex of the Bearer token on the same request, so an
   assertion cannot be replayed with another client token;
-- `aud` equals the API installation id: `INTERNAL_HOST` on the Worker,
-  `PANEL_AUDIENCE` on Node (Node refuses to start with `PANEL_ASSERTION_KEYS` but
-  without `PANEL_AUDIENCE`);
+- `aud` equals the API installation id: `INTERNAL_HOST` on the Worker, else
+  `PANEL_AUDIENCE` (Worker in profile a, through the service binding; Node refuses
+  to start with `PANEL_ASSERTION_KEYS` but without `PANEL_AUDIENCE`);
 - `nonce` (32 random bytes, base64url) is required for every method other than
   GET/HEAD and is consumed atomically in `guards` as `panel-nonce:<sha256>` for
   60 seconds. A second use returns `409 {code: "replayed"}`; storage failure 503.
@@ -228,3 +228,23 @@ ID. A refusal before sending due to required logging emits no mail event.
 For SMTP, `message.sent` means acceptance by the configured relay, not confirmed
 recipient delivery. Extension consumers must preserve `messageId` when forwarding
 an event and use `id` independently to deduplicate that event.
+
+## Profile (a): emergency internal route
+
+In profile (a) the panel Worker reaches the API only through the service binding,
+and the API Worker has no internal host. A command on the owner's computer (the
+Pro `tombstones replay` after an API restore) has no binding, so the API gets a
+temporary internal route for that one task:
+
+1. In advance: choose the hostname, set `MAILSTACK_PANEL_AUDIENCE` to it and create
+   a Cloudflare Access application for it with a service-token-only policy
+   (`non_identity`) and its service token. Nothing routes to the hostname yet.
+2. When needed: set `MAILSTACK_INTERNAL_ROUTE` (the same hostname),
+   `MAILSTACK_ACCESS_TEAM_DOMAIN` and `MAILSTACK_ACCESS_AUD`, then setup and deploy.
+3. Afterwards: empty `MAILSTACK_INTERNAL_ROUTE`, setup and deploy again, and revoke
+   the service token.
+
+Setup refuses a `MAILSTACK_PANEL_AUDIENCE` that differs from
+`MAILSTACK_INTERNAL_ROUTE`: the internal host takes over as the audience, so a
+different value would lock the panel Worker out while the route is on. With equal
+values the binding and the route accept the same assertions.
