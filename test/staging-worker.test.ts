@@ -10,6 +10,8 @@ import { mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { panelEnv } from './fixtures/panel';
 const dirs: string[] = [];
 // mutation-<ms>-<sequence>.json in write order (a lexical sort puts -10 before -9).
 const mutations = (dir: string) => readdirSync(dir).filter(value => value.startsWith('mutation-')).sort((a, b) => Number(a.split(/[-.]/)[2]) - Number(b.split(/[-.]/)[2]));
@@ -145,3 +147,23 @@ it('inherits default masked refund fields in the staging composition', async () 
     expect(output).not.toContain('PRIVATE-REASON');
   }
 });
+
+it('N: the staging bundle serves the panel binding through Internal with the panel gate and no staging routes', async () => {
+  const { child, dir } = run('deploy');
+  expect(child.status, child.stderr).toBe(0);
+  const id = 'A'.repeat(43), mf = new Miniflare(convertV4MiniflareOptions({ workers: [
+    { name: 'panel', modules: true, compatibilityDate: '2026-10-26', serviceBindings: { API: { name: 'api', entrypoint: 'Internal' } },
+      script: 'export default { fetch(req, env) { return env.API.fetch(req); } }' },
+    { name: 'api', modules: true, compatibilityDate: '2026-10-26', compatibilityFlags: ['nodejs_compat'], script: readFileSync(join(dir, 'worker.mjs'), 'utf8'), d1Databases: ['DB'],
+      bindings: { ...panelEnv, API_KEY: 'full-key', STAGING_RECEIVER_TOKEN: id, STAGING_RECEIVER_KEY: id } },
+  ] }));
+  try {
+    const panel = await mf.getWorker('panel'), api = await mf.getWorker('api'), full = { headers: { authorization: 'Bearer full-key' } };
+    expect((await panel.fetch('https://api.internal/internal/v2/capabilities')).status).toBe(401);
+    expect((await panel.fetch('https://api.internal/internal/v2/capabilities', full)).status).toBe(403);
+    expect((await panel.fetch('https://api.internal/_staging/jwks')).status).toBe(404);
+    expect((await panel.fetch('https://api.internal/health')).status).toBe(404);
+    expect((await api.fetch('https://api.internal/_staging/jwks')).status).toBe(200);
+    expect((await api.fetch('https://api.internal/internal/v2/capabilities', full)).status).toBe(404);
+  } finally { await mf.dispose(); }
+}, 60000);
