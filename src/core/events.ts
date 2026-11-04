@@ -44,14 +44,15 @@ export const FANOUT_JOB: JobKind = {
     if (!consumer) return { result: { skipped: 'no_consumer' } };
     const saved = (await sql<{ seq: number; partial: string | null }>`select seq, partial from ext_event_cursor
       where extension = ${extension}`.execute(store.db)).rows[0] ?? { seq: 0, partial: null };
-    const [row] = (await sql<Row>`select * from domain_events where seq > ${saved.seq} order by seq limit 1`.execute(store.db)).rows;
+    // The second row only tells whether more is waiting; without it the job finishes with this event's commit.
+    const [row, more] = (await sql<Row>`select * from domain_events where seq > ${saved.seq} order by seq limit 2`.execute(store.db)).rows;
     if (!row) return { result: { seq: saved.seq } };
     const ack = await settle(consumer, { id: row.id, type: row.type, at: row.at, brand: row.brand, template: row.template, status: row.status,
       messageId: row.message_id, ...(row.ref_digest ? { refDigest: row.ref_digest } : {}) }, saved.partial);
     if (!ack) throw new Error('Event not confirmed');
     const [seq, partial] = 'partial' in ack ? [saved.seq, ack.partial] : [row.seq, null];
     // Conditional on the cursor read above: retention may have moved it past a gap meanwhile.
-    return { cursor: `${seq}:${partial ?? ''}`, writes: [...ack.writes ?? [], sql`insert into ext_event_cursor(extension, seq, partial) values(${extension}, ${seq}, ${partial})
+    return { ...partial === null && !more ? { result: { seq } } : { cursor: `${seq}:${partial ?? ''}` }, writes: [...ack.writes ?? [], sql`insert into ext_event_cursor(extension, seq, partial) values(${extension}, ${seq}, ${partial})
       on conflict(extension) do update set seq = excluded.seq, partial = excluded.partial
       where ext_event_cursor.seq = ${saved.seq} and ext_event_cursor.partial is ${saved.partial}`.compile(store.db)] };
   },

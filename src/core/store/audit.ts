@@ -13,8 +13,8 @@ export async function auditHead(store: KyselyStore): Promise<AuditRow | undefine
 }
 export async function insertAudit(store: KyselyStore, row: AuditRow, writes: CompiledQuery[] = []): Promise<boolean> {
   const changes = await store.batch([sql`insert into audit(seq,at,actor,action,target,details,prev_hash,hash)
-    select coalesce(max(seq),0)+1,${row.at},${row.actor},${row.action},${row.target},${row.details},${row.prev_hash},${row.hash}
-    from audit having coalesce(max(seq),0) = ${row.seq - 1}`.compile(store.db), ...writes]);
+    select ${row.seq},${row.at},${row.actor},${row.action},${row.target},${row.details},${row.prev_hash},${row.hash}
+    where coalesce((select max(seq) from audit),0) = ${row.seq - 1}`.compile(store.db), ...writes]);
   return changes[0] === 1;
 }
 export async function pruneAudit(store: KyselyStore, cutoff: number, marker: (row: AuditRow) => Promise<unknown>): Promise<void> {

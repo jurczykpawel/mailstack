@@ -26,12 +26,11 @@ export async function runRetention(store: KyselyStore, now: number, cfg: Config,
       sql`delete from messages where id in (${ids})`,
     ].map(query => query.compile(store.db)));
   }
-  for (const table of ['contents', 'replays', 'guards', 'resend_jobs'])
-    await sql`delete from ${sql.table(table)} where expires_at <= ${now}`.execute(store.db);
-  await sql`delete from contents where message_id in (select id from messages
-    where created_at <= ${now - cfg.logging.ceilings.contentDays * 86400000})`.execute(store.db);
-  await sql`delete from replays where message_id in (select id from messages
-    where created_at <= ${now - cfg.logging.ceilings.contentDays * 86400000})`.execute(store.db);
+  await store.batch([
+    ...['contents', 'replays', 'guards', 'resend_jobs'].map(table => sql`delete from ${sql.table(table)} where expires_at <= ${now}`),
+    ...['contents', 'replays'].map(table => sql`delete from ${sql.table(table)} where message_id in (select id from messages
+      where created_at <= ${now - cfg.logging.ceilings.contentDays * 86400000})`),
+  ].map(query => query.compile(store.db)));
   while (true) {
     const rows = (await sql<{ id: string }>`select id from messages
       where status = 'sending' and created_at < ${now - 900000} limit 500`.execute(store.db)).rows;

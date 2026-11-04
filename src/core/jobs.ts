@@ -123,8 +123,14 @@ export async function jobStats(store: KyselyStore, now: number) {
 
 /** One trigger firing: drain within the trigger's budget; the minute cron also raises the only alarm, stalled work. */
 export async function runJobs(store: KyselyStore, trigger: Trigger, { notifier, ...options }: Options & { notifier?: Notifier } = {}) {
-  const now = options.now ?? Date.now;
-  if (options.consumers?.size) await scheduleFanout(store, [...options.consumers.keys()], now());
+  const now = options.now ?? Date.now, t0 = now(), consumers = [...options.consumers?.keys() ?? []];
+  const [work] = (await sql<{ due: number; events: number; stalled: number }>`select
+    exists(select 1 from jobs where ${due(t0)}) due,
+    exists(select 1 from json_each(${JSON.stringify(consumers)}) e where exists(select 1 from domain_events
+      where seq > coalesce((select seq from ext_event_cursor where extension = e.value),0))) events,
+    ${trigger === 'cron' && notifier ? sql`exists(select 1 from jobs where state in ('pending','running') and run_after < ${t0 - 900000})` : sql`0`} stalled`.execute(store.db)).rows;
+  if (!work?.due && !work?.events && !work?.stalled) return;
+  if (work?.events) await scheduleFanout(store, consumers, now());
   await drain(store, createBudget(trigger, now), options);
   if (trigger !== 'cron' || !notifier) return;
   const t = now(), { pending, oldest_pending_age_s: age } = await jobStats(store, t), key = 'alert:jobs:' + Math.floor(t / 3600000);

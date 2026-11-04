@@ -217,6 +217,8 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
   const proWorker = pro && await import(pathToFileURL(`${pro}/src/worker.ts`).href);
   const steps = [['messages', schema.INITIAL_SCHEMA], ['ses_status', schema.SES_STATUS_SCHEMA], ['jobs', schema.JOBS_SCHEMA], ['ext_migrations', schema.EXT_SCHEMA], ['domain_events', schema.EVENTS_SCHEMA], ...pro ? [['pro_license_cache', proWorker.CACHE_SCHEMA]] : []];
   for (const [table, sql] of steps) if (!tables.has(table)) await mutate(`migrate-${table}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql });
+  // Idempotent (drop if exists, create if not exists), so it runs on every deploy of a source that has it.
+  if (schema.PARTIAL_INDEX_SCHEMA) await mutate('migrate-partial-indexes', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: schema.PARTIAL_INDEX_SCHEMA });
   if (pro) {
     const { compileMigrations, migrationFile } = await import(pathToFileURL(`${root}/src/core/ext-migrations.ts`).href);
     const { name: ext, migrations } = proWorker.workerMigrations(cfg.extensions[0].options);
