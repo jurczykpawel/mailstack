@@ -10,6 +10,7 @@
     "dev": "wrangler dev",
     "predeploy": "node scripts/deploy-guard.mjs && npm run setup",
     "deploy": "node scripts/deploy-guard.mjs --deploy",
+    "release": "node scripts/release.mjs",
     "pretypecheck": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
