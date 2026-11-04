@@ -5,6 +5,7 @@ import { createVerifier } from "./events/sns";
 import type { KyselyStore } from "./core/store";
 import { createD1Store } from "./core/store/d1";
 import { runJobs } from "./core/jobs";
+import { tombstoneRegistry } from "./core/offsite";
 import { metered } from "./core/budget";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
@@ -64,16 +65,19 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
   const access = overrides.access ?? createAccessVerifier();
   // Built once per isolate on first use (needs env); a failure leaves only the full key.
   let keys: Promise<KeyProvider | undefined> | undefined, loaded: KeyProvider | undefined, host: Promise<ExtensionHost> | undefined;
+  // The deployment's bindings, for the erasure register its jobs write (one set per isolate).
+  let jobEnv: object = {};
   // The host resolves resend owners through the keys this isolate loaded for its requests (`fetch` awaits them before routing).
   const hostKeys: KeyProvider = { authenticate: async (...args) => (await keys)?.authenticate(...args) ?? null, client: id => (overrides.keys ?? loaded)?.client(id) };
   // Extensions come only from the static Pro build; keys stay with `pro` above (license cache in D1). Resend sends through SES like `/v1/send`.
   const extensions = (store: KyselyStore) => host ??= createExtensionHost(config, store, async module => {
     if (module === "mailstack-pro" && extension) return { default: extension };
     throw new Error("Extension not built into the Worker");
-  }, { keys: hostKeys, kickJobs: true, platform: "worker", delivery: { sendEmail: overrides.sendEmail ?? sendEmail, provider: "ses" } });
+  }, { keys: hostKeys, kickJobs: true, platform: "worker", registry: () => tombstoneRegistry(jobEnv), delivery: { sendEmail: overrides.sendEmail ?? sendEmail, provider: "ses" } });
   const app = {
     scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
       if (!env.DB) throw new Error("Scheduled storage unavailable");
+      jobEnv = env;
       const store = createD1Store(env.DB);
       // One minute cron (Free plan allows five per account): minute 17 UTC runs only retention, every other minute only jobs.
       if (new Date(event.scheduledTime).getUTCMinutes() === 17) ctx.waitUntil(extensions(store).then(h => h.runRetention(event.scheduledTime)));
@@ -88,6 +92,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       bound = false,
     ): Promise<Response> {
       const store = overrides.store ?? (env.DB ? createD1Store(env.DB) : undefined);
+      jobEnv = env;
       keys ??= Promise.resolve().then(() => pro?.(config, env)).catch(() => undefined).then(k => loaded = k);
       const deps = { ...defaultDeps, ...overrides, store, keys: overrides.keys ?? await keys,
         notifier: overrides.notifier ?? (env.NTFY_URL ? createNtfyNotifier(env) : undefined),
