@@ -8,7 +8,7 @@ nor read back earlier copies.
 
 | Runtime | Source | Object in the bucket |
 |---|---|---|
-| Cloudflare Worker | `wrangler d1 export --remote` (SQL) | `mailstack/<database>-<UTC time>.sql.age` |
+| Cloudflare Worker | D1 export through the Cloudflare API (SQL dump, no Wrangler needed) | `mailstack/<database id>-<UTC time>.sql.age` |
 | Node | newest daily SQLite snapshot (`/data/backups/mailstack-YYYYMMDD.db`) | `mailstack/mailstack-YYYYMMDD.db.age` |
 
 The copy contains the same data as the database: plain metadata (brand, template,
@@ -29,8 +29,11 @@ old index keys the restored database cannot be searched.
 3. **Upload key.** Create a B2 application key limited to this bucket with only the
    `writeFiles` capability. Without `readFiles` and `deleteFiles` the backup host
    cannot read or remove existing copies; retention is the bucket's job.
-4. **Cloudflare token (Worker only).** An API token limited to D1 on the account,
-   plus `CLOUDFLARE_ACCOUNT_ID`. Wrangler finds the database by name through the API.
+4. **Cloudflare token (Worker only).** A separate account API token whose only
+   permission is D1 on this account, plus `CLOUDFLARE_ACCOUNT_ID` and the database
+   id (`MAILSTACK_D1_ID`). The copy calls `POST /accounts/<id>/d1/database/<id>/export`,
+   polls until the dump is ready and downloads it from the signed URL. Keep this
+   token only in `backup.env`; never reuse the deploy token.
 
 | Variable | Meaning |
 |---|---|
@@ -38,20 +41,25 @@ old index keys the restored database cannot be searched.
 | `B2_ENDPOINT` | S3 endpoint of the bucket region, e.g. `https://s3.eu-central-003.backblazeb2.com` |
 | `B2_BUCKET` | bucket name |
 | `B2_KEY_ID`, `B2_APP_KEY` | application key from step 3 |
+| `BACKUP_SOURCE` | `d1` (Worker, profile b) or `sqlite` (Node, profile c); required, never guessed |
+| `BACKUP_D1_ID` | D1 database id, with `BACKUP_SOURCE=d1` |
+| `BACKUP_SQLITE_DIR` | snapshot directory, with `BACKUP_SOURCE=sqlite` (default `/data/backups`) |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Worker only, step 4 |
 
 ## Daily copy
 
 ```bash
-node scripts/backup/export.mjs --d1 mailstack          # Worker (D1)
+node scripts/backup/export.mjs                       # source from BACKUP_SOURCE (Compose)
+node scripts/backup/export.mjs --d1 <database id>    # Worker (D1), manual run
 node scripts/backup/export.mjs --sqlite-dir /data/backups   # Node (newest snapshot)
 ```
 
 The command prints the uploaded object key and exits with a non-zero code on any
-failure (missing recipient, failed export, no snapshot, rejected upload). Nothing
-is uploaded unencrypted. In production it runs once a day as the `backup` service of
-the panel's Compose stack; the Node variant needs the API data volume mounted
-read-only.
+failure (missing recipient, missing or unknown source, failed export, no snapshot,
+rejected upload). Nothing is uploaded unencrypted. In production it runs once a day
+as the `backup` service of the panel's Compose stack, which reads `BACKUP_SOURCE`
+from `backup.env`; profile (b) starts it with the panel, profile (c) reads the
+API data volume mounted read-only.
 
 Notes:
 
