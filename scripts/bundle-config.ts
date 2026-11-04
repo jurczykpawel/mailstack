@@ -26,8 +26,8 @@ try {
   const outputs: [string, string][] = [
     ["src/core/config/bundled.ts", `export const CONFIG_JSON = ${JSON.stringify(json)};\nexport const BUILD_CONFIG_SHA = "${sha}";\n`],
     // `workerExtension` is optional in Pro: until it exists the Worker host has no extensions (unavailable).
-    ["src/core/pro.generated.ts", worker ? `import * as pro from ${JSON.stringify(worker)};\nexport { workerKeys as proKeys, CACHE_SCHEMA as proSchema } from ${JSON.stringify(worker)};\nexport const proExtension: unknown = (pro as { workerExtension?: unknown }).workerExtension;\n`
-      : `export const proKeys: import("../clients.ts").ProKeys | undefined = undefined;\nexport const proSchema: string | undefined = undefined;\nexport const proExtension: unknown = undefined;\n`],
+    ["src/core/pro.generated.ts", worker ? `import * as pro from ${JSON.stringify(worker)};\nexport { workerKeys as proKeys, CACHE_SCHEMA as proSchema } from ${JSON.stringify(worker)};\nexport const proExtension: unknown = (pro as { workerExtension?: unknown }).workerExtension;\nexport const proMigrations: unknown = (pro as { workerMigrations?: unknown }).workerMigrations;\n`
+      : `export const proKeys: import("../clients.ts").ProKeys | undefined = undefined;\nexport const proSchema: string | undefined = undefined;\nexport const proExtension: unknown = undefined;\nexport const proMigrations: unknown = undefined;\n`],
   ];
   for (const [file, content] of outputs) {
     const output = resolve(root, file);

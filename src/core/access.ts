@@ -14,7 +14,8 @@ export function createAccessVerifier(fetcher: typeof fetch = (...args) => fetch(
   const load = (team: string) => pending ??= (async () => {
     tried = now();
     try {
-      const res = await fetcher(`https://${team}/cdn-cgi/access/certs`, { redirect: 'error', signal: AbortSignal.timeout(3000) });
+      // Workers reject `redirect: 'error'`; a manual 3xx is not `ok`, so a redirect denies like any other failure.
+      const res = await fetcher(`https://${team}/cdn-cgi/access/certs`, { redirect: 'manual', signal: AbortSignal.timeout(3000) });
       const { keys } = res.ok ? await res.json() as { keys?: unknown } : {};
       if (!Array.isArray(keys)) throw new Error('certs');
       const imported = new Map<string, CryptoKey>();

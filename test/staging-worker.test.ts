@@ -11,8 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 const dirs: string[] = [];
+// mutation-<ms>-<sequence>.json in write order (a lexical sort puts -10 before -9).
+const mutations = (dir: string) => readdirSync(dir).filter(value => value.startsWith('mutation-')).sort((a, b) => Number(a.split(/[-.]/)[2]) - Number(b.split(/[-.]/)[2]));
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function run(command: string, change = false, ses = false) {
+function run(command: string, change = false, ses = false, tables = '') {
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-staging-')); dirs.push(dir);
   const preload = join(dir, 'mock.mjs');
   writeFileSync(preload, `let writes=0;
@@ -25,7 +27,7 @@ if(path.endsWith('/workers/domains')&&(!options.method||options.method==='GET'))
 if(path.endsWith('/workers/scripts')&&(!options.method||options.method==='GET'))return response([]);
 if(path.endsWith('/account-settings'))return response({default_usage_model:'standard'});
 if(path==='/client/v4/zones')return response([{id:'zone',account:{id:'test-account'}}]);
-if(path.endsWith('/query')&&JSON.parse(options.body).sql.startsWith('SELECT'))return response([{results:[]}]);
+if(path.endsWith('/query')&&JSON.parse(options.body).sql.startsWith('SELECT'))return response([{results:(process.env.MS_TABLES??'').split(',').filter(Boolean).map(name=>({name}))}]);
 if(path.endsWith('/workers/scripts/mailstack-staging')&&options.method==='PUT'){
  const m=JSON.parse(await options.body.get('metadata').text());
  const safe=m.bindings.map(b=>({name:b.name,type:b.type,...(b.type==='plain_text'?{text:b.text}:{})}));
@@ -35,7 +37,7 @@ writes++;return response({uuid:'staging-database'});
 };`);
   if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', database: 'staging-database' }));
   const child = spawnSync(process.execPath, ['--import', preload, 'scripts/staging/worker.mjs', command], {
-    encoding: 'utf8', env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), MAILSTACK_STAGING_COMMIT: execFileSync('git', ['merge-base', 'HEAD', 'main'], { encoding: 'utf8' }).trim() },
+    encoding: 'utf8', env: { ...process.env, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
   });
   return { child, dir };
 }
@@ -45,11 +47,17 @@ it('stops deployment after the first changed production fingerprint', () => {
   expect(child.stderr).toContain('Production fingerprint changed');
   expect(readdirSync(dir).filter(value => value.startsWith('mutation-'))).toHaveLength(1);
 });
+it('adds only the tables an older staging database lacks', () => {
+  const { child, dir } = run('deploy', false, false, 'messages,audit,events');
+  expect(child.status, child.stderr).toBe(0);
+  const labels = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')).label);
+  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events']);
+});
 it('deploys isolated resources with a record for each write', () => {
   const { child, dir } = run('deploy');
   expect(child.status, child.stderr).toBe(0);
-  const records = readdirSync(dir).filter(value => value.startsWith('mutation-')).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
-  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-database', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
+  const records = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
+  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-messages', 'migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
   expect(records.every(value => value.identical)).toBe(true);
   expect(child.stdout).not.toContain('synthetic');
   const [commit] = readdirSync(join(dir, 'source'));

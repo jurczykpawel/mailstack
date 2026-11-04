@@ -29,8 +29,13 @@ describe('Access JWT verification', () => {
     expect(await t.verify(await jwt({ nbf: Math.floor(start / 1000) + 30 }))).toBe(true);
     expect(t.calls).toHaveLength(1);
     expect(t.calls[0].url).toBe(`https://${team}/cdn-cgi/access/certs`);
-    expect(t.calls[0].init?.redirect).toBe('error');
+    expect(t.calls[0].init?.redirect).toBe('manual');
     expect(t.calls[0].init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('denies when the certs URL redirects instead of following it', async () => {
+    const fetcher = (async () => new Response(null, { status: 302, headers: { location: 'https://evil.example/certs' } })) as unknown as typeof fetch;
+    expect(await createAccessVerifier(fetcher, () => clock)(request(await jwt()), env)).toBe(false);
   });
 
   it('rejects tokens with a wrong signature, algorithm or claims', async () => {

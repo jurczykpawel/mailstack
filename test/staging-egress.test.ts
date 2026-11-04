@@ -26,7 +26,9 @@ describe.skipIf(!base || !key)('egress service on staging (gate E5)', () => {
   it('counts responses without content-length, delivers to Cloudflare and own-zone targets', async () => {
     expect((await probe(`${base}/_staging/stream?n=10`)).result).toEqual({ status: 200, bytes: 10 });
     expect((await probe(`${base}/_staging/stream?n=70000`)).error).toBe('Egress response limit');
-    const cloudflare = await probe('https://www.cloudflare.com/');
+    // The home page answers POST with more than the response limit; a small Cloudflare path proves delivery.
+    expect((await probe('https://www.cloudflare.com/')).error).toBe('Egress response limit');
+    const cloudflare = await probe('https://www.cloudflare.com/cdn-cgi/trace');
     console.log('egress post ms (public target)', cloudflare.postMs);
     expect(cloudflare.result?.status).toBeGreaterThan(0);
   }, 60000);

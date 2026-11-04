@@ -14,7 +14,7 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "nod
 import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, SES_STATUS_SCHEMA } from "../src/core/store/migration.ts";
 import { compileMigrations, migrationFile } from "../src/core/ext-migrations.ts";
 import { BUILD_CONFIG_SHA, CONFIG_JSON } from "../src/core/config/bundled.ts";
-import { proExtension, proSchema } from "../src/core/pro.generated.ts";
+import { proMigrations, proSchema } from "../src/core/pro.generated.ts";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./env.ts";
@@ -61,7 +61,8 @@ writeFileSync(resolve(root, ".wrangler/migrations/0006_domain_events.sql"), EVEN
 // Names are fixed per version (`<1000+version>_ext_<name>_<version>.sql`), so a regenerated file is never applied twice.
 for (const file of readdirSync(resolve(root, ".wrangler/migrations"))) if (/^\d+_ext_.+\.sql$/.test(file)) rmSync(resolve(root, ".wrangler/migrations", file));
 const entry = JSON.parse(CONFIG_JSON).extensions?.find((e) => e.module === "mailstack-pro");
-const extension = entry && proExtension && (typeof proExtension === "function" ? await proExtension(entry.options ?? {}) : proExtension);
+// The runtime extension needs Worker bindings; setup reads its static schema for the same options.
+const extension = entry && typeof proMigrations === "function" ? proMigrations(entry.options ?? {}) : undefined;
 for (const m of extension ? await compileMigrations(extension.name, extension.migrations) : [])
   writeFileSync(resolve(root, ".wrangler/migrations", m.file), migrationFile(m));
 const pro = resolve(root, ".wrangler/migrations/0003_pro_license_cache.sql");
