@@ -108,8 +108,8 @@ it('runs idle retention in at most six D1 calls and retains live data', async ()
 it('indexes provider, ref and resend columns only when set; lookups search those indexes; the migration replaces full ones', async () => {
   const insert = (id: string, ref: string | null, root: string | null) => sql`insert into messages(id,client_id,brand,template,level,policy_hash,
     status,created_at,meta_expires_at,ref_idx,resend_root) values(${id},'legacy','acme','notice','meta','h','sending',${t},${t},${ref},${root})`.execute(store.db);
-  reset(); await insert('m1', null, null); expect(writes).toBe(5); // row, primary key, brand/time, status/time, metadata expiry
-  reset(); await insert('m2', 'r', 'm1'); expect(writes).toBe(7);
+  reset(); await insert('m1', null, null); expect(writes).toBe(4); // row (the id is the table key, R12), brand/time, status/time, metadata expiry
+  reset(); await insert('m2', 'r', 'm1'); expect(writes).toBe(6);
   reset(); await sql`update messages set provider_account='a', provider_message_id='p' where id='m1'`.execute(store.db); expect(writes).toBe(2);
   const plan = async (query: string) => JSON.stringify(await rows(sql.raw('explain query plan ' + query)));
   expect(await plan(`select id from messages where provider_account='a' and provider_message_id='p'`)).toContain('messages_provider_set');

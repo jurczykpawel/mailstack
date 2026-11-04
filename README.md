@@ -297,6 +297,13 @@ same set. Do not run `npm test` or `npm run typecheck` between setup and deploy:
 regenerate the example bundle and remove Pro migrations, which the release then refuses.
 That's your live email service.
 
+Migration `0008_without_rowid.sql` (Node: the first start) rebuilds `messages`, `recipients`,
+`subjects`, `guards` and `jobs` as `WITHOUT ROWID` tables, one written row less per insert.
+It copies every row once in a single transaction; a failure leaves the old tables. Cost:
+about four written rows per copied row, one-off, counted against the daily D1 write limit.
+Columns, keys and index names do not change, so rollback is a redeploy of the previous
+version without schema steps.
+
 ### 9) Connect your website form
 Add the spam widget and point the form at mailstack. A minimal example:
 ```html
