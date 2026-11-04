@@ -1,5 +1,7 @@
 import { canonicalJson, decode, encode, suite } from './crypto/index.ts';
 import type { ContentKey } from './crypto/index.ts';
+import { MAX_ENVELOPE, MAX_OPENED } from './http.ts';
+export { MAX_OPENED, TRANSIT_REQUEST_BYTES } from './http.ts';
 
 export const TRANSIT_OPS = ['resend.replay', 'resend.source', 'log.search', 'subjects.export', 'subjects.erase'] as const;
 export type TransitOp = typeof TRANSIT_OPS[number];
@@ -9,8 +11,7 @@ interface NonceGuard { consume(key: string, expiresAt: number): Promise<boolean>
 
 export const TRANSIT_TTL_MS = 5 * 60_000;
 const CLOCK_SKEW_MS = 60_000;
-const MAX_PAYLOAD = 64 * 1024;
-const MAX_ENVELOPE = 2 * MAX_PAYLOAD;
+const MAX_PAYLOAD = MAX_OPENED + '{"replay":}'.length;
 const utf8 = new TextEncoder();
 const info = utf8.encode('mailstack/v1/transit');
 

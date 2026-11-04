@@ -3,7 +3,7 @@ import { authenticate, bearerToken, licenseRequired, tokenSha256, type Defer, ty
 import type { Config } from './config/schema';
 import type { KyselyStore } from './store';
 import { parseIndexKeys } from './keyring';
-import { boundedText } from './http';
+import { boundedText, TRANSIT_REQUEST_BYTES } from './http';
 
 export const PANEL_PROTOCOL = '2';
 export interface PanelClaims {
@@ -14,7 +14,7 @@ export interface PanelPrincipal extends PanelClaims { scopes: string[]; brands: 
 export interface PanelSigning { key: IndexKey; token: string; aud: string; nonce?: string | null }
 async function operation(req: Request): Promise<string> {
   const url = new URL(req.url);
-  return tokenSha256(req.method + '\n' + url.pathname + url.search + '\n' + await boundedText(req.clone(), 65536));
+  return tokenSha256(req.method + '\n' + url.pathname + url.search + '\n' + await boundedText(req.clone(), TRANSIT_REQUEST_BYTES));
 }
 const mutation = (req: Request) => req.method !== 'GET' && req.method !== 'HEAD';
 export async function signPanelAssertion(req: Request, claims: PanelClaims, s: PanelSigning): Promise<string> {
