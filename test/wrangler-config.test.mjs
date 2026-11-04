@@ -50,5 +50,10 @@ it('N: the Worker entry exports the Internal entrypoint and passes only a valid 
     gen('mailstack.acme:1'); const out = readFileSync('wrangler.toml', 'utf8');
     expect(out).toContain('main = "src/worker.ts"'); expect(out).toContain('PANEL_AUDIENCE = "mailstack.acme:1"');
     for (const bad of ['a b', 'x"\nAPI_KEY = "y', 'a'.repeat(254)]) expect(() => gen(bad), bad).toThrow();
+    // Profile (a) with the emergency internal route: the audience stays the one the panel Worker signs for.
+    const route = { MAILSTACK_ROUTE: 'mail.example.com', MAILSTACK_INTERNAL_ROUTE: 'internal.example.com', MAILSTACK_ACCESS_TEAM_DOMAIN: 'team.cloudflareaccess.com', MAILSTACK_ACCESS_AUD: 'aud' };
+    execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...route, MAILSTACK_PANEL_AUDIENCE: 'internal.example.com' }, stdio: 'pipe' });
+    expect(readFileSync('wrangler.toml', 'utf8')).toContain('PANEL_AUDIENCE = "internal.example.com"');
+    expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...route, MAILSTACK_PANEL_AUDIENCE: 'mailstack.acme:1' }, stdio: 'pipe' })).toThrow(/must equal MAILSTACK_INTERNAL_ROUTE/);
   } finally { writeFileSync('wrangler.toml', previous); }
 });

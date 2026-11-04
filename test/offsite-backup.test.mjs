@@ -115,9 +115,25 @@ describe('offsite backup', () => {
   });
 
   it('takes the source from flags or explicitly from BACKUP_SOURCE, never by guessing', () => {
-    expect(sourceFrom({}, { BACKUP_SOURCE: 'd1', BACKUP_D1_ID: 'db-1' })).toEqual({ d1: 'db-1' });
+    expect(sourceFrom({}, { BACKUP_SOURCE: 'd1', BACKUP_D1_ID: 'db-1' })).toEqual({ d1: ['db-1'] });
+    expect(sourceFrom({}, { BACKUP_SOURCE: 'd1', BACKUP_D1_ID: 'api-db, panel-db' })).toEqual({ d1: ['api-db', 'panel-db'] });
     expect(sourceFrom({}, { BACKUP_SOURCE: 'sqlite' })).toEqual({ sqliteDir: '/data/backups' });
     expect(sourceFrom({ 'sqlite-dir': '/x' }, { BACKUP_SOURCE: 'd1' })).toEqual({ d1: undefined, sqliteDir: '/x' });
-    for (const env of [{}, { BACKUP_SOURCE: 'D1' }, { BACKUP_D1_ID: 'db-1' }, { BACKUP_SOURCE: 'd1' }]) expect(() => sourceFrom({}, env)).toThrow(/BACKUP_SOURCE/);
+    for (const env of [{}, { BACKUP_SOURCE: 'D1' }, { BACKUP_D1_ID: 'db-1' }, { BACKUP_SOURCE: 'd1' }, ...['a,,b', 'a,a', ' , ', 'a,'].map(BACKUP_D1_ID => ({ BACKUP_SOURCE: 'd1', BACKUP_D1_ID }))])
+      expect(() => sourceFrom({}, env), JSON.stringify(env)).toThrow(/BACKUP_SOURCE/);
+  });
+
+  // Profile (a): one service copies the API and the panel database; a failing one keeps the other's copy and fails the run.
+  it('copies each listed D1 database to its own object, and N: fails the run when one export fails', async () => {
+    const { identity, recipient } = await keys(), uploads = new Map(), put = async (key, body) => uploads.set(key, body), now = Date.UTC(2026, 10, 4, 3);
+    const dumps = { 'api-db': readFileSync(fixture), 'panel-db': Buffer.from("CREATE TABLE tombstones(job TEXT PRIMARY KEY, body TEXT, created_at INTEGER NOT NULL);\nINSERT INTO tombstones VALUES('job_1',NULL,5);") };
+    const exportD1 = async database => { if (!dumps[database]) throw new Error('D1 export failed: HTTP 403'); return dumps[database]; };
+    expect(await exportBackup({ recipient, d1: ['api-db', 'panel-db'], put, exportD1, now })).toEqual(['mailstack/api-db-20261104T030000Z.sql.age', 'mailstack/panel-db-20261104T030000Z.sql.age']);
+    const target = join(temp(), 'panel.db'); await restoreBackup({ input: uploads.get('mailstack/panel-db-20261104T030000Z.sql.age'), identity, sqlite: target });
+    expect(read(target).tombstones).toEqual([{ job: 'job_1', body: null, created_at: 5 }]);
+    uploads.clear();
+    await expect(exportBackup({ recipient, d1: ['gone-db', 'panel-db'], put, exportD1, now })).rejects.toThrow('copy failed for gone-db: D1 export failed: HTTP 403; uploaded mailstack/panel-db-20261104T030000Z.sql.age');
+    expect([...uploads.keys()]).toEqual(['mailstack/panel-db-20261104T030000Z.sql.age']);
+    await expect(exportBackup({ recipient, d1: [], put, exportD1 })).rejects.toThrow(/exactly one source/);
   });
 });
