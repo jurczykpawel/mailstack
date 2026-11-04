@@ -1282,7 +1282,10 @@ initialization error (including a failed `migrate`, `routes` or `keys` hook, or
 names sharing a table prefix) marks that extension unavailable: it gets no routes,
 events or cleanup calls, a generic log line names `$.extensions.<index>.module`
 without module values or exception details, and sending with the full key
-continues. Configuration errors (`$.clients`, two key providers) still stop startup.
+continues. While a configured extension is unavailable because of initialization or
+missing schema, erasure jobs stay pending without an attempt and retention keeps the
+messages it would delete (the job alarm fires after 15 minutes); after the fix and a
+restart, erasure runs before any other queued job. Configuration errors (`$.clients`, two key providers) still stop startup.
 
 The contracts live in `src/core/extensions.ts`. Extension names match
 `[a-z][a-z0-9_]{0,39}`; a name that equals or prefixes another (`demo`, `demo_x`)
@@ -1306,7 +1309,7 @@ makes both unavailable. All hooks are optional:
   `unavailable: reconcile`. It must be idempotent. An optional `reconcileKey` string
   (for example the ids of a keyring) joins the configuration digest, so changing it
   alone starts a new generation.
-- `jobs: { <kind>: { run, ready?, dead?, reserveMs? } }` registers core background jobs
+- `jobs: { <kind>: { run, ready?, dead?, reserveMs?, ops? } }` registers core background jobs
   `ext:<name>:<kind>`. Queue one with `db.enqueue(kind, key, payload)` inside
   `db.batch([...])`: one live job per key; a finished one is revived. The core holds the
   lease (30 s), the token fence and the backoff (1 min, 10 min, 1 h, 6 h). `run` makes one
@@ -1314,6 +1317,9 @@ makes both unavailable. All hooks are optional:
   `retry: true` to count it as failed; after the fifth failure or lost claim the job is
   `dead` and the `dead` writes commit. `ready()` is asked before a job is claimed: false
   leaves it pending without an attempt. Jobs whose extension is not loaded stay pending.
+  `ops` (default 6) is the most D1 calls plus subrequests one attempt may take: a Worker
+  invocation (Free: 50 D1 calls, the core keeps 40 for its meter, 990 with `cloudflare.plan: "paid"`)
+  claims a job only while that fits, and each attempt is charged at least `ops`.
 - `migrate(db)` (legacy, until extensions move to `migrations`/`reconcile`) runs before listening. Use Kysely schema/query builders and tables
   beginning with `ext_<name>_`; referenced tables must use the same prefix. Raw SQL,
   schema-qualified tables and dropping indexes are not supported. Index names also
@@ -1328,10 +1334,13 @@ makes both unavailable. All hooks are optional:
   `brand`, `template`, `status`, and optional `ref`/`messageId` (the local log id).
   Address, subject and message content are absent. Keep correlation refs opaque.
   Stored events (level other than `none`) arrive from the `fanout` job with
-  `refDigest` instead of `ref`, at least once: return `{ ack: true }` only after every
-  delivery is stored, or `{ partial: endpointId }` to continue later with
-  `onEvent(event, ctx, endpointId)`. Anything else keeps the event pending; events
-  unconfirmed for 7 days are dropped and recorded as a gap.
+  `refDigest` instead of `ref`, at least once, one event per job step: return
+  `{ ack: true, writes }` with the sandboxed delivery writes (and `db.enqueue` jobs),
+  committed in one batch with the event cursor, or `{ partial: endpointId, writes }` to
+  continue later with `onEvent(event, ctx, endpointId)`. Give a delivery and its job an
+  id derived from the event and endpoint, so a repeated event adds neither. Anything else
+  keeps the event pending; events unconfirmed for 7 days are dropped and recorded as a gap.
+  For events from memory the host commits `writes` as one batch.
 - `routes(app)` registers exact paths with
   `app.route('GET', '/ping', (request, ctx) => Response.json({ ok: true }))`.
   They are mounted on Node's internal port **8081** and on the Worker's

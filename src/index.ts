@@ -5,6 +5,7 @@ import { createVerifier } from "./events/sns";
 import type { KyselyStore } from "./core/store";
 import { createD1Store } from "./core/store/d1";
 import { runJobs } from "./core/jobs";
+import { metered } from "./core/budget";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
 import { config, findBrandByOrigin, getBrand } from "./core/config";
@@ -24,6 +25,8 @@ import type { KeyProvider } from "./clients";
 import type { EmitEvent } from "./core/extensions";
 
 const verifySns = createVerifier();
+// D1 queries per invocation (Free 50, Paid 1000; D1 limits), minus room for calls the meter does not see (license refresh, DoH).
+const INVOCATION_OPS = config.cloudflare?.plan === "paid" ? 990 : 40;
 
 const defaultDeps: SendDeps = {
   logging: config.logging,
@@ -67,7 +70,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
     if (module === "mailstack-pro" && extension) return { default: extension };
     throw new Error("Extension not built into the Worker");
   }, { keys: hostKeys, kickJobs: true, platform: "worker", delivery: { sendEmail: overrides.sendEmail ?? sendEmail, provider: "ses" } });
-  return {
+  const app = {
     scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
       if (!env.DB) throw new Error("Scheduled storage unavailable");
       const store = createD1Store(env.DB);
@@ -183,5 +186,8 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
       return notFound();
     },
   };
+  // Every invocation, with its background work, spends one operation budget (A 3.4.3).
+  return { scheduled: (...args: Parameters<typeof app.scheduled>) => metered(INVOCATION_OPS, () => app.scheduled(...args)),
+    fetch: (...args: Parameters<typeof app.fetch>) => metered(INVOCATION_OPS, () => app.fetch(...args)) };
 }
 export default createApp();
