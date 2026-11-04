@@ -148,7 +148,9 @@ verification or disclosing another selection's entries.
   entry (eight-character index prefix, `{job}`) and an `erase` job with a fixed scope:
   the subject's indexes under every active key, the client's brand/template
   selections and `created_at` up to the request time. Messages that arrive later stay.
-  Phase 1 hides each portion of up to 500 messages at once (metadata and archive
+  Before anything is deleted, the job writes its tombstones to the erasure register
+  in B2 when one is configured ([backup.md](backup.md#erasure-register)); while B2
+  refuses, the job retries without deleting. Phase 1 hides each portion of up to 500 messages at once (metadata and archive
   expiry set to 0, so lists, details and export drop them) and deletes content and
   replay archives; phase 2 deletes every child table and the messages. Each portion
   commits with the job cursor in one atomic batch: an interrupted invocation keeps

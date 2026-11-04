@@ -18,6 +18,7 @@ import { createApp } from '../index';
 import { sendEmail } from '../ses';
 import { smtpFromEnv } from '../adapters/sender/smtp';
 import type { Env } from '../types';
+import { tombstoneRegistry } from '../core/offsite';
 
 type Fetch = (req: Request, env: Env, ctx: Pick<ExecutionContext, 'waitUntil'>) => Promise<Response>;
 async function latestBackup(dir: string): Promise<number> {
@@ -110,7 +111,7 @@ async function main() {
   const store = createSqliteStore(database);
   try {
     await store.migrate();
-    const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider });
+    const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider }, tombstoneRegistry(env));
     const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, durableEvents: extensions.durableEvents, resendSource: extensions.resendSource, keys: extensions.keys });
     const stopMaintenance = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
     const notifier = env.NTFY_URL ? createNtfyNotifier(env) : undefined;

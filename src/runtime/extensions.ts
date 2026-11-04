@@ -6,12 +6,13 @@ import { createExtensionHost } from '../core/extension-host';
 import type { KyselyStore } from '../core/store';
 import type { Config } from '../core/config/schema';
 import type { SendDeps } from '../types';
+import type { TombstoneRegistry } from '../core/offsite';
 
 /** Node host: modules by dynamic import, plus the internal listener for `/internal/v2/*` and `/internal/ext/*`. */
 export async function loadExtensions(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }> = module => import(module),
-  delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>) {
-  const host = await createExtensionHost(config, store, module => importer(isAbsolute(module) ? pathToFileURL(module).href : module), { delivery, applyMigrations: true });
+  delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>, registry?: TombstoneRegistry) {
+  const host = await createExtensionHost(config, store, module => importer(isAbsolute(module) ? pathToFileURL(module).href : module), { delivery, applyMigrations: true, registry: () => registry });
   return { ...host, async fetch(req: Request, env: object): Promise<Response> {
     const { pathname } = new URL(req.url);
     if (!pathname.startsWith('/internal/v2/') && !pathname.startsWith('/internal/ext/')) return new Response(null, { status: 404 });

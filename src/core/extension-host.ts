@@ -89,7 +89,7 @@ export type ExtensionHost = Awaited<ReturnType<typeof createExtensionHost>>;
  */
 export async function createExtensionHost(config: Config, store: KyselyStore,
   importer: (module: string) => Promise<{ default?: unknown }>,
-  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean; kickJobs?: boolean; platform?: 'worker' | 'node' } = {}) {
+  options: { delivery?: Pick<SendDeps, 'sendEmail' | 'provider'>; keys?: KeyProvider; applyMigrations?: boolean; kickJobs?: boolean; platform?: 'worker' | 'node' } & Pick<JobHooks, 'registry'> = {}) {
   const extensions: Extension[] = [], consumers: Extension[] = [], routes = new Map<string, Route>(), contexts = new Map<Extension, ExtensionContext>();
   const features: ExtensionFeature[] = [];
   const ctx: Omit<ExtensionContext, 'db'> = { now: Date.now,
@@ -182,7 +182,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
   };
-  const jobs: JobHooks = { beforeDelete, consumers: fanout, kinds: { ...JOB_KINDS, ...kinds,
+  const jobs: JobHooks = { beforeDelete, consumers: fanout, registry: options.registry, kinds: { ...JOB_KINDS, ...kinds,
     ...cleanupBlocked ? { erase: { ...JOB_KINDS.erase, ready: async () => false } } : {} } };
   const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]): Promise<unknown> => {
     const { type, at, brand, template, status, ref, messageId, durable } = input;

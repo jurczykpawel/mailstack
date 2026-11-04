@@ -492,6 +492,7 @@ npx wrangler secret put API_KEY                # long random bearer for trusted 
 npx wrangler secret put ALTCHA_HMAC_KEY        # ALTCHA brands
 npx wrangler secret put CONTENT_PUBLIC_KEYS    # public JWK set from npm run keys
 npx wrangler secret put INDEX_KEYS             # index-key array from npm run keys
+npx wrangler secret put B2_KEY_ID              # erasure register (with B2_ENDPOINT, B2_BUCKET, B2_APP_KEY, BACKUP_AGE_RECIPIENT; docs/backup.md)
 npx wrangler secret put PANEL_ASSERTION_KEYS   # only with MAILSTACK_INTERNAL_ROUTE (panel), JSON [{kid, key}]
 ```
 

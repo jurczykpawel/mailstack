@@ -68,7 +68,37 @@ Notes:
 - The file is processed in memory; the backup host needs about twice the database
   size in free RAM.
 - Provider copies are separate: Cloudflare keeps D1 Time Travel history for up to
-  30 days (Paid), Node keeps seven local snapshots on the same volume.
+  30 days (Paid) or 7 days (Free), Node keeps seven local snapshots on the same volume.
+
+## Erasure register
+
+A restored copy must not bring back messages erased after it was taken. Every API
+erase job therefore first writes its scope to `<TOMBSTONE_PREFIX><job id>.age` in
+the same bucket: `{job, tombstones: [{kid, index, at, brands, templates}]}`,
+encrypted with age to `BACKUP_AGE_RECIPIENT`. It holds blind indexes, brand and
+template selections and the time bound, never an address. The object is written
+before the job hides or deletes anything; while B2 refuses, the job keeps its data
+and retries after 1 minute, 10 minutes, 1 hour and 6 hours. After five failed
+attempts the job ends `dead` with nothing erased, and the erasure must be repeated
+from the panel. The job runs in the API (Worker cron or Node job clock), so neither
+the panel nor a browser has to stay connected.
+
+Setup on the API (Worker secrets with `npx wrangler secret put`, Node `api.env`):
+
+| Variable | Meaning |
+|---|---|
+| `B2_ENDPOINT`, `B2_BUCKET` | the backup bucket |
+| `B2_KEY_ID`, `B2_APP_KEY` | a separate application key: this bucket, name prefix `tombstones/`, only `writeFiles` |
+| `BACKUP_AGE_RECIPIENT` | the owner public key |
+| `TOMBSTONE_PREFIX` | optional, default `tombstones/`; staging uses its own, e.g. `staging-tombstones/` |
+
+Without any of these variables the register is off and erasures run without it
+(development only). A partial set stops the Node API at start and holds erase
+jobs on the Worker. The API key cannot read or delete register objects.
+
+Keep register objects longer than any copy that predates them: at least the copy
+retention and the provider history (30 days each) plus a margin, for example
+`{"fileNamePrefix": "tombstones/", "daysFromUploadingToHiding": 45, "daysFromHidingToDeleting": 1}`.
 
 ## Restore
 
@@ -94,7 +124,9 @@ target is touched.
 
    A Node snapshot (`.db.age`) restores only to `--sqlite`.
 3. Continue with the recovery procedure on the new database before switching:
-   re-apply erasures from the tombstone register, quarantine events and deliveries
+   re-apply erasures from the erasure register (Mailstack Pro panel CLI
+   `tombstones replay --identity <owner key> --since <copy time>`, with a temporary
+   B2 key that may list and read the register prefix; see the Pro README), quarantine events and deliveries
    from before the restore point, reconcile `sending`/`unknown` messages, then check
    the list, content decryption in the browser, address search and the audit chain.
 4. Switch: Worker — set `MAILSTACK_D1_ID` to the new database, `npm run setup`,

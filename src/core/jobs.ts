@@ -5,6 +5,7 @@ import { createBudget, type Budget, type Trigger } from './budget';
 import { JOB_KINDS } from './job-kinds';
 import type { BeforeMessageDelete } from './extensions';
 import { scheduleFanout, type EventConsumer } from './events';
+import type { TombstoneRegistry } from './offsite';
 
 export const LEASE_MS = 30000;
 const DELAYS = [60000, 600000, 3600000, 21600000], MAX_ATTEMPTS = DELAYS.length + 1;
@@ -15,14 +16,15 @@ const CLAIM_OPS = 3, RELEASE_OPS = 1, STEP_OPS = 6;
 export interface Job { id: string; kind: string; cursor: string | null; payload: unknown; attempt: number }
 /** One portion of work; `writes` commit atomically with the new cursor or the result, and only under a valid token. */
 export type Step = ({ cursor: string } | { result: unknown } | { retry: true }) & { writes?: CompiledQuery[] };
-/** `reserveMs`: the longest a single step may take; no step starts with less budget left (default 3 s). */
-export interface JobContext { store: KyselyStore; now: number; beforeDelete?: BeforeMessageDelete; consumers?: Map<string, EventConsumer> }
+/** `reserveMs`: the longest a single step may take; no step starts with less budget left (default 3 s).
+ * `registry`: the erasure register writer, built when used (undefined = not configured; a partial configuration throws). */
+export interface JobContext { store: KyselyStore; now: number; beforeDelete?: BeforeMessageDelete; consumers?: Map<string, EventConsumer>; registry?: () => TombstoneRegistry | undefined }
 /** `retry` commits its writes and reschedules like a failure; `ready` is asked before a job of the kind is claimed (false
  * leaves it pending without an attempt); `dead` writes commit whenever the job ends dead (failures or lost claims); `ops`
  * bounds the D1 calls and subrequests of one step, commit included, and is its minimum charge. */
 export interface JobKind { reserveMs?: number; ops?: number; ready?(): Promise<boolean>; dead?(job: Job): CompiledQuery[]; step(job: Job, ctx: JobContext): Promise<Step> }
 /** What the extension host contributes to background work. */
-export type JobHooks = Pick<JobContext, 'beforeDelete' | 'consumers'> & { kinds?: Record<string, JobKind> };
+export type JobHooks = Pick<JobContext, 'beforeDelete' | 'consumers' | 'registry'> & { kinds?: Record<string, JobKind> };
 interface Options extends JobHooks { now?: () => number }
 interface Claimed { id: string; kind: string; cursor: string | null; payload: string; attempts: number }
 

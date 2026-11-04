@@ -4,8 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { AwsClient } from 'aws4fetch';
-import { Encrypter } from 'age-encryption';
+import { b2Client, seal } from '../../src/core/offsite.ts';
 
 // The runtime image has no Wrangler (dev dependency), so D1 is exported through the REST API: start, poll the bookmark, download the signed dump.
 export async function d1Export(database, { CLOUDFLARE_ACCOUNT_ID: account, CLOUDFLARE_API_TOKEN: token }, { fetch: get = fetch, wait = sleep, polls = 600 } = {}) {
@@ -38,22 +37,10 @@ async function readSource({ d1, sqliteDir, exportD1, now }) {
 export async function exportBackup({ recipient, d1, sqliteDir, put, exportD1 = database => d1Export(database, process.env), now = Date.now() }) {
   if (!recipient?.startsWith('age1')) throw new Error('an age recipient (age1...) is required');
   if (!d1 === !sqliteDir) throw new Error('choose exactly one source: --d1 or --sqlite-dir');
-  const encrypter = new Encrypter();
-  encrypter.addRecipient(recipient);
   const { name, bytes } = await readSource({ d1, sqliteDir, exportD1, now });
   const key = `mailstack/${name}.age`;
-  await put(key, await encrypter.encrypt(bytes));
+  await put(key, await seal(recipient, bytes));
   return key;
-}
-
-export function b2Put({ B2_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APP_KEY }) {
-  if (!B2_ENDPOINT || !B2_BUCKET || !B2_KEY_ID || !B2_APP_KEY) throw new Error('B2_ENDPOINT, B2_BUCKET, B2_KEY_ID and B2_APP_KEY are required');
-  const endpoint = new URL(B2_ENDPOINT);
-  const client = new AwsClient({ accessKeyId: B2_KEY_ID, secretAccessKey: B2_APP_KEY, service: 's3', region: endpoint.hostname.match(/^s3\.([\w-]+)\./)?.[1] ?? 'us-east-1' });
-  return async (key, body) => {
-    const response = await client.fetch(new URL(`/${B2_BUCKET}/${key}`, endpoint), { method: 'PUT', body, redirect: 'error' });
-    if (!response.ok) throw new Error(`upload failed: HTTP ${response.status}`);
-  };
 }
 
 // Without flags the source comes from the environment (Compose `backup.env`): BACKUP_SOURCE=d1 with BACKUP_D1_ID, or sqlite.
@@ -66,7 +53,7 @@ export function sourceFrom(values, env) {
 
 async function main() {
   const { values } = parseArgs({ options: { d1: { type: 'string' }, 'sqlite-dir': { type: 'string' } } });
-  const source = sourceFrom(values, process.env), put = b2Put(process.env);
+  const source = sourceFrom(values, process.env), { put } = b2Client(process.env);
   const key = await exportBackup({ recipient: process.env.BACKUP_AGE_RECIPIENT, ...source, put });
   console.log(`uploaded ${key}`);
 }
