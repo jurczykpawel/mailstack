@@ -126,10 +126,27 @@ it('requires installation before writing, and does not replace an existing genes
   await runJobs(f.store, 'request', { registry: () => tombstoneRegistry(env) });
   expect(await f.visible()).toBe(1); expect(b2.objects.size).toBe(0);
   await initTombstoneRegistry(env); expect(await readTombstones(env, identity)).toEqual([]);
-  await expect(initTombstoneRegistry(env)).rejects.toThrow('not empty');
+  await expect(initTombstoneRegistry({ ...env, TOMBSTONE_REGISTRY_ID: 'another-register-01' })).rejects.toThrow('not empty');
   b2.objects.delete('staging-tombstones/head'); await expect(readTombstones(env, identity)).rejects.toThrow(); await f.store.db.destroy();
 });
 
 it('keeps an erasure pending without a register hook', async () => {
   const f = await erasure(); await runJobs(f.store, 'request'); expect(await f.visible()).toBe(1); await f.store.db.destroy();
+});
+
+it('initialization completes after a lost response and refuses any other content in the prefix', async () => {
+  const b2 = fakeB2();
+  await initTombstoneRegistry(env);
+  const puts = b2.puts;
+  await initTombstoneRegistry(env);
+  expect(b2.puts).toBe(puts);
+  b2.objects.delete('staging-tombstones/head');
+  await initTombstoneRegistry(env);
+  expect(b2.objects.has('staging-tombstones/head')).toBe(true);
+  await expect(initTombstoneRegistry({ ...env, TOMBSTONE_REGISTRY_ID: 'another-register-01' })).rejects.toThrow('not empty');
+  b2.objects.set('staging-tombstones/head', new TextEncoder().encode(JSON.stringify({ registry: env.TOMBSTONE_REGISTRY_ID, seq: 1, hash: 'a'.repeat(64) })));
+  await expect(initTombstoneRegistry(env)).rejects.toThrow('not empty');
+  b2.objects.delete('staging-tombstones/head');
+  b2.objects.set('staging-tombstones/1.age', new Uint8Array([1]));
+  await expect(initTombstoneRegistry(env)).rejects.toThrow('not empty');
 });

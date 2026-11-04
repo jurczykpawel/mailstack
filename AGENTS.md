@@ -514,7 +514,8 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
 3. **Set the secrets** (see above).
 4. **Deploy:** `npm run deploy`. The guard runs before setup, fetches `origin/main`,
    and requires a clean tree plus HEAD equal to `origin/main` or tagged and reachable
-   from it. It passes HEAD as `BUILD_COMMIT` to Wrangler. Export `MAILSTACK_HEALTH_URL`
+   from it. A Worker other than `mailstack` (`MAILSTACK_WORKER_NAME`, e.g. staging) only needs
+   a clean tree on any branch. It passes HEAD as `BUILD_COMMIT` to Wrangler. Export `MAILSTACK_HEALTH_URL`
    (the full `/health` URL) to verify the deployed commit; without it the check is
    explicitly skipped. `/health.version` comes from package.json; commit defaults to `dev`.
    With schema changes run `npm run release`: setup from the external config (+ `MAILSTACK_PRO_PATH`),

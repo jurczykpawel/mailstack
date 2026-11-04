@@ -105,9 +105,10 @@ and `writeFiles` on that prefix:
 node scripts/backup/init-register.mjs
 ```
 
-This refuses a nonempty prefix. Run it with a single installer while the API is
-stopped; a failed initialization requires inspecting the objects before a manual
-retry. Neither a 404 nor an erasure automatically initializes a register. Existing
+This refuses a prefix holding anything other than this register's own `genesis`
+and `head` at sequence 0; with only those (a response lost after the write), a rerun
+with the same `TOMBSTONE_REGISTRY_ID` completes them without rewriting. Run it with a
+single installer while the API is stopped. Neither a 404 nor an erasure automatically initializes a register. Existing
 unnumbered registers are refused: retain them and complete their restore procedure
 with the matching previous release before moving to a fresh register.
 

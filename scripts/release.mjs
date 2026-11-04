@@ -37,12 +37,12 @@ export async function release({ cwd = process.cwd(), env = loadEnv(cwd), guard =
   run = (cmd, args) => { // setup reads MAILSTACK_CONFIG from its environment, so a value from .env is passed on
     const result = spawnSync(cmd, args, { cwd, stdio: "inherit", env: { ...process.env, MAILSTACK_CONFIG: env.MAILSTACK_CONFIG } });
     if (result.error || result.status !== 0) throw new Error(`${cmd} ${args.join(" ")} failed.`);
-  }, deployRelease = (proPath) => deploy({ cwd, proPath }), expected = extensionManifest } = {}) {
+  }, deployRelease = (proPath) => deploy({ cwd, proPath, workerName: env.MAILSTACK_WORKER_NAME }), expected = extensionManifest } = {}) {
   const config = env.MAILSTACK_CONFIG?.trim(), proPath = env.MAILSTACK_PRO_PATH?.trim() || undefined;
   if (!config) throw new Error("MAILSTACK_CONFIG must name the external configuration.");
   const json = JSON.parse(readFileSync(config, "utf8"));
   if (((json.extensions ?? []).some((e) => e.module === "mailstack-pro") || json.clients) && !proPath) throw new Error("The configuration needs Mailstack Pro; set MAILSTACK_PRO_PATH.");
-  guard(cwd, proPath);
+  guard(cwd, proPath, env.MAILSTACK_WORKER_NAME);
   run("npm", ["run", "setup"]);
   const extension = await expected(json, proPath), manifest = migrationManifest(cwd, { pro: !!proPath, extension });
   log(`Migration manifest: ${manifest}`);

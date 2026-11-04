@@ -53,7 +53,7 @@ it('adds only the tables an older staging database lacks', () => {
   const { child, dir } = run('deploy', false, false, 'messages,audit,events');
   expect(child.status, child.stderr).toBe(0);
   const labels = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')).label);
-  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes']);
+  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'migrate-without-rowid']);
 });
 it('deploys isolated resources with a record for each write', () => {
   const { child, dir } = run('deploy');

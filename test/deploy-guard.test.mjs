@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { checkRepository, deploy } from "../scripts/deploy-guard.mjs";
+import { checkRepository, checkRepositories, deploy } from "../scripts/deploy-guard.mjs";
 
 let root, cwd, origin, peer;
 const script = resolve("scripts/deploy-guard.mjs");
@@ -76,6 +76,40 @@ describe("deploy repository", () => {
     const result = spawnSync(process.execPath, [script], { cwd, encoding: "utf8" });
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/origin\/main/);
+  });
+});
+
+describe("non-production Worker", () => {
+  const branchCommit = () => { git(cwd, "checkout", "-b", "staging-work"); return commit(cwd, "local"); };
+  it("accepts a clean local HEAD of any branch for a Worker other than production", () => {
+    const sha = branchCommit();
+    expect(checkRepository(cwd, { production: false })).toBe(sha);
+    expect(checkRepositories(cwd, undefined, "mailstack-staging")).toEqual({ sha, pro: undefined });
+  });
+  it("does not need origin for a Worker other than production", () => {
+    const sha = branchCommit(); git(cwd, "remote", "remove", "origin");
+    expect(checkRepositories(cwd, undefined, "mailstack-staging").sha).toBe(sha);
+  });
+  it("still rejects a dirty tree for a Worker other than production", () => {
+    writeFileSync(join(cwd, "extra"), "changed");
+    expect(() => checkRepositories(cwd, undefined, "mailstack-staging")).toThrow(/clean/);
+  });
+  it.each([undefined, "", " mailstack ", "mailstack"])("refuses a local branch for the production Worker (name %j)", (name) => {
+    branchCommit();
+    expect(() => checkRepositories(cwd, undefined, name)).toThrow(/origin\/main/);
+  });
+  it("applies the Worker rule to the Pro checkout too", () => {
+    const pro = join(root, "pro"); git(root, "clone", origin, pro); identity(pro);
+    git(pro, "checkout", "-b", "staging-work"); const proSha = commit(pro, "local Pro");
+    const sha = branchCommit();
+    expect(checkRepositories(cwd, pro, "mailstack-staging")).toEqual({ sha, pro: proSha });
+    expect(() => checkRepositories(cwd, pro, "mailstack")).toThrow(/origin\/main/);
+  });
+  it("passes the Worker name from deploy options to the repository check", async () => {
+    const sha = branchCommit(), opts = { cwd, workerName: "mailstack-staging", healthUrl: "", runWrangler: vi.fn(), log: vi.fn() };
+    await deploy(opts);
+    expect(opts.runWrangler).toHaveBeenCalledWith(["deploy", "--var", `BUILD_COMMIT:${sha}`]);
+    await expect(deploy({ ...opts, workerName: "mailstack" })).rejects.toThrow(/origin\/main/);
   });
 });
 

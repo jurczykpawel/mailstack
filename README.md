@@ -275,7 +275,9 @@ Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
 
 ### 8) Deploy 🚀
 Use a clean checkout at `origin/main`, or a tag reachable from it. The deploy guard
-fetches origin before setup and passes HEAD to Wrangler as `BUILD_COMMIT`.
+fetches origin before setup and passes HEAD to Wrangler as `BUILD_COMMIT`. A Worker whose
+`MAILSTACK_WORKER_NAME` is not `mailstack` (for example staging) may deploy a clean local HEAD
+of any branch; its SHA is still reported in `/health`.
 ```bash
 export MAILSTACK_HEALTH_URL=https://mail.example.com/health
 npm run deploy
@@ -553,7 +555,7 @@ gitignored `src/core/pro.generated.ts` and migration `0003_pro_license_cache.sql
 D1). Set the license with `wrangler secret put MAILSTACK_LICENSE`; options are `product`, `host`,
 `seller`, `jwksUrl` and `revocationUrl` (no `cachePath`, `webhooks` or `aws`). A stale cache is
 refreshed after the response; scoped keys keep working for seven days without the issuer.
-`npm run deploy` and `npm run release` then also require a clean Pro checkout at its `origin/main` (or a reachable tag)
+`npm run deploy` and `npm run release` then also require a clean Pro checkout at its `origin/main` (or a reachable tag; any clean branch for a non-production Worker)
 and reports it as `proCommit` in `/health`.
 
 ### Migrating a legacy brand registry

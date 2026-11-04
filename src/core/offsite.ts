@@ -73,10 +73,15 @@ async function registryHead(vars: Vars) {
 /** Installation only: the caller must choose a fresh, empty prefix and retain its registry id with the backups. */
 export async function initTombstoneRegistry(env: object) {
   const vars = env as Vars, b2 = b2Client(vars), p = prefix(vars), registry = registryId(vars);
-  if ((await b2.list(p)).length) throw new Error('Erasure register prefix is not empty');
-  const genesis = bytes({ registry });
-  await b2.put(p + 'genesis', genesis);
-  await b2.put(p + 'head', bytes({ registry, seq: 0, hash: await digest(genesis) }));
+  const genesis = bytes({ registry }), head = bytes({ registry, seq: 0, hash: await digest(genesis) });
+  const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+  // A rerun after a lost response finds only its own genesis/head and completes them; anything else is refused.
+  const found = await b2.list(p);
+  if (found.some(k => k !== p + 'genesis' && k !== p + 'head')) throw new Error('Erasure register prefix is not empty');
+  for (const [name, value] of [['genesis', genesis], ['head', head]] as const) {
+    if (!found.includes(p + name)) await b2.put(p + name, value);
+    else if (!same(await b2.get(p + name), value)) throw new Error('Erasure register prefix is not empty');
+  }
 }
 
 export function tombstoneRegistry(env: object): TombstoneRegistry {

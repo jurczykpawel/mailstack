@@ -2,13 +2,21 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { loadEnv } from "./env.ts";
 
-export function checkRepository(cwd = process.cwd()) {
+/** Name of the production Worker; only it must deploy from origin/main (or a tag reachable from it). */
+export const PRODUCTION_WORKER = "mailstack";
+
+/** True unless MAILSTACK_WORKER_NAME names another Worker (same default and trimming as gen-wrangler). */
+export const isProductionWorker = (name) => ((name || "").trim() || PRODUCTION_WORKER) === PRODUCTION_WORKER;
+
+/** Clean tree always; production additionally requires HEAD == origin/main or a tag reachable from it. */
+export function checkRepository(cwd = process.cwd(), { production = true } = {}) {
   const git = (...args) => execFileSync("git", args, {
     cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
   }).trim();
   if (git("status", "--porcelain", "--untracked-files=all")) {
     throw new Error("Working tree must be clean before deploy.");
   }
+  if (!production) return git("rev-parse", "HEAD");
   try {
     git("fetch", "--prune", "origin", "+refs/heads/main:refs/remotes/origin/main");
   } catch {
@@ -26,20 +34,23 @@ export function checkRepository(cwd = process.cwd()) {
   return sha;
 }
 
-/** Core commit, plus the Mailstack Pro commit when MAILSTACK_PRO_PATH is configured. */
-export function checkRepositories(cwd = process.cwd(), proPath = loadEnv(cwd).MAILSTACK_PRO_PATH?.trim()) {
-  return { sha: checkRepository(cwd), pro: proPath ? checkRepository(proPath) : undefined };
+/** Core commit, plus the Mailstack Pro commit when MAILSTACK_PRO_PATH is configured; a Worker other than
+ * production (MAILSTACK_WORKER_NAME, e.g. staging) may deploy a clean local HEAD of any branch. */
+export function checkRepositories(cwd = process.cwd(), proPath = loadEnv(cwd).MAILSTACK_PRO_PATH?.trim(),
+  workerName = loadEnv(cwd).MAILSTACK_WORKER_NAME) {
+  const options = { production: isProductionWorker(workerName) };
+  return { sha: checkRepository(cwd, options), pro: proPath ? checkRepository(proPath, options) : undefined };
 }
 
 export async function deploy({
-  cwd = process.cwd(), healthUrl = process.env.MAILSTACK_HEALTH_URL, proPath,
+  cwd = process.cwd(), healthUrl = process.env.MAILSTACK_HEALTH_URL, proPath, workerName,
   runWrangler = (args) => {
     const result = spawnSync("wrangler", args, { cwd, stdio: "inherit" });
     if (result.error || result.status !== 0) throw new Error("Wrangler deploy failed.");
   },
   fetchHealth = fetch, log = console.log,
 } = {}) {
-  const { sha, pro } = checkRepositories(cwd, proPath);
+  const { sha, pro } = checkRepositories(cwd, proPath, workerName);
   await runWrangler(["deploy", "--var", `BUILD_COMMIT:${sha}`, ...(pro ? ["--var", `BUILD_PRO_COMMIT:${pro}`] : [])]);
   if (!healthUrl) {
     log("MAILSTACK_HEALTH_URL is unset; skipping post-deploy health check.");
