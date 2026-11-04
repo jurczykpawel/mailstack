@@ -36,7 +36,7 @@ export interface Env extends KeyEnvironment {
   PANEL_ASSERTION_KEYS?: string;
   /** Private X25519 transit keyring `{keys: [JWK]}`; its public halves are published by capabilities. */
   TRANSIT_KEYS?: string;
-  /** Node only: the assertion audience (API installation id) the panel signs for. */
+  /** The assertion audience (API installation id) the panel signs for: Node, and the Worker without INTERNAL_HOST (profile a, service binding). */
   PANEL_AUDIENCE?: string;
 }
 

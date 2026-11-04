@@ -8,6 +8,7 @@
  * an .env — only a real `deploy` needs the real values.
  *
  * Vars: MAILSTACK_D1_ID, MAILSTACK_D1_PREVIEW_ID, MAILSTACK_ROUTE and MAILSTACK_INTERNAL_ROUTE (optional);
+ * MAILSTACK_PANEL_AUDIENCE (profile a: panel Worker through a service binding, no internal route);
  * the internal route needs MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD; MAILSTACK_EGRESS_URL is the https origin of the egress service (Pro webhooks, resend callbacks).
  */
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
@@ -32,6 +33,8 @@ if (internal && !route) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILS
 const team = (env.MAILSTACK_ACCESS_TEAM_DOMAIN || "").trim(), aud = (env.MAILSTACK_ACCESS_AUD || "").trim();
 if (internal && !(team && aud)) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD");
 if (team && !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) throw new Error("MAILSTACK_ACCESS_TEAM_DOMAIN must be <team>.cloudflareaccess.com");
+const panelAudience = (env.MAILSTACK_PANEL_AUDIENCE || "").trim();
+if (panelAudience && !/^[A-Za-z0-9.:_-]{1,253}$/.test(panelAudience)) throw new Error("MAILSTACK_PANEL_AUDIENCE must be 1-253 characters of A-Z a-z 0-9 . : _ -");
 const egress = (env.MAILSTACK_EGRESS_URL || "").trim();
 if (egress && !/^https:\/\/[a-z0-9.-]+$/i.test(egress)) throw new Error("MAILSTACK_EGRESS_URL must be an https origin (https://host)");
 // With a custom domain the workers.dev and preview URLs stay off, so only the listed hosts reach the Worker.
@@ -47,6 +50,7 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)
   .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand)
   .replace("${INTERNAL_HOST}", JSON.stringify(internal))
+  .replace("${PANEL_AUDIENCE}", JSON.stringify(panelAudience))
   .replace("${ACCESS_TEAM_DOMAIN}", JSON.stringify(team))
   .replace("${ACCESS_AUD}", JSON.stringify(aud))
   .replace("${EGRESS_URL}", JSON.stringify(egress));

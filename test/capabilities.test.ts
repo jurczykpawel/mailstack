@@ -151,6 +151,21 @@ describe('capabilities', () => {
     expect((await (await request()).json() as Caps).license).toEqual({ state: 'invalid' });
   });
 
+  it('N: profile (a) serves the panel only through the service binding, with token and assertion but no Access or internal host', async () => {
+    const worker = createApp({ store, keys: runtime.keys, access: async () => false }), ctx = { waitUntil() {} } as unknown as ExecutionContext;
+    const workerEnv = { ...env, INTERNAL_HOST: '' } as unknown as Env, url = 'https://api.internal/internal/v2/capabilities';
+    const bound = await worker.internal(await signPanel(new Request(url), panelToken), workerEnv, ctx);
+    expect(bound.status).toBe(200);
+    expect((await bound.json() as Caps).api).toMatchObject({ platform: 'worker', audience: 'api.test' });
+    for (const req of [new Request(url, { headers: { authorization: `Bearer ${panelToken}` } }), await signPanel(new Request(url), panelToken, panelClaims(), { aud: 'other' })])
+      expect((await worker.internal(req, workerEnv, ctx)).status).toBe(403);
+    expect((await worker.internal(new Request(url), workerEnv, ctx)).status).toBe(401);
+    // The public entry has no internal host in this profile; the binding serves nothing but /internal/*.
+    expect((await worker.fetch(await signPanel(new Request(url), panelToken), workerEnv, ctx)).status).toBe(404);
+    expect((await worker.internal(new Request('https://api.internal/health'), workerEnv, ctx)).status).toBe(404);
+    expect((await worker.internal(await signPanel(new Request(url), panelToken), { ...workerEnv, PANEL_AUDIENCE: '' } as unknown as Env, ctx)).status).toBe(404);
+  });
+
   it('N: on the Worker, outbound features need the full egress service configuration and resend needs a delivery host', async () => {
     const principal = { ...panelClaims(), scopes: ['panel', 'webhooks:write'], brands: '*' as const, templates: '*' as const };
     const worker = (features: ReturnType<typeof runtime.features>, c = cfg) => capabilities(env, store, c, principal,
