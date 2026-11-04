@@ -13,13 +13,16 @@ import { blindIndex } from '../src/core/crypto';
 import { tokenSha256 } from '../src/clients';
 import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import { sealed, transitEnv } from './fixtures/transit';
-import { enqueueJob, ensureJob, runJobs } from '../src/core/jobs';
+import { enqueueJob, ensureJob, runJobs as run } from '../src/core/jobs';
+import { tombstoneRegistry } from '../src/core/offsite';
 import { createExtensionHost } from '../src/core/extension-host';
 import example from '../config/mailstack.example.json';
 
 const token = 'msk_panel_' + 'a'.repeat(43), key = Buffer.alloc(32, 7).toString('base64url');
 const indexKey = { kid: 'demo', key };
-const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
+const dev = { MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true' };
+const runJobs: typeof run = (store, trigger, options = {}) => run(store, trigger, { registry: () => tombstoneRegistry(dev), ...options });
+const env = { ...dev, ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
 for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${driver}`, () => {
   let store: KyselyStore, mf: Miniflare | undefined;
   let cfg: ReturnType<typeof parseConfig>;
@@ -308,7 +311,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     const host = (apply: boolean, available: boolean) => createExtensionHost(cfg, store, async () => {
       if (!available) throw new Error('Missing extension secret');
       return { default: extension };
-    }, { applyMigrations: apply });
+    }, { applyMigrations: apply, registry: () => tombstoneRegistry(dev) });
     const broken = await host(false, reason === 'schema');
     expect(broken.features()).toEqual([{ module: 'demo-extension', state: 'unavailable', reason }]);
     const index = await blindIndex('one@example.com', indexKey);

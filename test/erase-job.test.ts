@@ -5,7 +5,8 @@ import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
 import type { KyselyStore } from '../src/core/store';
 import { internalFetch } from '../src/core/internal';
-import { runJobs } from '../src/core/jobs';
+import { tombstoneRegistry } from '../src/core/offsite';
+import { runJobs as run } from '../src/core/jobs';
 import { blindIndex } from '../src/core/crypto';
 import { parseConfig } from '../src/core/config/schema';
 import { loadExtensions } from '../src/runtime/extensions';
@@ -19,7 +20,9 @@ import example from '../config/mailstack.example.json';
 
 vi.setConfig({ testTimeout: 120000 });
 const indexKey = { kid: 'k1', key: Buffer.alloc(32, 7).toString('base64url') };
-const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
+const dev = { MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true' };
+const runJobs: typeof run = (store, trigger, options = {}) => run(store, trigger, { registry: () => tombstoneRegistry(dev), ...options });
+const env = { ...dev, ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
 const token = 'msk_panel_' + 'b'.repeat(43), far = Date.now() + 86400000;
 const cfg = parseConfig(example);
 interface JobRow { id: string; state: string; cursor: string | null; result: string | null; run_after: number }
@@ -129,6 +132,19 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
       result: { count: 3, tombstones: [{ kid: 'k1', index: (await blindIndex('one@example.com', indexKey)).index, at, brands: ['acme'], templates: '*' }] } });
   });
 
+  it('advertises and enforces register availability before accepting erasure', async () => {
+    const host = { platform: 'node' as const, extensions: async () => ({ features: () => [], resendSource: undefined }) };
+    const production = { ...env, MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: undefined };
+    const get = await internalFetch(new Request('http://localhost/internal/v2/capabilities'), production, store, cfg, principal(), host);
+    expect((await get.json() as { features: object }).features).toMatchObject({ 'subjects.erase': { state: 'disabled', reason: 'erasure_registry_unavailable' } });
+    for (const path of ['/subjects/erase', '/subjects/erase-index']) {
+      const body = path.endsWith('-index') ? { tombstone: { kid: 'k1', index: 'a'.repeat(22), at: Date.now(), brands: '*', templates: '*' } } : await erasure();
+      const res = await internalFetch(new Request('http://localhost/internal/v2' + path, { method: 'POST', body: JSON.stringify(body) }), production, store, cfg, principal(), host);
+      expect(res.status).toBe(503); expect(await res.json()).toEqual({ error: 'erasure_registry_unavailable' });
+    }
+    expect(await jobs()).toEqual([]);
+  });
+
   it('requires an admin with a recent step-up to start an erasure', async () => {
     await seed(1);
     for (const p of [principal({ stepUpAt: null }), principal({ stepUpAt: Date.now() - 300001 }), principal({ role: 'operator' })])
@@ -201,7 +217,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
   it('refuses a repeated erase request with the same nonce', async () => {
     const config = parseConfig({ ...example, clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
     const [keyed, importer] = keysOnly(config);
-    const runtime = await loadExtensions(keyed, store, importer);
+    const runtime = await loadExtensions(keyed, store, importer, undefined, () => tombstoneRegistry(dev));
     const req = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
       body: JSON.stringify(await erasure()) }), token);
     const again = req.clone();

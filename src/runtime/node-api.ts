@@ -111,7 +111,7 @@ async function main() {
   const store = createSqliteStore(database);
   try {
     await store.migrate();
-    const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider }, tombstoneRegistry(env));
+    const extensions = await loadExtensions(config, store, undefined, { sendEmail: sender, provider }, () => tombstoneRegistry(env));
     const app = createApp({ store, sendEmail: sender, provider, emitEvent: extensions.emitEvent, durableEvents: extensions.durableEvents, resendSource: extensions.resendSource, keys: extensions.keys });
     const stopMaintenance = await startScheduler(() => extensions.runRetention(Date.now()), () => backupSqlite(database, '/data/backups', Date.now()));
     const notifier = env.NTFY_URL ? createNtfyNotifier(env) : undefined;

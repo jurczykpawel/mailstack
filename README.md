@@ -1675,3 +1675,11 @@ completion is not release approval. SMOKE and RETEST are separate coordinator br
 Never commit generated tokens, reports containing credentials, or temporary state.
 
 When connecting to SMTP by IP, set `SMTP_TLS_SERVERNAME` to the certificate hostname. This preserves TLS certificate verification with a direct address, including when `SMTP_URL` supplies the connection. The value must be a hostname.
+
+Erasure requires an initialized B2 register with a retained `TOMBSTONE_REGISTRY_ID`.
+The API key needs `writeFiles` and `readFiles` on its register prefix. Initialize
+`genesis` explicitly on the owner's computer with
+`node scripts/backup/init-register.mjs`; see [Erasure register](docs/backup.md#erasure-register)
+for installation, retention, deadlines and recovery. Without it, erasure reports
+`erasure_registry_unavailable`; local development can explicitly opt out with
+`MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY=true`.

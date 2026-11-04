@@ -22,7 +22,8 @@ import { handleSesEvent } from '../src/events/ses';
 import { notification, options as snsOptions, request as snsRequest } from './sns-fixture';
 import { createApp } from '../src/index';
 import { sealed, transitEnv } from './fixtures/transit';
-import { runJobs } from '../src/core/jobs';
+import { tombstoneRegistry } from '../src/core/offsite';
+import { runJobs as run } from '../src/core/jobs';
 import type { Env } from '../src/types';
 import example from '../config/mailstack.example.json';
 
@@ -30,7 +31,9 @@ interface Payload { messages: { id: string; [key: string]: unknown }[]; cursor: 
 const token = 'msk_panel_' + 'a'.repeat(43), now = Date.now();
 const key = Buffer.alloc(32, 7).toString('base64url');
 const indices = [{ kid: 'new', key }, { kid: 'old', key: Buffer.alloc(32, 8).toString('base64url') }];
-const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify(indices) };
+const dev = { MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true' };
+const runJobs: typeof run = (store, trigger, options = {}) => run(store, trigger, { registry: () => tombstoneRegistry(dev), ...options });
+const env = { ...dev, ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify(indices) };
 const exp = async (extra: Record<string, unknown> = {}) => ({ ...extra, ...await sealed({ email: 'one@example.com' }, 'subjects.export') });
 const era = async (reason = 'Requested by subject', email = 'one@example.com') => ({ reason, ...await sealed({ email }, 'subjects.erase') });
 const contentKeys = [{ ...generateKeyPairSync('x25519').publicKey.export({ format: 'jwk' }), kid: 'c1', kty: 'OKP', crv: 'X25519' }];
@@ -75,7 +78,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`internal: ${driver}`, 
     for (const table of ['audit', 'events', 'recipients', 'subjects', 'contents', 'replays', 'messages', 'jobs']) await sql`delete from ${sql.table(table)}`.execute(store.db);
     cfg = parseConfig({ ...example, clients: [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*' }] });
     const [keyed, importer] = keysOnly(cfg);
-    runtime = await loadExtensions(keyed, store, importer);
+    runtime = await loadExtensions(keyed, store, importer, undefined, () => tombstoneRegistry(dev));
   });
   afterEach(() => vi.restoreAllMocks());
   afterAll(async () => { await store.db.destroy(); await mf?.dispose(); });

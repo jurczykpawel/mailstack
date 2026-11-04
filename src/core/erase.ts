@@ -24,12 +24,17 @@ export const tombstones = (s: EraseScope) => s.indices.map(({ kid, index }) => (
  * Each portion commits with the cursor in one batch, so an interrupted call loses and repeats nothing.
  */
 export const ERASE_JOB: JobKind = {
+  reserveMs: 12000, ops: 10,
   async step(job, { store, now, beforeDelete, registry }) {
     const scope = job.payload as EraseScope;
     const c: Cursor = job.cursor ? JSON.parse(job.cursor) : { phase: 0, after: '', count: 0 };
     const result = { count: c.count, tombstones: tombstones(scope) };
     if (c.phase === 3) return { result };
-    if (c.phase === 0) { await registry?.()?.(job.id, result.tombstones); return { cursor: JSON.stringify({ phase: 1, after: '', count: 0 }) }; }
+    if (c.phase === 0) {
+      const writer = registry?.(); if (!writer) throw new Error('Erasure register required');
+      const registered = await writer(job.id, result.tombstones, store);
+      return { cursor: JSON.stringify({ phase: registered.registered ? 1 : 0, after: '', count: 0 }), writes: registered.writes };
+    }
     const rows = (await sql<MessageDeletion['messages'][number]>`select m.id,m.brand,m.template from messages m
       where ${eraseMatch(scope)} and m.id > ${c.after} order by m.id limit ${PORTION}`.execute(store.db)).rows;
     if (!rows.length && c.phase === 1) return { cursor: JSON.stringify({ phase: 2, after: '', count: c.count }) };

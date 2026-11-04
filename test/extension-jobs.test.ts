@@ -55,3 +55,14 @@ it('leaves a running job alone when the same key is queued during its attempt', 
   await runJobs(store, 'request', s.h.jobs); await runJobs(store, 'request', s.h.jobs);
   expect(run).toHaveBeenCalledTimes(1); expect(await s.jobs()).toEqual([expect.objectContaining({ state: 'done' })]);
 });
+
+it('selects current ids for conditional jobs within the same batch', async () => {
+  const s = await host({ run: async () => ({}) });
+  const source = () => s.db.selectFrom('ext_demo_items').select('id').where('id', '=', 'old-id');
+  await s.db.batch([s.db.insertInto('ext_demo_items').values({ id: 'old-id' }), s.db.enqueue('send', 'new-id', { id: 'new-id' }, source())]);
+  expect(await s.jobs()).toEqual([expect.objectContaining({ id: 'ext:demo:send:old-id' })]);
+  expect((await sql`select payload from jobs`.execute(store.db)).rows).toEqual([{ payload: '{"id":"old-id"}' }]);
+  await s.db.batch([s.db.deleteFrom('ext_demo_items'), s.db.enqueue('send', 'missing', {}, source())]);
+  expect(await s.jobs()).toHaveLength(1);
+  expect(() => s.db.enqueue('send', 'other', {}, s.db.selectFrom('messages').select('id'))).toThrow();
+});

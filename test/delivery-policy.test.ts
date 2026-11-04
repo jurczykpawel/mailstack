@@ -21,6 +21,7 @@ import { idempotencyHash } from '../src/core/logging/writer';
 import { recordEvents, eventId } from '../src/core/store/events';
 import { runRetention } from '../src/core/retention';
 import type { Env, SendDeps } from '../src/types';
+import { tombstoneRegistry } from '../src/core/offsite';
 import { runJobs } from '../src/core/jobs';
 
 for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${driver}`, () => {
@@ -230,8 +231,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`delivery policy: ${dri
     const runtime = await loadExtensions(keyed, store, importer);
     const request = await signPanel(new Request('http://localhost/internal/v2/subjects/erase', { method: 'POST',
       body: JSON.stringify({ reason: 'Requested by subject', ...await sealed({ email: 'buyer@acme.example' }, 'subjects.erase') }) }), token, panelClaims());
-    expect((await runtime.fetch(request, { ...env, ...panelEnv, ...transitEnv })).status).toBe(202);
-    await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete });
+    expect((await runtime.fetch(request, { ...env, ...panelEnv, ...transitEnv, MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true' })).status).toBe(202);
+    await runJobs(store, 'request', { beforeDelete: runtime.beforeDelete, registry: () => tombstoneRegistry({ MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true' }) });
     await store.setStatus(message.id, 'unknown');
     await store.markFailed(message.id, 'sealed');
     await store.markSent(message.id, { sentAt: now, providerMessageId: 'fixture', providerResponseSealed: 'sealed',

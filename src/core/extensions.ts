@@ -16,8 +16,9 @@ export interface DomainEvent {
 export type EventAck = ({ ack: true } | { partial: string }) & { writes?: Query[] };
 type Query = { compile(): CompiledQuery };
 /** Sandboxed to `ext_<name>_*`; `batch` validates every element, then runs them atomically (any rejection refuses the whole batch).
- * `enqueue` makes sure one live job exists for (`kind`, `key`): a finished one is revived, a live one is left alone; for `batch`. */
-export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>> & { batch(queries: Query[]): Promise<number[]>; enqueue(kind: string, key: string, payload: unknown): Query };
+ * `enqueue` makes sure one live job exists for (`kind`, `key`): a finished one is revived, a live one is left alone; for `batch`.
+ * With `source`, each selected `id` supplies the job key and payload.id, conditionally in the same batch. */
+export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>> & { batch(queries: Query[]): Promise<number[]>; enqueue(kind: string, key: string, payload: unknown, source?: Query): Query };
 /** A core job of an extension (A 3.4.2): lease, token fence and retries stay in the core. `run` is one attempt; its writes commit
  * only under a valid token. `retry` reschedules after 1 min, 10 min, 1 h, 6 h; the fifth failure or lost claim commits `dead`. */
 export interface ExtensionJob {

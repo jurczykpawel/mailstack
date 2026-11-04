@@ -13,7 +13,7 @@ import example from '../config/mailstack.example.json';
 
 vi.setConfig({ testTimeout: 30000 });
 const indexKey = { kid: 'k1', key: Buffer.alloc(32, 7).toString('base64url') };
-const env = { ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
+const env = { MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true', ...panelEnv, ...transitEnv, INDEX_KEYS: JSON.stringify([indexKey]) };
 const far = Date.now() + 86400000, cfg = parseConfig(example);
 const principal: PanelPrincipal = { ...panelClaims(), scopes: ['panel'], brands: '*', templates: '*' };
 const host = { platform: 'node' as const, extensions: async () => ({ features: () => [], resendSource: undefined }) };

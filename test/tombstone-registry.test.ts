@@ -4,7 +4,7 @@ import { Decrypter, generateIdentity, identityToRecipient } from 'age-encryption
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { enqueueJob, runJobs } from '../src/core/jobs';
 import { blindIndex } from '../src/core/crypto';
-import { readTombstones, seal, tombstoneRegistry } from '../src/core/offsite';
+import { initTombstoneRegistry, readTombstones, seal, tombstoneRegistry } from '../src/core/offsite';
 import { b2Env, fakeB2 } from './fixtures/fake-b2';
 
 const identity = await generateIdentity(), recipient = await identityToRecipient(identity);
@@ -24,31 +24,31 @@ async function erasure() {
 }
 
 it('is off without register variables and refuses a partial set', () => {
-  expect(tombstoneRegistry({ B2_BUCKET: '' })).toBeUndefined();
+  expect(() => tombstoneRegistry({ B2_BUCKET: '' })).toThrow();
   expect(() => tombstoneRegistry({ ...b2Env })).toThrow('BACKUP_AGE_RECIPIENT');
   expect(() => tombstoneRegistry({ BACKUP_AGE_RECIPIENT: recipient, B2_BUCKET: 'b' })).toThrow('B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY');
 });
 
 it('writes the encrypted register before the erasure deletes anything and retries it until B2 accepts', async () => {
   const b2 = fakeB2(), { store, id, scope, visible } = await erasure(), registry = () => tombstoneRegistry(env);
-  b2.down = true;
+  await initTombstoneRegistry(env); b2.down = true;
   let t = Date.now();
   await runJobs(store, 'request', { registry, now: () => t });
   // B2 refused: the message is untouched and the job waits for its retry.
-  expect(await visible()).toBe(1); expect(b2.objects.size).toBe(0);
+  expect(await visible()).toBe(1); expect(b2.objects.size).toBe(2);
   expect((await sql<{ state: string; cursor: string | null }>`select state,cursor from jobs`.execute(store.db)).rows).toEqual([{ state: 'pending', cursor: null }]);
   b2.down = false; t += 61000;
   await runJobs(store, 'request', { registry, now: () => t });
   expect((await sql`select * from messages`.execute(store.db)).rows).toHaveLength(0);
-  expect([...b2.objects.keys()]).toEqual([`staging-tombstones/${id}.age`]);
+  expect([...b2.objects.keys()]).toEqual(['staging-tombstones/genesis', 'staging-tombstones/head', 'staging-tombstones/1.age']);
   const d = new Decrypter(); d.addIdentity(identity);
-  expect(JSON.parse(await d.decrypt(b2.objects.get(`staging-tombstones/${id}.age`)!, 'text'))).toEqual({ job: id, tombstones: [{ ...scope.indices[0], at: scope.at, brands: ['acme'], templates: '*' }] });
+  expect(JSON.parse(await d.decrypt(b2.objects.get('staging-tombstones/1.age')!, 'text'))).toMatchObject({ job: id, tombstones: [{ ...scope.indices[0], at: scope.at, brands: ['acme'], templates: '*' }] });
   await store.db.destroy();
 });
 
-it('erases without a register when none is configured, and a partial configuration holds the erasure', async () => {
+it('erases with an explicit development mode, and a partial configuration holds the erasure', async () => {
   const off = await erasure();
-  await runJobs(off.store, 'request', { registry: () => tombstoneRegistry({}) });
+  await runJobs(off.store, 'request', { registry: () => tombstoneRegistry({ MAILSTACK_DEV_ERASE_WITHOUT_REGISTRY: 'true' }) });
   expect(await off.visible()).toBe(0);
   const partial = await erasure();
   await runJobs(partial.store, 'request', { registry: () => tombstoneRegistry({ ...b2Env }) });
@@ -58,20 +58,78 @@ it('erases without a register when none is configured, and a partial configurati
 
 it('reads every page of the register and refuses what it cannot account for', async () => {
   const b2 = fakeB2({ page: 2 }), write = tombstoneRegistry(env)!, entry = (at: number) => [{ kid: 'i1', index: 'a'.repeat(22), at, brands: '*' as const, templates: '*' as const }];
-  for (const n of [1, 2, 3]) await write(job(n), entry(n * 1000));
+  await initTombstoneRegistry(env);
+  const store = createSqliteStore(':memory:'); await store.migrate();
+  for (const n of [1, 2, 3]) for (let i = 0; i < 2; i++) { const r = await write(job(n), entry(n * 1000), store); if (r.writes) await store.batch(r.writes); }
+  await store.db.destroy();
   expect((await readTombstones(env, identity)).map(e => e.job)).toEqual([job(1), job(2), job(3)]);
   await expect(readTombstones(env, await generateIdentity())).rejects.toThrow('no identity matched');
-  b2.objects.set(`staging-tombstones/${job(4)}.age`, await seal(recipient, JSON.stringify({ job: job(5), tombstones: entry(4000) })));
-  await expect(readTombstones(env, identity)).rejects.toThrow(`Invalid erasure register entry staging-tombstones/${job(4)}.age`);
-  b2.objects.set(`staging-tombstones/${job(4)}.age`, new Uint8Array([1, 2, 3]));
+  const original = b2.objects.get('staging-tombstones/3.age')!;
+  b2.objects.set('staging-tombstones/3.age', await seal(recipient, JSON.stringify({ job: job(5), tombstones: entry(4000) })));
+  await expect(readTombstones(env, identity)).rejects.toThrow('Invalid erasure register entry staging-tombstones/3.age');
+  b2.objects.set('staging-tombstones/3.age', new Uint8Array([1, 2, 3]));
   await expect(readTombstones(env, identity)).rejects.toThrow();
-  b2.objects.delete(`staging-tombstones/${job(4)}.age`); b2.objects.set('staging-tombstones/notes.txt', new Uint8Array());
-  await expect(readTombstones(env, identity)).rejects.toThrow('Unexpected object staging-tombstones/notes.txt');
+  b2.objects.set('staging-tombstones/3.age', original); b2.objects.set('staging-tombstones/notes.txt', new Uint8Array());
+  await expect(readTombstones(env, identity)).rejects.toThrow('Incomplete erasure register');
   b2.down = true;
   await expect(readTombstones(env, identity)).rejects.toThrow('HTTP 503');
 });
 
 it('refuses a truncated listing without a continuation token', async () => {
-  vi.stubGlobal('fetch', async () => new Response('<ListBucketResult><Contents><Key>tombstones/x</Key></Contents><IsTruncated>true</IsTruncated></ListBucketResult>'));
-  await expect(readTombstones({ ...b2Env }, identity)).rejects.toThrow('truncated');
+  fakeB2(); await initTombstoneRegistry(env); const get = globalThis.fetch;
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => new URL(input instanceof Request ? input.url : String(input)).search ? new Response('<ListBucketResult><Contents><Key>tombstones/x</Key></Contents><IsTruncated>true</IsTruncated></ListBucketResult>') : get(input, init));
+  await expect(readTombstones(env, identity)).rejects.toThrow('truncated');
+});
+
+it.each(['entry', 'head'] as const)('retries identical bytes after the %s acknowledgement is lost', async lost => {
+  const b2 = fakeB2(), f = await erasure(); await initTombstoneRegistry(env);
+  const get = globalThis.fetch; let failed = false;
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = new Request(input, init), response = await get(req);
+    if (!failed && req.method === 'PUT' && req.url.endsWith(lost === 'entry' ? '/1.age' : '/head')) { failed = true; throw new Error('ACK lost'); }
+    return response;
+  });
+  let t = Date.now(); const registry = () => tombstoneRegistry(env);
+  await runJobs(f.store, 'request', { registry, now: () => t });
+  const ciphertext = b2.objects.get('staging-tombstones/1.age')!.slice();
+  expect(await f.visible()).toBe(1); expect(failed).toBe(true);
+  if (lost === 'head') await expect(tombstoneRegistry(env)(job(99), (await readTombstones(env, identity))[0].tombstones, f.store)).rejects.toThrow('awaiting confirmation');
+  t += 61000; await runJobs(f.store, 'request', { registry, now: () => t });
+  expect(await f.visible()).toBe(0); expect(b2.objects.get('staging-tombstones/1.age')).toEqual(ciphertext);
+  expect((await readTombstones(env, identity)).map(e => e.job)).toEqual([f.id]);
+  await f.store.db.destroy();
+});
+
+it.each(['genesis', 'head', '1.age', 'identity', 'gap', 'hash', 'tail', 'prev', 'seq', 'entryIdentity'] as const)('requires the complete register: %s', async missing => {
+  const b2 = fakeB2(), f = await erasure(); await initTombstoneRegistry(env);
+  await runJobs(f.store, 'request', { registry: () => tombstoneRegistry(env) });
+  if (missing === 'identity') await expect(readTombstones({ ...env, TOMBSTONE_REGISTRY_ID: 'another-register-001' }, identity)).rejects.toThrow();
+  else {
+    if (['prev', 'seq', 'entryIdentity'].includes(missing)) {
+      const d = new Decrypter(); d.addIdentity(identity); const entry = JSON.parse(await d.decrypt(b2.objects.get('staging-tombstones/1.age')!, 'text'));
+      Object.assign(entry, missing === 'prev' ? { prev: '0'.repeat(64) } : missing === 'seq' ? { seq: 2 } : { registry: 'another-register-001' });
+      const sealed = await seal(recipient, JSON.stringify(entry)); b2.objects.set('staging-tombstones/1.age', sealed);
+      const h = JSON.parse(new TextDecoder().decode(b2.objects.get('staging-tombstones/head'))); h.hash = Buffer.from(await crypto.subtle.digest('SHA-256', sealed)).toString('hex');
+      b2.objects.set('staging-tombstones/head', new TextEncoder().encode(JSON.stringify(h)));
+    } else if (missing === 'gap') { b2.objects.set('staging-tombstones/2.age', b2.objects.get('staging-tombstones/1.age')!); b2.objects.delete('staging-tombstones/1.age'); }
+    else if (missing === 'hash' || missing === 'tail') {
+      const h = JSON.parse(new TextDecoder().decode(b2.objects.get('staging-tombstones/head')));
+      b2.objects.set('staging-tombstones/head', new TextEncoder().encode(JSON.stringify({ ...h, ...missing === 'hash' ? { hash: '0'.repeat(64) } : { seq: 0 } })));
+    } else b2.objects.delete('staging-tombstones/' + missing);
+    await expect(readTombstones(env, identity)).rejects.toThrow();
+  }
+  await f.store.db.destroy();
+});
+
+it('requires installation before writing, and does not replace an existing genesis', async () => {
+  const b2 = fakeB2(), f = await erasure();
+  await runJobs(f.store, 'request', { registry: () => tombstoneRegistry(env) });
+  expect(await f.visible()).toBe(1); expect(b2.objects.size).toBe(0);
+  await initTombstoneRegistry(env); expect(await readTombstones(env, identity)).toEqual([]);
+  await expect(initTombstoneRegistry(env)).rejects.toThrow('not empty');
+  b2.objects.delete('staging-tombstones/head'); await expect(readTombstones(env, identity)).rejects.toThrow(); await f.store.db.destroy();
+});
+
+it('keeps an erasure pending without a register hook', async () => {
+  const f = await erasure(); await runJobs(f.store, 'request'); expect(await f.visible()).toBe(1); await f.store.db.destroy();
 });

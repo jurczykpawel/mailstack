@@ -1,4 +1,4 @@
-import { sql, type CompiledQuery, type RawBuilder } from 'kysely';
+import { CompiledQuery, sql, type RawBuilder } from 'kysely';
 import type { KyselyStore } from './store';
 import type { Notifier } from './ports';
 import { createBudget, type Budget, type Trigger } from './budget';
@@ -17,7 +17,7 @@ export interface Job { id: string; kind: string; cursor: string | null; payload:
 /** One portion of work; `writes` commit atomically with the new cursor or the result, and only under a valid token. */
 export type Step = ({ cursor: string } | { result: unknown } | { retry: true }) & { writes?: CompiledQuery[] };
 /** `reserveMs`: the longest a single step may take; no step starts with less budget left (default 3 s).
- * `registry`: the erasure register writer, built when used (undefined = not configured; a partial configuration throws). */
+ * `registry`: the erasure register writer, built when used; erasure requires it unless an explicit development writer is supplied. */
 export interface JobContext { store: KyselyStore; now: number; beforeDelete?: BeforeMessageDelete; consumers?: Map<string, EventConsumer>; registry?: () => TombstoneRegistry | undefined }
 /** `retry` commits its writes and reschedules like a failure; `ready` is asked before a job of the kind is claimed (false
  * leaves it pending without an attempt); `dead` writes commit whenever the job ends dead (failures or lost claims); `ops`
@@ -36,10 +36,12 @@ export function enqueueJob(store: KyselyStore, kind: string, payload: unknown, n
 }
 
 /** One live job per id: inserts it, or revives a finished one (`done`/`dead`); a pending or running job is left alone. */
-export function ensureJob(store: Pick<KyselyStore, 'db'>, kind: string, id: string, payload: unknown, now: number): CompiledQuery {
-  return sql`insert into jobs(id,kind,state,payload,run_after,created_at,updated_at) values (${id},${kind},'pending',${JSON.stringify(payload)},${now},${now},${now})
+export function ensureJob(_store: Pick<KyselyStore, 'db'>, kind: string, id: string, payload: unknown, now: number, source?: CompiledQuery): CompiledQuery {
+  const from = source ? `select ? || s.id,?,'pending',json_set(?, '$.id',s.id),?,?,? from (${source.sql}) s where true` : "values (?,?,'pending',?,?,?,?)";
+  return CompiledQuery.raw(`insert into jobs(id,kind,state,payload,run_after,created_at,updated_at) ${from}
     on conflict(id) do update set state = 'pending', cursor = null, payload = excluded.payload, attempts = 0, token = null, lease_until = null,
-    run_after = excluded.run_after, updated_at = excluded.updated_at, done_at = null, result = null where jobs.state in ('done', 'dead')`.compile(store.db);
+    run_after = excluded.run_after, updated_at = excluded.updated_at, done_at = null, result = null where jobs.state in ('done', 'dead')`,
+    [id, kind, JSON.stringify(payload), now, now, now, ...source?.parameters ?? []]);
 }
 
 const due = (t: number) => sql`((state = 'pending' and run_after <= ${t}) or (state = 'running' and lease_until <= ${t}))`;
