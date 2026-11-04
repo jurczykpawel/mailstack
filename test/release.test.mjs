@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { release } from "../scripts/release.mjs";
+import { createHash } from "node:crypto";
+import { extensionManifest, release } from "../scripts/release.mjs";
 
 let cwd, config, calls;
 const PRO = ["0003_pro_license_cache.sql", "1001_ext_pro_1.sql"];
@@ -15,8 +16,9 @@ beforeEach(() => {
 afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 
 // Setup writes the external-config migrations; `between` runs after the remote apply, before the deploy.
-const go = ({ env = { MAILSTACK_CONFIG: config, MAILSTACK_PRO_PATH: "/opt/pro" }, files = [...CORE, ...PRO], between = () => {} } = {}) => release({
-  cwd, env, log: () => {},
+const EXT = { [PRO[1]]: createHash("sha256").update(`-- ${PRO[1]}`).digest("hex") };
+const go = ({ env = { MAILSTACK_CONFIG: config, MAILSTACK_PRO_PATH: "/opt/pro" }, files = [...CORE, ...PRO], between = () => {}, expected = EXT } = {}) => release({
+  cwd, env, log: () => {}, expected: async () => expected,
   guard: (dir, pro) => calls.push(`guard ${pro}`),
   run: (cmd, args) => {
     calls.push([cmd, ...args].join(" "));
@@ -57,6 +59,21 @@ it("N: refuses without the external configuration, or a Pro configuration withou
   writeFileSync(config, JSON.stringify({ version: 1 }));
   await expect(go({ env: { MAILSTACK_CONFIG: config } })).rejects.toThrow("Pro migrations without MAILSTACK_PRO_PATH");
   rmSync(migrations(), { recursive: true }); mkdirSync(migrations()); calls = [];
-  await go({ env: { MAILSTACK_CONFIG: config }, files: CORE });
+  await go({ env: { MAILSTACK_CONFIG: config }, files: CORE, expected: {} });
   expect(calls).toEqual(["guard undefined", "npm run setup", "npx wrangler d1 migrations apply DB --remote", "deploy undefined"]);
+});
+
+it("accepts a Pro configuration whose compiled extension schema is empty, and only the compiled extension files", async () => {
+  await go({ files: [...CORE, PRO[0]], expected: {} });
+  expect(calls.at(-1)).toBe("deploy /opt/pro");
+  // A leftover extension file, or a compiled file with other contents, is refused before any remote migration.
+  for (const [files, expected] of [[[...CORE, ...PRO], {}], [[...CORE, ...PRO], { [PRO[1]]: "0".repeat(64) }]]) {
+    rmSync(migrations(), { recursive: true }); mkdirSync(migrations()); calls = [];
+    await expect(go({ files, expected })).rejects.toThrow("does not match the extension migrations");
+    expect(calls).toEqual(["guard /opt/pro", "npm run setup"]);
+  }
+});
+
+it("compiles no extension files without Mailstack Pro in the configuration", async () => {
+  expect(await extensionManifest({ version: 1 })).toEqual({});
 });

@@ -290,7 +290,8 @@ The command fails if the deployed commit differs from HEAD. With no exported
 
 For a release that changes the schema use `npm run release` instead (same guard and health
 check): it runs setup with `MAILSTACK_CONFIG` (and `MAILSTACK_PRO_PATH` when the configuration
-uses Pro), refuses a migration set that misses core, Pro or extension files, applies
+uses Pro), refuses a migration set that misses core or Pro files or whose extension files differ
+from those compiled for the configuration (none for Pro without webhooks), applies
 `wrangler d1 migrations apply DB --remote`, checks the migration files again and deploys the
 same set. Do not run `npm test` or `npm run typecheck` between setup and deploy: they
 regenerate the example bundle and remove Pro migrations, which the release then refuses.

@@ -42,7 +42,7 @@ export function b2Client({ B2_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APP_KEY }: Vars
   };
 }
 
-/** age-encrypts for the owner's public key; the writer cannot read anything back. */
+/** Encrypts to the owner's public age key; only the owner can decrypt the payload. */
 export async function seal(recipient: string, bytes: Uint8Array | string) {
   const encrypter = new Encrypter(); encrypter.addRecipient(recipient);
   return encrypter.encrypt(bytes);
