@@ -29,6 +29,14 @@ export interface ExtensionJob {
   run(job: { payload: unknown; attempt: number }, ctx: ExtensionContext): Promise<{ retry?: boolean; writes?: Query[] }>;
   dead?(job: { payload: unknown }, ctx: ExtensionContext): Query[];
 }
+/** Work kept in the extension's own table under its own lease and token, without a core job per item (R11). `due` selects
+ * `n` (pending items) and `due` (their earliest time); `run` claims and finishes at most one due item, resolving false when none
+ * was; `ready` is asked once per call before the first claim; `ops` and `reserveMs` as for a job. */
+export interface ExtensionQueue {
+  ready?(): Promise<boolean>; reserveMs?: number; ops?: number;
+  due(db: ExtensionDatabase): Query;
+  run(ctx: ExtensionContext): Promise<boolean>;
+}
 export interface ExtensionContext {
   panel?: PanelPrincipal;
   sesStatus?: () => Promise<import('./store/ses-status').SesStatusV1>;
@@ -61,7 +69,7 @@ export interface Extension {
   migrate?(db: ExtensionDatabase): Promise<void>;
   onBeforeDelete?(selection: MessageDeletion, ctx: ExtensionContext): void | Promise<void>;
   /**
-   * Durable events arrive from the `fanout` job, resuming after endpoint `resume`; the cursor moves only on `{ack: true}`.
+   * Durable events arrive from the fan-out, resuming after endpoint `resume`; the cursor moves only on `{ack: true}`.
    * Events without a durable row (level none, no storage) arrive once from memory and the result is ignored.
    */
   onEvent?(event: DomainEvent, ctx: ExtensionContext, resume?: string | null): void | EventAck | Promise<void | EventAck>;
@@ -69,6 +77,7 @@ export interface Extension {
   eventRef?: boolean;
   /** Job kinds, registered as `ext:<name>:<kind>`. */
   jobs?: Record<string, ExtensionJob>;
+  queue?: ExtensionQueue;
   /** Joined to the configuration digest: a change starts a new `reconcile` generation (e.g. a rotated keyring). */
   reconcileKey?: string;
   routes?(app: ExtensionApp): void | Promise<void>;

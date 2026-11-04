@@ -34,3 +34,10 @@ export function createBudget(trigger: Trigger, clock: () => number = Date.now, m
   return { has, take: (ops = 0) => has(0, ops) && left-- > 0, used: () => meter?.used ?? 0,
     charge(from, ops) { if (meter) meter.used = Math.max(meter.used, from + ops); } };
 }
+
+/** Runs `step` while `reserveMs` and `ops` fit, until it resolves false or fails; each step costs at least `ops`. */
+export async function steps(budget: Budget, reserveMs: number, ops: number, step: () => Promise<boolean>) {
+  for (let from = budget.used(); budget.has(reserveMs, ops) && budget.take(ops); from = budget.used()) {
+    try { if (!await step()) return; } catch { return; } finally { budget.charge(from, ops); }
+  }
+}

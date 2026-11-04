@@ -1344,12 +1344,13 @@ makes both unavailable. All hooks are optional:
   are new attempts. Events contain only `id`, `type`, `at` (epoch milliseconds),
   `brand`, `template`, `status`, and optional `ref`/`messageId` (the local log id).
   Address, subject and message content are absent. Keep correlation refs opaque.
-  Stored events (level other than `none`) arrive from the `fanout` job with
-  `refDigest` instead of `ref`, at least once, one event per job step: return
-  `{ ack: true, writes }` with the sandboxed delivery writes (and `db.enqueue` jobs),
+  Stored events (level other than `none`) arrive from the fan-out with
+  `refDigest` instead of `ref`, at least once, one event per step: return
+  `{ ack: true, writes }` with the sandboxed delivery writes,
   committed in one batch with the event cursor, or `{ partial: endpointId, writes }` to
-  continue later with `onEvent(event, ctx, endpointId)`. Give a delivery and its job an
-  id derived from the event and endpoint, so a repeated event adds neither. Anything else
+  continue later with `onEvent(event, ctx, endpointId)`. Give a delivery an id derived
+  from the event and endpoint, so a repeated or concurrent event adds nothing. Work kept in
+  the extension's table (with its own lease and token) is offered as `queue: { due, run }`. Anything else
   keeps the event pending; events unconfirmed for 7 days are dropped and recorded as a gap.
   For events from memory the host commits `writes` as one batch.
 - `routes(app)` registers exact paths with

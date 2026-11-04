@@ -20,7 +20,7 @@ const t = Date.UTC(2026, 10, 4), now = () => t, reset = () => { calls = reads = 
 const rows = async (query: RawBuilder<unknown>) => (await query.execute(store.db)).rows;
 const event = (n: number) => sql`insert into domain_events(id,cause,type,message_id,brand,template,status,at)
   values(${'evt_' + n},${'msg:m' + n + ':sent'},'message.sent',${'m' + n},'acme','notice','sent',${t})`.execute(store.db);
-const fanout = () => rows(sql`select state from jobs where id='job_fanout_demo'`);
+const jobRows = () => rows(sql`select id from jobs`);
 beforeAll(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ modules: true, script: 'export default {fetch(){return new Response("ok")}}',
     compatibilityDate: '2026-06-01', d1Databases: ['DB'] }));
@@ -58,7 +58,7 @@ it('finishes an idle cron with one read and no writes, with consumers and notifi
     values(${'old'+i},'demo','done','{}',${t-1},${t-1},${t-1},${t-1})`.compile(store.db)));
   for (let i = 0; i < 3; i++) {
     reset(); await runJobs(store, 'cron', { now, consumers, notifier: { notify } });
-    expect(calls).toBe(1); expect(reads).toBeLessThanOrEqual(8); expect(writes).toBe(0);
+    expect(calls).toBe(1); expect(reads).toBeLessThanOrEqual(10); expect(writes).toBe(0);
   }
   expect(consumer).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled();
 });
@@ -87,6 +87,19 @@ it('N: keeps future jobs and live leases untouched and still raises the stalled-
   expect(await rows(sql`select state,attempts from jobs order by id`)).toEqual([{ state: 'pending', attempts: 0 }, { state: 'running', attempts: 0 }]);
 });
 
+it('N: raises the stalled-work alarm for an event or a queued item waiting 15 minutes, with no job row; an idle queue costs no call', async () => {
+  const notify = vi.fn(), consumers = new Map([['demo', vi.fn(async () => undefined)]]);
+  const queue = { due: sql`select 1 n, ${t - 901000} due`.compile(store.db), run: vi.fn(async () => false) };
+  await runJobs(store, 'cron', { now, queues: [queue], notifier: { notify } });
+  expect(queue.run).toHaveBeenCalledOnce(); expect(notify).toHaveBeenCalledOnce();
+  await sql`delete from guards`.execute(store.db); reset(); await event(1); expect(writes).toBe(5); // row, sequence, id, cause, time
+  await sql`update domain_events set at = ${t - 901000}`.execute(store.db);
+  await runJobs(store, 'cron', { now, consumers, notifier: { notify } });
+  expect(notify).toHaveBeenCalledTimes(2); expect(await jobRows()).toEqual([]);
+  reset(); await runJobs(store, 'cron', { now, queues: [{ ...queue, due: sql`select 0 n, null due`.compile(store.db) }] });
+  expect([calls, writes]).toEqual([1, 0]); expect(queue.run).toHaveBeenCalledOnce();
+});
+
 it('runs idle retention in at most six D1 calls and retains live data', async () => {
   await sql`insert into guards values('live',1,${t+1}),('expired',1,${t-1})`.execute(store.db); reset(); await runRetention(store, t, config);
   expect(calls).toBeLessThanOrEqual(6); expect(await rows(sql`select key from guards`)).toEqual([{ key: 'live' }]);
@@ -102,28 +115,29 @@ it('indexes provider, ref and resend columns only when set; lookups search those
   expect(await plan(`select id from messages where provider_account='a' and provider_message_id='p'`)).toContain('messages_provider_set');
   expect(await plan(`select id from messages m where m.ref_idx in ('r','s')`)).toContain('messages_ref_set');
   expect(await plan(`select id from messages where resend_root='m1'`)).toContain('messages_resend_root_set');
-  for (const index of ['provider ON messages(provider_account, provider_message_id)', 'ref ON messages(ref_idx)', 'resend_root ON messages(resend_root)'])
-    await sql.raw('CREATE INDEX messages_' + index).execute(store.db);
+  for (const index of ['messages_provider ON messages(provider_account, provider_message_id)', 'messages_ref ON messages(ref_idx)', 'messages_resend_root ON messages(resend_root)', 'domain_events_msg ON domain_events(message_id)'])
+    await sql.raw('CREATE INDEX ' + index).execute(store.db);
   for (let i = 0; i < 2; i++) { // idempotent
     for (const statement of PARTIAL_INDEX_SCHEMA.split(';').map(q => q.trim()).filter(Boolean)) await sql.raw(statement).execute(store.db);
     expect(await rows(sql`select name from sqlite_master where type='index' and (name like 'messages_pro%' or name like 'messages_re%') order by name`))
       .toEqual(['messages_provider_set', 'messages_ref_set', 'messages_resend_root_set'].map(name => ({ name })));
+    expect(await rows(sql`select name from sqlite_master where name = 'domain_events_msg'`)).toEqual([]);
   }
 });
 
-it('finishes a single-event fan-out in its delivery commit and still delivers events waiting behind it', async () => {
+it('fans out a single event without a job row and still delivers events waiting behind it', async () => {
   const consumer = vi.fn(async () => ({ ack: true as const })), consumers = new Map([['demo', consumer]]);
   await event(1); reset(); await runJobs(store, 'request', { now, consumers });
-  expect(consumer).toHaveBeenCalledOnce(); expect(calls).toBeLessThanOrEqual(9); expect(await fanout()).toEqual([{ state: 'done' }]);
+  expect(consumer).toHaveBeenCalledOnce(); expect(calls).toBeLessThanOrEqual(4); expect(writes).toBe(2); expect(await jobRows()).toEqual([]);
   await event(2); await event(3); await runJobs(store, 'request', { now, consumers });
   expect(consumer).toHaveBeenCalledTimes(3); expect(await rows(sql`select seq from ext_event_cursor`)).toEqual([{ seq: 3 }]);
 });
 
-it('N: a partial acknowledgement does not finish the fan-out job', async () => {
+it('N: a partial acknowledgement keeps the event and resumes after the stored endpoint', async () => {
   const consumer = vi.fn().mockResolvedValueOnce({ partial: 'endpoint-1' }).mockResolvedValue(undefined);
   await event(1); await runJobs(store, 'request', { now, consumers: new Map([['demo', consumer]]) });
   expect(await rows(sql`select seq, partial from ext_event_cursor`)).toEqual([{ seq: 0, partial: 'endpoint-1' }]);
-  expect(await fanout()).not.toEqual([{ state: 'done' }]);
+  expect(consumer).toHaveBeenCalledTimes(2); expect(consumer.mock.calls[1][1]).toBe('endpoint-1');
 });
 
 it('N: runs one drain per invocation and gives an event committed during it one more pass', async () => {
