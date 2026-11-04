@@ -14,6 +14,9 @@ import { metered } from '../src/core/budget';
 import { PARTIAL_INDEX_SCHEMA } from '../src/core/store/migration';
 import type { DomainEvent } from '../src/core/extensions';
 
+// D1 suites seed thousands of rows in workerd; 5 s is too tight on a busy CI runner.
+vi.setConfig({ testTimeout: 30000 });
+
 // D1 calls, rows read and rows written (`meta`, index writes included) of everything since `reset`.
 let mf: Miniflare, store: ReturnType<typeof createD1Store>, calls = 0, reads = 0, writes = 0;
 const t = Date.UTC(2026, 10, 4), now = () => t, reset = () => { calls = reads = writes = 0; };

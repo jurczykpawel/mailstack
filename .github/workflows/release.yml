@@ -8,18 +8,9 @@ permissions:
   contents: read
 
 jobs:
+  # The same checks as every push: tests, the Worker dry-run build and the image smoke test.
   validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "24"
-          cache: "npm"
-      - run: npm ci
-      - run: npm run setup
-      - run: npm run typecheck
-      - run: npm test
+    uses: ./.github/workflows/ci.yml
   image:
     needs: validate
     runs-on: ubuntu-latest
@@ -44,7 +35,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y skopeo
           skopeo copy --override-arch amd64 oci-archive:/tmp/mailstack.tar docker-daemon:mailstack:smoke
-          jq '{version, brands: {demo: .brands.demo}, sender: {type:"smtp"}}' config/mailstack.example.json > "$RUNNER_TEMP/mailstack.json"
+          jq '{version, brands: {demo: .brands.demo}, logging, sender: {type:"smtp"}}' config/mailstack.example.json > "$RUNNER_TEMP/mailstack.json"
           trap 'docker logs smoke; docker rm -f smoke' EXIT
           docker run -d --name smoke --read-only --tmpfs /data:uid=1000,gid=1000 --tmpfs /tmp -v "$RUNNER_TEMP/mailstack.json:/config/mailstack.json:ro" -e SMTP_HOST=localhost mailstack:smoke
           timeout 60 bash -c "until [ \"\$(docker inspect -f '{{.State.Health.Status}}' smoke)\" = healthy ]; do sleep 2; done"
