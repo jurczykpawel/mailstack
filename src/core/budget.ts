@@ -14,6 +14,8 @@ const PLANS: Record<Trigger, { ms: number; jobs: number }> = {
 const invocation = new AsyncLocalStorage<{ used: number; limit: number }>();
 export const metered = <T>(limit: number, task: () => T): T => invocation.run({ used: 0, limit }, task);
 export const countOperation = () => { const meter = invocation.getStore(); if (meter) meter.used++; };
+/** The current invocation's meter: a key for results computed once per invocation (undefined outside `metered`). */
+export const currentInvocation = (): object | undefined => invocation.getStore();
 
 export interface Budget {
   /** True while at least `reserveMs` remain before the deadline and `ops` more operations fit the invocation. */
