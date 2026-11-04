@@ -460,9 +460,14 @@ consumers with `eventRef`). Without a consumer or at level `none` nothing extra 
 Stored events reach `onEvent` only through the `fanout` job (one per extension, cursor in
 `ext_event_cursor`; Worker kicks it after the send, Node's job clock within a second); only
 events without a row (level `none`, unavailable storage) are delivered once from memory.
-`onEvent(event, ctx, resume)` returns `{ack: true}` after storing every delivery, or
-`{partial: <last endpoint>}` to be called again with `resume`; an exception, 5-second
-timeout or other result keeps the cursor. Retention deletes events confirmed by every
+`onEvent(event, ctx, resume)` returns `{ack: true, writes}` (deliveries and their jobs,
+committed in one batch with the cursor, one event per job step), or
+`{partial: <last endpoint>, writes}` to be called again with `resume`; an exception,
+5-second timeout or other result keeps the cursor. On the Worker each invocation counts
+its D1 calls (`src/core/budget.ts`; 40 of Free's 50, 990 on `paid`) and claims a job
+step only while its declared `ops` fit. A configured extension unavailable for
+initialization or schema holds erasure (pending, no attempt) and retention deletion;
+erasure jobs are claimed before all others. Retention deletes events confirmed by every
 consumer after 24 h and unconfirmed ones after 7 days, recording `ext_event_gaps` and
 moving the cursor (`capabilities.jobs.events_dropped`); erasure deletes the subject's
 events. `capabilities.features.events` reports `durable` or the reason. Node SMTP records

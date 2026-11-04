@@ -33,6 +33,9 @@ async function bounded(task: () => unknown, required = false): Promise<void> {
   }
   finally { clearTimeout(timer); }
 }
+type Query = { compile(): CompiledQuery };
+/** The checks of `batch` without running it: writes an extension hands back for a core batch (job steps, event acks). */
+const prepared = new WeakMap<ExtensionDatabase, (queries: Query[]) => CompiledQuery[]>();
 /** Kysely limited to `ext_<name>_*`; `batch` checks every element before one atomic store batch. */
 function extensionDb(store: KyselyStore, prefix: string, kinds: string[] = []): ExtensionDatabase {
   class ExtensionDriver extends DummyDriver {
@@ -53,9 +56,10 @@ function extensionDb(store: KyselyStore, prefix: string, kinds: string[] = []): 
     jobs.add(query);
     return { compile: () => query };
   }
-  return Object.assign(db, { enqueue, batch: async (queries: { compile(): CompiledQuery }[]) => store.batch(queries.map(q => {
-    const query = q.compile(); return jobs.has(query) ? query : sandboxed(query, prefix);
-  })) });
+  const prepare = (queries: Query[]) => queries.map(q => { const query = q.compile(); return jobs.has(query) ? query : sandboxed(query, prefix); });
+  const extension = Object.assign(db, { enqueue, batch: async (queries: Query[]) => store.batch(prepare(queries)) });
+  prepared.set(extension, prepare);
+  return extension;
 }
 const SES_SCENARIOS = ['success', 'bounce', 'complaint'] as const;
 /** R8: the only send an extension gets: three fixed notice mails to SES simulator addresses, never an arbitrary message. */
@@ -150,10 +154,10 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       } });
       for (const [key, route] of own) routes.set(key, route);
       const ready: Ready = { module: config.extensions[index].module, state: 'ready', name: extension.name, capabilities: [...extension.capabilities ?? []] };
-      const extCtx = { ...ctx, db }, compile = (writes: { compile(): CompiledQuery }[] = []) => writes.map(q => sandboxed(q.compile(), `ext_${extension.name}_`));
+      const extCtx = { ...ctx, db }, compile = (writes: Query[] = []) => prepared.get(db)!(writes);
       if (state !== 'schema') { contexts.set(extension, extCtx); extensions.push(extension); }
       // Without its schema an extension's jobs stay pending: unregistered `ext:` kinds are never claimed.
-      if (state !== 'schema') for (const [name, job] of Object.entries(extension.jobs ?? {})) kinds[`ext:${extension.name}:${name}`] = { reserveMs: job.reserveMs, ready: job.ready,
+      if (state !== 'schema') for (const [name, job] of Object.entries(extension.jobs ?? {})) kinds[`ext:${extension.name}:${name}`] = { reserveMs: job.reserveMs, ops: job.ops, ready: job.ready,
         dead: ({ payload }) => compile(job.dead?.({ payload }, extCtx)),
         async step({ payload, attempt }) { const r = await job.run({ payload, attempt }, extCtx); return { ...r.retry ? { retry: true } : { result: null }, writes: compile(r.writes) }; } };
       if (state !== 'ready') {
@@ -166,19 +170,28 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
     } catch { unavailable(index); }
   }
   // Durable events reach consumers only through the fan-out job (Worker: kicked by the emit; Node: its job clock).
-  const fanout = new Map<string, EventConsumer>(consumers.filter(e => contexts.has(e)).map(e =>
-    [e.name, (event, resume) => Promise.resolve(e.onEvent!(structuredClone(event), contexts.get(e)!, resume))]));
+  const fanout = new Map<string, EventConsumer>(consumers.filter(e => contexts.has(e)).map(e => [e.name, async (event, resume) => {
+    const ack = await e.onEvent!(structuredClone(event), contexts.get(e)!, resume);
+    return ack?.writes ? { ...ack, writes: prepared.get(contexts.get(e)!.db)!(ack.writes) } : ack;
+  }]));
+  // A configured extension without code or schema cannot clean up: erasure and retention wait instead of deleting around it.
+  const cleanupBlocked = features.some(f => f.state === 'unavailable' && f.reason !== 'reconcile');
   const beforeDelete: BeforeMessageDelete = async selection => {
+    if (cleanupBlocked) throw new Error('Extension cleanup unavailable');
     for (const extension of extensions) if (extension.onBeforeDelete) {
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
   };
-  const jobs: JobHooks = { beforeDelete, consumers: fanout, kinds: { ...JOB_KINDS, ...kinds } };
+  const jobs: JobHooks = { beforeDelete, consumers: fanout, kinds: { ...JOB_KINDS, ...kinds,
+    ...cleanupBlocked ? { erase: { ...JOB_KINDS.erase, ready: async () => false } } : {} } };
   const emitEvent = (input: Parameters<EmitEvent>[0], waitUntil?: Parameters<EmitEvent>[1]): Promise<unknown> => {
     const { type, at, brand, template, status, ref, messageId, durable } = input;
     if (durable) return options.kickJobs && fanout.size ? runJobs(store, 'request', jobs).catch(() => {}) : Promise.resolve();
     const event = { id: eventId(at), type, at, brand, template, status, messageId, ...(ref === undefined ? {} : { ref }) };
-    const task = Promise.all(extensions.map(extension => bounded(() => extension.onEvent?.(structuredClone(event), contexts.get(extension)!))));
+    const task = Promise.all(extensions.map(extension => bounded(async () => {
+      const ack = await extension.onEvent?.(structuredClone(event), contexts.get(extension)!);
+      if (ack?.writes?.length) await contexts.get(extension)!.db.batch(ack.writes);
+    })));
     if (waitUntil) { try { waitUntil(task); } catch {} }
     return task;
   };

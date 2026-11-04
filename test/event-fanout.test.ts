@@ -13,6 +13,8 @@ import { createExtensionHost } from '../src/core/extension-host';
 import type { DomainEvent } from '../src/core/extensions';
 import { handleSend } from '../src/send';
 import type { Env } from '../src/types';
+import { metered } from '../src/core/budget';
+import { limitedD1 } from './fixtures/limited-d1';
 
 vi.setConfig({ testTimeout: 60000 });
 const DAY = 86400000, start = Date.UTC(2026, 10, 3);
@@ -157,6 +159,30 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
     expect(Number((await sql<{ n: number }>`select count(*) n from messages`.execute(store.db)).rows[0].n)).toBe(0);
     expect(await seq()).toEqual([]);
     expect((await sql`select from_seq, to_seq, count from ext_event_gaps`.execute(store.db)).rows).toEqual([{ from_seq: 1, to_seq: 500, count: 500 }]);
+  });
+
+  // REVIEW-TARGET 3: a Free invocation (50 D1 calls) that spent 15 before the drain still commits every confirmed event.
+  it('N: three Free invocations each move the cursor, commit the writes with it and stop inside the limit', async () => {
+    if (!mf) return;
+    const limited = limitedD1(await mf.getD1Database('DB')), worker = createD1Store(limited.db);
+    await seed(20);
+    const consumer: EventConsumer = async event => ({ ack: true,
+      writes: [sql`insert into guards(key, count, expires_at) values(${'g:' + event.id}, 1, ${t + DAY})`.compile(store.db)] });
+    const seen: { seq: number; writes: number; jobs: number; state: string }[] = [];
+    for (let i = 0; i < 3; i++) {
+      limited.invocation(50);
+      await expect(metered(50, async () => {
+        for (let k = 0; k < 15; k++) await sql`select 1`.execute(worker.db); // authorization, license, host start
+        await runJobs(worker, 'cron', { now: clock, consumers: new Map([['pro', consumer]]) });
+      })).resolves.toBeUndefined();
+      expect(limited.calls()).toBeLessThanOrEqual(50);
+      limited.invocation(Infinity);
+      seen.push({ seq: (await cursor('pro')).seq, writes: (await sql<{ n: number }>`select count(*) n from guards`.execute(store.db)).rows[0].n,
+        jobs: (await sql<{ n: number }>`select count(*) n from jobs`.execute(store.db)).rows[0].n, state: (await job('pro')).state });
+    }
+    expect(seen[0].seq).toBeGreaterThan(0);
+    expect(seen[1].seq).toBeGreaterThan(seen[0].seq); expect(seen[2].seq).toBeGreaterThan(seen[1].seq);
+    for (const s of seen) expect(s).toEqual({ seq: s.seq, writes: s.seq, jobs: 1, state: 'pending' });
   });
 
   it('N: a stored event reaches onEvent once, from the fan-out job and not from memory', async () => {

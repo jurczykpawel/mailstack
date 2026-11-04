@@ -13,7 +13,8 @@ import { blindIndex } from '../src/core/crypto';
 import { tokenSha256 } from '../src/clients';
 import { panelClaims, panelEnv, signPanel } from './fixtures/panel';
 import { sealed, transitEnv } from './fixtures/transit';
-import { runJobs } from '../src/core/jobs';
+import { enqueueJob, ensureJob, runJobs } from '../src/core/jobs';
+import { createExtensionHost } from '../src/core/extension-host';
 import example from '../config/mailstack.example.json';
 
 const token = 'msk_panel_' + 'a'.repeat(43), key = Buffer.alloc(32, 7).toString('base64url');
@@ -294,6 +295,38 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension privacy: ${d
     expect((await erase(runtime)).status).toBe(503);
     expect(first).toHaveBeenCalledTimes(1); expect(second).toHaveBeenCalledTimes(1);
     expect(await rows('messages')).toHaveLength(1);
+  });
+  // REVIEW-TARGET 2: a configured extension that is not loaded (or has no schema) must not be skipped by the cleanup.
+  it.each(['initialization', 'schema'] as const)('N: holds erasure and retention while the extension is unavailable (%s), then cleans first after a restart', async reason => {
+    await seed(1, true);
+    await sql`delete from ext_migrations where extension = 'demo'`.execute(store.db);
+    await sql`drop table if exists ext_demo_items`.execute(store.db);
+    const onBeforeDelete = vi.fn(), seen: number[] = [];
+    const extension = { name: 'demo', keys: testKeys, onBeforeDelete,
+      migrations: [{ version: 1, name: 'items', up: (db: Parameters<NonNullable<Extension['migrations']>[number]['up']>[0]) => db.schema.createTable('ext_demo_items').addColumn('id', 'text').execute() }],
+      jobs: { probe: { run: async () => { seen.push((await rows('messages')).length); return {}; } } } };
+    const host = (apply: boolean, available: boolean) => createExtensionHost(cfg, store, async () => {
+      if (!available) throw new Error('Missing extension secret');
+      return { default: extension };
+    }, { applyMigrations: apply });
+    const broken = await host(false, reason === 'schema');
+    expect(broken.features()).toEqual([{ module: 'demo-extension', state: 'unavailable', reason }]);
+    const index = await blindIndex('one@example.com', indexKey);
+    // A delivery-like job queued before the erasure: after recovery it must not run before the cleanup.
+    await store.batch([ensureJob(store, 'ext:demo:probe', 'ext:demo:probe:1', {}, Date.now() - 1000),
+      enqueueJob(store, 'erase', { indices: [index], brands: '*', templates: '*', at: Date.now() }, Date.now()).query]);
+    await runJobs(store, 'request', broken.jobs);
+    await expect(broken.runRetention(Date.now())).rejects.toThrow('Extension cleanup failed');
+    expect(await rows('messages')).toHaveLength(1);
+    expect((await rows('jobs')).map(j => [j.kind, j.state, j.attempts]).sort()).toEqual([['erase', 'pending', 0], ['ext:demo:probe', 'pending', 0]]);
+    expect(onBeforeDelete).not.toHaveBeenCalled();
+    const restored = await host(true, true);
+    expect(restored.features()[0].state).toBe('ready');
+    await runJobs(store, 'request', restored.jobs);
+    expect(await rows('messages')).toEqual([]);
+    expect(onBeforeDelete).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([0]);
+    expect((await rows('jobs')).map(j => j.state)).toEqual(['done', 'done']);
   });
   it('validates the cleanup hook when loading the extension', async () => {
     expect((await loadExtensions(cfg, store, async () => ({ default: { name: 'demo', onBeforeDelete: true } }))).features()[0].state).toBe('unavailable');

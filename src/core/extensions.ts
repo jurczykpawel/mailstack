@@ -11,8 +11,9 @@ export interface DomainEvent {
   /** Durable events carry the SHA-256 of `ref` (only for consumers with `eventRef`), never `ref` itself. */
   refDigest?: string;
 }
-/** `ack` once every delivery of the event is stored; `partial` names the last stored endpoint when more remain. */
-export type EventAck = { ack: true } | { partial: string };
+/** `ack` once every delivery of the event is stored; `partial` names the last stored endpoint when more remain. `writes`
+ * (sandboxed like `batch`) commit atomically with the cursor of a durable event, or as one batch for an event from memory. */
+export type EventAck = ({ ack: true } | { partial: string }) & { writes?: Query[] };
 type Query = { compile(): CompiledQuery };
 /** Sandboxed to `ext_<name>_*`; `batch` validates every element, then runs them atomically (any rejection refuses the whole batch).
  * `enqueue` makes sure one live job exists for (`kind`, `key`): a finished one is revived, a live one is left alone; for `batch`. */
@@ -22,6 +23,8 @@ export type ExtensionDatabase = Kysely<Record<string, Record<string, unknown>>> 
 export interface ExtensionJob {
   ready?(): Promise<boolean>;
   reserveMs?: number;
+  /** The most D1 calls and subrequests (commit included) one attempt may take (Free: 50 per invocation); default 6. */
+  ops?: number;
   run(job: { payload: unknown; attempt: number }, ctx: ExtensionContext): Promise<{ retry?: boolean; writes?: Query[] }>;
   dead?(job: { payload: unknown }, ctx: ExtensionContext): Query[];
 }
