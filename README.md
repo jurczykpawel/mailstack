@@ -287,6 +287,13 @@ curl https://mailstack.<your-name>.workers.dev/health
 ```
 The command fails if the deployed commit differs from HEAD. With no exported
 `MAILSTACK_HEALTH_URL`, it explicitly reports that verification was skipped.
+
+For a release that changes the schema use `npm run release` instead (same guard and health
+check): it runs setup with `MAILSTACK_CONFIG` (and `MAILSTACK_PRO_PATH` when the configuration
+uses Pro), refuses a migration set that misses core, Pro or extension files, applies
+`wrangler d1 migrations apply DB --remote`, checks the migration files again and deploys the
+same set. Do not run `npm test` or `npm run typecheck` between setup and deploy: they
+regenerate the example bundle and remove Pro migrations, which the release then refuses.
 That's your live email service.
 
 ### 9) Connect your website form
@@ -538,7 +545,7 @@ gitignored `src/core/pro.generated.ts` and migration `0003_pro_license_cache.sql
 D1). Set the license with `wrangler secret put MAILSTACK_LICENSE`; options are `product`, `host`,
 `seller`, `jwksUrl` and `revocationUrl` (no `cachePath`, `webhooks` or `aws`). A stale cache is
 refreshed after the response; scoped keys keep working for seven days without the issuer.
-`npm run deploy` then also requires a clean Pro checkout at its `origin/main` (or a reachable tag)
+`npm run deploy` and `npm run release` then also require a clean Pro checkout at its `origin/main` (or a reachable tag)
 and reports it as `proCommit` in `/health`.
 
 ### Migrating a legacy brand registry
@@ -1132,7 +1139,10 @@ files and leaves other files untouched. The Node runtime schedules these snapsho
 daily and at startup when the last snapshot is absent or at least 24 hours old. It retains seven snapshots; with the runtime
 running daily, removed data ages out of backups within seven days. Keep keys outside
 the database and backup directory. Worker databases use
-[D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
+[D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/). Declare the account plan as
+`"cloudflare": { "plan": "free" }` or `"paid"` (missing means paid): it sets only the
+backup window the panel reports for erasures (7 days on Free, 30 on Paid) and never
+disables a feature.
 
 ### ntfy alerts
 
