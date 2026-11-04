@@ -28,8 +28,8 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
   const clock = () => t;
   const cursor = async (extension: string) => (await sql<{ seq: number; partial: string | null }>`select seq, partial from ext_event_cursor
     where extension = ${extension}`.execute(store.db)).rows[0] ?? { seq: 0, partial: null };
-  const job = async (extension: string) => (await sql<{ state: string; run_after: number }>`select state, run_after from jobs
-    where id = ${'job_fanout_' + extension}`.execute(store.db)).rows[0];
+  // The fan-out keeps no job row (R11).
+  const jobs = async () => (await sql<{ n: number }>`select count(*) n from jobs`.execute(store.db)).rows[0].n;
   const seq = async () => (await sql<{ seq: number }>`select seq from domain_events order by seq`.execute(store.db)).rows.map(r => r.seq);
   /** Messages and one stored event each, `at` days old; ids `<prefix>00000`, ... */
   const seed = async (n: number, at = t, prefix = 'm') => {
@@ -72,7 +72,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
     };
     await run({ x: consumer });
     expect(await cursor('x')).toEqual({ seq: 0, partial: 'a' });
-    expect(await job('x')).toEqual({ state: 'pending', run_after: t + 60000 });
+    expect(await jobs()).toBe(0);
     failing = false; t += 60000;
     await run({ x: consumer });
     expect(calls.map(([endpoint]) => endpoint)).toEqual(['a', 'b', 'b', 'c']);
@@ -96,7 +96,6 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
     await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
     await pending;
     expect(await cursor('x')).toEqual({ seq: 0, partial: null });
-    expect((await job('x')).state).toBe('pending');
   });
 
   it('moves two consumers on independent cursors and delivers each event once per consumer', async () => {
@@ -108,7 +107,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
     t += 60000;
     await run({ x: acking('x'), y: acking('y') });
     expect(seen).toEqual({ x: ['evt_m00000', 'evt_m00001', 'evt_m00002'], y: ['evt_m00000', 'evt_m00001', 'evt_m00002'] });
-    expect((await job('x')).state).toBe('done');
+    expect(await jobs()).toBe(0);
     t += 1000; await run({ x: acking('x') });
     expect(seen.x).toHaveLength(3);
     await seed(1, t, 'late');
@@ -168,7 +167,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
     await seed(20);
     const consumer: EventConsumer = async event => ({ ack: true,
       writes: [sql`insert into guards(key, count, expires_at) values(${'g:' + event.id}, 1, ${t + DAY})`.compile(store.db)] });
-    const seen: { seq: number; writes: number; jobs: number; state: string }[] = [];
+    const seen: { seq: number; writes: number; jobs: number }[] = [];
     for (let i = 0; i < 3; i++) {
       limited.invocation(50);
       await expect(metered(50, async () => {
@@ -178,14 +177,14 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`event fan-out: ${drive
       expect(limited.calls()).toBeLessThanOrEqual(50);
       limited.invocation(Infinity);
       seen.push({ seq: (await cursor('pro')).seq, writes: (await sql<{ n: number }>`select count(*) n from guards`.execute(store.db)).rows[0].n,
-        jobs: (await sql<{ n: number }>`select count(*) n from jobs`.execute(store.db)).rows[0].n, state: (await job('pro')).state });
+        jobs: await jobs() });
     }
     expect(seen[0].seq).toBeGreaterThan(0);
     expect(seen[1].seq).toBeGreaterThan(seen[0].seq); expect(seen[2].seq).toBeGreaterThan(seen[1].seq);
-    for (const s of seen) expect(s).toEqual({ seq: s.seq, writes: s.seq, jobs: 1, state: 'pending' });
+    for (const s of seen) expect(s).toEqual({ seq: s.seq, writes: s.seq, jobs: 0 });
   });
 
-  it('N: a stored event reaches onEvent once, from the fan-out job and not from memory', async () => {
+  it('N: a stored event reaches onEvent once, from the fan-out and not from memory', async () => {
     const onEvent = vi.fn(async (_event: DomainEvent) => ({ ack: true as const }));
     const host = await createExtensionHost({ ...config, extensions: [{ module: 'x' }] }, store, async () => ({ default: { name: 'x', onEvent } }), { keys: undefined });
     const send = (level?: 'none') => handleSend(new Request('https://mail.example/v1/send', { method: 'POST', headers: { authorization: 'Bearer test-key' },

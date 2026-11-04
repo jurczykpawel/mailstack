@@ -1,10 +1,10 @@
 import { CompiledQuery, sql, type RawBuilder } from 'kysely';
 import type { KyselyStore } from './store';
 import type { Notifier } from './ports';
-import { createBudget, type Budget, type Trigger } from './budget';
+import { createBudget, steps, type Budget, type Trigger } from './budget';
 import { JOB_KINDS } from './job-kinds';
 import type { BeforeMessageDelete } from './extensions';
-import { scheduleFanout, type EventConsumer } from './events';
+import { FANOUT, type EventConsumer } from './events';
 import type { TombstoneRegistry } from './offsite';
 
 export const LEASE_MS = 30000;
@@ -23,8 +23,11 @@ export interface JobContext { store: KyselyStore; now: number; beforeDelete?: Be
  * leaves it pending without an attempt); `dead` writes commit whenever the job ends dead (failures or lost claims); `ops`
  * bounds the D1 calls and subrequests of one step, commit included, and is its minimum charge. */
 export interface JobKind { reserveMs?: number; ops?: number; ready?(): Promise<boolean>; dead?(job: Job): CompiledQuery[]; step(job: Job, ctx: JobContext): Promise<Step> }
+/** Work an extension keeps in its own table under its own lease (R11). `due` selects `n` pending items and their earliest `due`
+ * time; `run` handles at most one due item and resolves false when there was none; `ready` is asked once before the first. */
+export interface Queue { due: CompiledQuery; reserveMs?: number; ops?: number; ready?(): Promise<boolean>; run(): Promise<boolean> }
 /** What the extension host contributes to background work. */
-export type JobHooks = Pick<JobContext, 'beforeDelete' | 'consumers' | 'registry'> & { kinds?: Record<string, JobKind> };
+export type JobHooks = Pick<JobContext, 'beforeDelete' | 'consumers' | 'registry'> & { kinds?: Record<string, JobKind>; queues?: Queue[] };
 interface Options extends JobHooks { now?: () => number }
 interface Claimed { id: string; kind: string; cursor: string | null; payload: string; attempts: number }
 
@@ -111,29 +114,45 @@ async function run(store: KyselyStore, budget: Budget, row: Claimed, token: stri
   }
 }
 
-export async function jobStats(store: KyselyStore, now: number) {
-  const [row] = (await sql<{ pending: number | null; oldest: number | null; dead: number | null; dropped: number | null }>`select
+const queued = async (store: KyselyStore, queue: Queue) => (await store.db.executeQuery<{ n: number; due: number | null }>(queue.due)).rows[0];
+
+/** Backlog of core jobs, events waiting for a consumer and extension queues; `oldest` counts only work already due. */
+export async function jobStats(store: KyselyStore, now: number, { queues = [], consumers }: Pick<JobHooks, 'queues' | 'consumers'> = {}) {
+  const [row] = (await sql<{ pending: number | null; oldest: number | null; dead: number | null; dropped: number | null; waiting: number | null }>`select
     (select sum(count) from ext_event_gaps) dropped,
+    (select min(d.at) from json_each(${JSON.stringify([...consumers?.keys() ?? []])}) e
+      join domain_events d on d.seq > coalesce((select seq from ext_event_cursor where extension = e.value), 0)) waiting,
     sum(case when state in ('pending','running') then 1 else 0 end) pending,
     min(case when state in ('pending','running') and run_after <= ${now} then run_after end) oldest,
     sum(case when state = 'dead' and done_at > ${now - 86400000} then 1 else 0 end) dead from jobs`.execute(store.db)).rows;
-  return { pending: Number(row?.pending ?? 0), oldest_pending_age_s: row?.oldest == null ? 0 : Math.floor((now - row.oldest) / 1000),
+  let pending = Number(row?.pending ?? 0);
+  const times = [row?.oldest, row?.waiting];
+  for (const queue of queues) { const q = await queued(store, queue); pending += Number(q?.n ?? 0); times.push(q?.due != null && q.due <= now ? q.due : null); }
+  const oldest = Math.min(...times.filter((x): x is number => x != null));
+  return { pending, oldest_pending_age_s: Number.isFinite(oldest) ? Math.floor((now - oldest) / 1000) : 0,
     dead_24h: Number(row?.dead ?? 0), events_dropped: Number(row?.dropped ?? 0) };
 }
 
-/** One trigger firing: drain within the trigger's budget; the minute cron also raises the only alarm, stalled work. */
+/** One trigger firing: due core jobs (erasure first), then event fan-out, then extension queues, within the trigger's budget;
+ * the minute cron also raises the only alarm, stalled work (jobs, waiting events or queued items older than 15 minutes). */
 export async function runJobs(store: KyselyStore, trigger: Trigger, { notifier, ...options }: Options & { notifier?: Notifier } = {}) {
-  const now = options.now ?? Date.now, t0 = now(), consumers = [...options.consumers?.keys() ?? []];
-  const [work] = (await sql<{ due: number; events: number; stalled: number }>`select
-    exists(select 1 from jobs where ${due(t0)}) due,
+  const now = options.now ?? Date.now, t0 = now(), consumers = [...options.consumers?.keys() ?? []], queues = options.queues ?? [];
+  // Waiting events and due queue items always start a pass, whose alarm check counts them too.
+  const alarm = trigger === 'cron' && notifier, core = sql`select exists(select 1 from jobs where ${due(t0)}) due,
     exists(select 1 from json_each(${JSON.stringify(consumers)}) e where exists(select 1 from domain_events
       where seq > coalesce((select seq from ext_event_cursor where extension = e.value),0))) events,
-    ${trigger === 'cron' && notifier ? sql`exists(select 1 from jobs where state in ('pending','running') and run_after < ${t0 - 900000})` : sql`0`} stalled`.execute(store.db)).rows;
-  if (!work?.due && !work?.events && !work?.stalled) return;
-  if (work?.events) await scheduleFanout(store, consumers, now());
-  await drain(store, createBudget(trigger, now), options);
-  if (trigger !== 'cron' || !notifier) return;
-  const t = now(), { pending, oldest_pending_age_s: age } = await jobStats(store, t), key = 'alert:jobs:' + Math.floor(t / 3600000);
+    ${alarm ? sql`exists(select 1 from jobs where state in ('pending','running') and run_after < ${t0 - 900000})` : sql`0`} stalled`.compile(store.db);
+  // One read for the whole probe: each queue's earliest due time joins as a single-row subquery.
+  const [work] = (await store.db.executeQuery<Record<string, number | null>>(CompiledQuery.raw(`select * from (${core.sql})${queues.map((q, i) =>
+    `, (select due q${i} from (${q.due.sql}))`).join('')}`, [...core.parameters, ...queues.flatMap(q => q.due.parameters)]))).rows;
+  const ready = queues.filter((_, i) => work?.['q' + i] != null && work['q' + i]! <= t0);
+  if (!work?.due && !work?.events && !work?.stalled && !ready.length) return;
+  const budget = createBudget(trigger, now);
+  if (work?.due) await drain(store, budget, options);
+  if (work?.events) for (const [extension, consumer] of options.consumers!) await steps(budget, FANOUT.reserveMs, FANOUT.ops, () => FANOUT.step(store, extension, consumer));
+  for (const q of work?.events ? queues : ready) if (budget.has(q.reserveMs ?? 3000, q.ops ?? STEP_OPS) && await (q.ready?.() ?? Promise.resolve(true)).catch(() => false)) await steps(budget, q.reserveMs ?? 3000, q.ops ?? STEP_OPS, q.run);
+  if (!alarm) return;
+  const t = now(), { pending, oldest_pending_age_s: age } = await jobStats(store, t, options), key = 'alert:jobs:' + Math.floor(t / 3600000);
   if (age <= 900 || !await store.consume(key, t + 3600000)) return;
   try { await notifier.notify({ title: 'mailstack: jobs stalled', body: `${pending} pending, oldest ${age} s`, priority: 'high' }); }
   catch { await store.release(key); }

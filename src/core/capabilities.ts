@@ -14,7 +14,7 @@ export const LIMITS = { listPage: 100, exportPageMessages: 50, exportPageBytes: 
 /** Daily SQLite snapshots kept by the Node runtime. */
 export const NODE_SNAPSHOTS = 7;
 /** What the running host contributes: its platform and its extension host. */
-export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Promise<Pick<ExtensionHost, 'features' | 'resendSource'> & Partial<Pick<ExtensionHost, 'durableEvents' | 'refresh'>>> }
+export interface CapabilityHost { platform: 'worker' | 'node'; extensions(): Promise<Pick<ExtensionHost, 'features' | 'resendSource'> & Partial<Pick<ExtensionHost, 'durableEvents' | 'refresh' | 'jobs'>>> }
 type Feature = { state: 'enabled' } | { state: 'disabled' | 'unavailable'; reason: string };
 const FEATURES = ['panel', 'webhooks', 'resend.replay', 'resend.source', 'aws.status', 'aws.test'] as const;
 type Name = typeof FEATURES[number];
@@ -66,7 +66,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
     // The plan changes only how long provider-side copies outlive an erasure: D1 Time Travel keeps 30 days (Paid) or 7 (Free);
     // every feature runs on Free (measured on staging, WP20S). Node keeps its snapshots.
     backupWindowDays: host.platform === 'node' ? NODE_SNAPSHOTS : free ? 7 : 30,
-    jobs: await jobStats(store, now),
+    jobs: await jobStats(store, now, ext.jobs),
     transitKeys: transit.publicKeys,
   };
 }

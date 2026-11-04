@@ -181,7 +181,6 @@ CREATE TABLE IF NOT EXISTS domain_events (
   at         INTEGER NOT NULL,
   ref_digest TEXT
 );
-CREATE INDEX IF NOT EXISTS domain_events_msg ON domain_events(message_id);
 CREATE INDEX IF NOT EXISTS domain_events_at ON domain_events(at);
 CREATE TABLE IF NOT EXISTS ext_event_cursor (
   extension TEXT PRIMARY KEY,
@@ -198,8 +197,10 @@ CREATE TABLE IF NOT EXISTS ext_event_gaps (
 );
 `;
 
-/** Columns empty on most sends are indexed only when set (one index write less per insert each); queries compare them with `=`/`IN`. */
+/** Columns empty on most sends are indexed only when set (one index write less per insert each); queries compare them with `=`/`IN`.
+ * `domain_events` keeps no message index (R11): only an erasure looks events up by message, over at most 7 days of rows. */
 export const PARTIAL_INDEX_SCHEMA = `
+DROP INDEX IF EXISTS domain_events_msg;
 DROP INDEX IF EXISTS messages_provider;
 DROP INDEX IF EXISTS messages_ref;
 DROP INDEX IF EXISTS messages_resend_root;

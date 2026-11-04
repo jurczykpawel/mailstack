@@ -457,15 +457,18 @@ When an extension defines `onEvent`, each delivery transition and each new SES e
 message row is also written to `domain_events` in the same atomic batch as the status
 change (unique `cause` per transition or SNS notification; `ref_digest` only for
 consumers with `eventRef`). Without a consumer or at level `none` nothing extra is written.
-Stored events reach `onEvent` only through the `fanout` job (one per extension, cursor in
-`ext_event_cursor`; Worker kicks it after the send, Node's job clock within a second); only
-events without a row (level `none`, unavailable storage) are delivered once from memory.
-`onEvent(event, ctx, resume)` returns `{ack: true, writes}` (deliveries and their jobs,
-committed in one batch with the cursor, one event per job step), or
+Stored events reach `onEvent` only through the fan-out (no job row; cursor in
+`ext_event_cursor` moved conditionally; Worker runs it after the send and on the minute cron,
+Node's job clock within a second); only events without a row (level `none`, unavailable
+storage) are delivered once from memory.
+`onEvent(event, ctx, resume)` returns `{ack: true, writes}` (deliveries, committed in one
+batch with the cursor, one event per step), or
 `{partial: <last endpoint>, writes}` to be called again with `resume`; an exception,
 5-second timeout or other result keeps the cursor. On the Worker each invocation counts
 its D1 calls (`src/core/budget.ts`; 40 of Free's 50, 990 on `paid`) and claims a job
-step only while its declared `ops` fit. A configured extension unavailable for
+step only while its declared `ops` fit. An extension `queue` keeps work in its own table
+under its own lease and token (Pro webhook deliveries); its `due` query joins the one-read
+idle probe and `capabilities.jobs` counts it. A configured extension unavailable for
 initialization or schema holds erasure (pending, no attempt) and retention deletion;
 erasure jobs are claimed before all others. Retention deletes events confirmed by every
 consumer after 24 h and unconfirmed ones after 7 days, recording `ext_event_gaps` and

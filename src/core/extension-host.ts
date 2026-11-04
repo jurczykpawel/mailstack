@@ -113,6 +113,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
         throw new Error('Overlapping extension');
       }
       if (extension.capabilities !== undefined && (!Array.isArray(extension.capabilities) || extension.capabilities.some(c => c !== 'resend'))) throw new Error('Invalid extension capability');
+      if (extension.queue !== undefined && (typeof extension.queue?.due !== 'function' || typeof extension.queue.run !== 'function')) throw new Error('Invalid extension hook');
       for (const key of ['migrate', 'reconcile', 'routes', 'onEvent', 'onBeforeDelete', 'keys'] as const) if (extension[key] !== undefined && typeof extension[key] !== 'function') throw new Error('Invalid extension hook');
       loaded.push([index, extension]);
     } catch { unavailable(index); }
@@ -170,7 +171,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       features.push(state === 'ready' ? ready : { module: ready.module, state: 'unavailable', reason: state });
     } catch { unavailable(index); }
   }
-  // Durable events reach consumers only through the fan-out job (Worker: kicked by the emit; Node: its job clock).
+  // Durable events reach consumers only through the fan-out (Worker: kicked by the emit and the cron; Node: its job clock).
   const fanout = new Map<string, EventConsumer>(consumers.filter(e => contexts.has(e)).map(e => [e.name, async (event, resume) => {
     const ack = await e.onEvent!(structuredClone(event), contexts.get(e)!, resume);
     return ack?.writes ? { ...ack, writes: prepared.get(contexts.get(e)!.db)!(ack.writes) } : ack;
@@ -183,7 +184,9 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
       await bounded(() => extension.onBeforeDelete!(structuredClone(selection), contexts.get(extension)!), true);
     }
   };
-  const jobs: JobHooks = { beforeDelete, consumers: fanout, registry: options.registry, kinds: { ...JOB_KINDS, ...kinds,
+  const queues = extensions.filter(e => e.queue).map(e => { const { due, run, ...rest } = e.queue!, extCtx = contexts.get(e)!;
+    return { ...rest, due: prepared.get(extCtx.db)!([due(extCtx.db)])[0], run: () => run(extCtx) }; });
+  const jobs: JobHooks = { beforeDelete, consumers: fanout, queues, registry: options.registry, kinds: { ...JOB_KINDS, ...kinds,
     ...cleanupBlocked ? { erase: { ...JOB_KINDS.erase, ready: async () => false } } : {} } };
   // One drain per invocation: a kick during a running drain (auto-reply after the main send) asks it for one more pass.
   const drains = new WeakMap<object, { again: boolean; run?: Promise<void> }>();
