@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { sql, type RawBuilder } from 'kysely';
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { createD1Store } from '../src/core/store/d1';
 import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, PARTIAL_INDEX_SCHEMA, SES_STATUS_SCHEMA, WITHOUT_ROWID_SCHEMA } from '../src/core/store/migration';
 import type { KyselyStore } from '../src/core/store';
+
+// D1 suites seed thousands of rows in workerd; 5 s is too tight on a busy CI runner.
+vi.setConfig({ testTimeout: 30000 });
 
 // R12: hot tables move to WITHOUT ROWID by copying their rows; the schema before R12 is migrations 0001-0007.
 const HOT = ['guards', 'jobs', 'messages', 'recipients', 'subjects'];
