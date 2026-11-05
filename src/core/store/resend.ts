@@ -4,7 +4,7 @@ import type { KyselyStore } from './index';
 export interface ResendJob {
   id: string; message_id: string; root: string; actor: string; token: string;
   state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown';
-  strategy: 'replay' | 'source'; payload_mac: string | null;
+  strategy: 'replay' | 'source'; payload_mac: string | null; error: string | null;
   created_at: number; expires_at: number; result_id: string | null;
 }
 export async function getResend(store: KyselyStore, id: string): Promise<ResendJob | undefined> {
@@ -26,7 +26,7 @@ export async function claimResend(store: KyselyStore, input: { id: string; messa
       and coalesce(resend_root,id)=${root} and status not in ('sending','unknown')) and ${unsuppressed(messageId)}
     and ${count(scopes[0])} < 3 and ${count(scopes[0], now + 85800000)}=0
     and ${count(scopes[1])} < 20 and ${count(scopes[2])} < 50
-    on conflict(id) do update set token=excluded.token,state='pending',created_at=excluded.created_at,expires_at=excluded.expires_at
+    on conflict(id) do update set token=excluded.token,state='pending',created_at=excluded.created_at,expires_at=excluded.expires_at,error=null
     where resend_jobs.state='failed' and resend_jobs.message_id=excluded.message_id and resend_jobs.actor=excluded.actor and resend_jobs.root=excluded.root and resend_jobs.strategy=excluded.strategy`;
   const guards = scopes.map((prefix, i) => sql`insert into guards(key,count,expires_at)
     select ${prefix + id},1,${i === 0 ? now + 86400000 : dayEnd} from resend_jobs where id=${id} and token=${token}
@@ -40,8 +40,8 @@ export async function startResend(store: KyselyStore, id: string, now: number, p
     and ${unsuppressed(sql`resend_jobs.message_id`)}`.execute(store.db);
   return result.numAffectedRows === 1n;
 }
-export async function finishResend(store: KyselyStore, id: string, state: ResendJob['state'], resultId: string | undefined, token: string): Promise<void> {
-  const queries = [sql`update resend_jobs set state=${state},result_id=${resultId ?? null} where id=${id} and token=${token}`];
+export async function finishResend(store: KyselyStore, id: string, state: ResendJob['state'], resultId: string | undefined, token: string, error?: string): Promise<void> {
+  const queries = [sql`update resend_jobs set state=${state},result_id=${resultId ?? null},error=${error ?? null} where id=${id} and token=${token} ${error ? sql`and state='pending' and strategy='source'` : sql``}`];
   if (state === 'failed') queries.push(sql`delete from guards where key in (select 'resend:root:'||root||':'||id from resend_jobs where id=${id} and token=${token} and state='failed'
     union all select 'resend:actor:'||actor||':'||id from resend_jobs where id=${id} and token=${token} and state='failed' union all select 'resend:instance:'||id from resend_jobs where id=${id} and token=${token} and state='failed')`);
   await store.batch(queries.map(q => q.compile(store.db)));

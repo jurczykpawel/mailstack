@@ -170,3 +170,14 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`extension migrations: 
     expect(Number((await state()).generation)).toBe(3);
   });
 });
+
+
+it('leaves legacy schema hooks out of Worker host initialization', async () => {
+  const store = createSqliteStore(':memory:'); await store.migrate();
+  const migrate = vi.fn();
+  try {
+    const host = await createExtensionHost(cfg(), store, async () => ({ default: extension([], { migrate }) }), { platform: 'worker' });
+    expect(host.features()[0].state).toBe('ready');
+    expect(migrate).not.toHaveBeenCalled();
+  } finally { await store.db.destroy(); }
+});

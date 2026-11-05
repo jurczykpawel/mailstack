@@ -107,7 +107,7 @@ if (command.startsWith('hmac-')) {
   if (pro) { mkdirSync(proSource, { recursive: true, mode: 0o700 }); execFileSync('tar', ['-xf', '-', '-C', proSource], { input: execFileSync('git', ['archive', proCommit, 'src'], { cwd: pro, maxBuffer: 16 * 1024 * 1024 }) }); }
   const source = `${state}/source/${commit}`;
   mkdirSync(source, { recursive: true, mode: 0o700 });
-  execFileSync('tar', ['-xf', '-', '-C', source], { input: execFileSync('git', ['archive', commit, 'src', 'package.json', 'config/mailstack.example.json', ':(glob)docs/sources/*.json'], { cwd: root, maxBuffer: 16 * 1024 * 1024 }) });
+  execFileSync('tar', ['-xf', '-', '-C', source], { input: execFileSync('git', ['archive', commit, 'src', 'package.json', 'scripts/worker-schema.ts', 'config/mailstack.example.json', ':(glob)docs/sources/*.json'], { cwd: root, maxBuffer: 16 * 1024 * 1024 }) });
   put('account-settings.json', await api(`${base}/workers/account-settings`));
   // No plan upgrades or subscription writes are performed by this script.
   if (!database) database = await mutate('create-database', `${base}/d1/database`, 'POST', { name });
@@ -219,27 +219,13 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
     b.onResolve({ filter: /\/pro\.generated$/ }, () => ({ path: 'pro', namespace: 'staging-pro' }));
     b.onLoad({ filter: /.*/, namespace: 'staging-pro' }, () => ({ resolveDir: source, loader: 'ts', contents: pro ? `import * as pro from ${JSON.stringify(`${proSource}/src/worker.ts`)}; export { workerKeys as proKeys } from ${JSON.stringify(`${proSource}/src/worker.ts`)}; export const proExtension = pro.workerExtension;` : 'export const proKeys = undefined; export const proExtension = undefined;' }));
   } }] });
-  // Same schema files as `npm run setup` (gen-wrangler): core schemas are additive, so an older staging database gains
-  // the tables added since; Pro extension migrations missing from the ledger are applied with their ledger row.
-  const schema = await import(pathToFileURL(`${source}/src/core/store/migration.ts`).href);
-  const query = sql => api(`${base}/d1/database/${database.uuid}/query`, 'POST', { sql }).then(r => r[0].results);
-  const tables = new Set((await query("SELECT name FROM sqlite_master WHERE type='table'")).map(r => r.name));
-  const proWorker = pro && await import(pathToFileURL(`${pro}/src/worker.ts`).href);
-  const steps = [['messages', schema.INITIAL_SCHEMA], ['ses_status', schema.SES_STATUS_SCHEMA], ['jobs', schema.JOBS_SCHEMA], ['ext_migrations', schema.EXT_SCHEMA], ['domain_events', schema.EVENTS_SCHEMA], ...pro ? [['pro_license_cache', proWorker.CACHE_SCHEMA]] : []];
-  for (const [table, sql] of steps) if (!tables.has(table)) await mutate(`migrate-${table}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql });
-  // Idempotent (drop if exists, create if not exists), so it runs on every deploy of a source that has it.
-  if (schema.PARTIAL_INDEX_SCHEMA) await mutate('migrate-partial-indexes', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: schema.PARTIAL_INDEX_SCHEMA });
-  // Tables still stored with a rowid are rebuilt once (one atomic query); a converted database skips this step.
-  const rowid = schema.WITHOUT_ROWID_TABLES ? (await query("SELECT name FROM sqlite_master WHERE type='table' AND sql NOT LIKE '%WITHOUT ROWID'"))
-    .map(r => r.name).filter(t => schema.WITHOUT_ROWID_TABLES.includes(t)) : [];
-  if (rowid.length) await mutate('migrate-without-rowid', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: rowid.flatMap(schema.withoutRowid).join(';\n') });
-  if (schema.READ_SCHEMA) await mutate('migrate-read-schema', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: schema.READ_SCHEMA });
-  if (pro) {
-    const { compileMigrations, migrationFile } = await import(pathToFileURL(`${root}/src/core/ext-migrations.ts`).href);
-    const { name: ext, migrations } = proWorker.workerMigrations(cfg.extensions[0].options);
-    const applied = new Set((await query(`SELECT version FROM ext_migrations WHERE extension='${ext}'`)).map(r => r.version));
-    for (const m of await compileMigrations(ext, migrations)) if (!applied.has(m.version)) await mutate(`migrate-${m.file}`, `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: migrationFile(m) });
-  }
+  // Deployment and Node use the same upgrade path, including existing tables and extension columns.
+  await build({ stdin: { contents: `export {migrateWorker,remoteStore} from ${JSON.stringify(`${source}/scripts/worker-schema.ts`)};${pro ? `export * as proSchema from ${JSON.stringify(`${proSource}/src/worker.ts`)};` : ''}`, resolveDir: source, loader: 'ts' },
+    outfile: `${state}/schema.mjs`, bundle: true, platform: 'node', format: 'esm', nodePaths: [`${root}/node_modules`, ...pro ? [`${pro}/node_modules`] : []], alias: { mailstack: source }, external: ['node:*', 'cloudflare:*'] });
+  const { migrateWorker, remoteStore, proSchema: proWorker } = await import(pathToFileURL(`${state}/schema.mjs`).href);
+  const store = remoteStore(sql => mutate('migrate-schema', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql }));
+  try { await migrateWorker(store, proWorker || undefined, cfg.extensions?.[0]?.options); }
+  finally { await store.db.destroy(); }
   if (register) { await (await import(pathToFileURL(`${root}/src/core/offsite.ts`).href)).initTombstoneRegistry({ ...secrets, ...registerVars }); console.log('Erasure register ready'); }
   const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
   const providerSecrets = {};

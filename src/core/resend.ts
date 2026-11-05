@@ -97,6 +97,7 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
       }
     }
     const base = { resendId: job.id, ...(job.result_id ? { id: job.result_id } : {}), idempotent: true as const };
+    if (job.state === 'failed' && job.error) return { ...base, ok: false, status: 503, code: job.error };
     if (job.state === 'sent') return { ...base, ok: true, status: 200 };
     if (job.state === 'pending') return { ...base, ok: true, status: 202 };
     return { ...base, ok: false, status: 409, code: job.state === 'sending' ? 'in_progress' : 'outcome_unknown' };
@@ -138,6 +139,13 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     forPanel(principal: PanelPrincipal, audience?: string): ResendCapability {
       const panel = structuredClone(principal);
       return {
+        callbackFailed: async input => {
+          const job = await getResend(store, await jobId(input.idempotencyKey));
+          if (!job || job.message_id !== input.messageId || job.actor !== panel.actor || job.strategy !== 'source' || job.state !== 'pending') return;
+          await inspect(job.message_id, panel);
+          await finishResend(store, job.id, 'failed', undefined, job.token, 'callback_unavailable');
+          await audit(panel.actor, 'resend.failed', job.message_id, { code: 'callback_unavailable' });
+        },
         source: id => attempt(async () => { const { source } = await inspect(id, panel); await audit(panel.actor, 'resend.source', id); return source; }),
         request: async input => {
           const result = await attempt(async () => {

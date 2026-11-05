@@ -1,5 +1,5 @@
 // `npm run release`: guard, setup from MAILSTACK_CONFIG (+ MAILSTACK_PRO_PATH), migration manifest check, remote D1
-// migrations, manifest recheck (no example generator in between), then the deploy of the same files.
+// upgrade, manifest recheck (no example generator in between), then the deploy of the same files.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -9,7 +9,7 @@ import { loadEnv } from "./env.ts";
 import { compileMigrations, migrationFile } from "../src/core/ext-migrations.ts";
 
 const sha = (data) => createHash("sha256").update(data).digest("hex");
-const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql", "0009_read_schema.sql"];
+const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql", "0009_read_schema.sql", "0010_resend_result.sql"];
 
 /** Extension migration file -> sha256 that setup compiles for this configuration; none without a Pro schema (e.g. no webhooks). */
 export async function extensionManifest(json, proPath) {
@@ -46,7 +46,7 @@ export async function release({ cwd = process.cwd(), env = loadEnv(cwd), guard =
   run("npm", ["run", "setup"]);
   const extension = await expected(json, proPath), manifest = migrationManifest(cwd, { pro: !!proPath, extension });
   log(`Migration manifest: ${manifest}`);
-  run("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--remote"]);
+  run("node", ["scripts/migrate-worker.ts", "--remote"]);
   if (migrationManifest(cwd, { pro: !!proPath, extension }) !== manifest) throw new Error("Migrations changed after they were applied; deploy refused.");
   await deployRelease(proPath);
 }

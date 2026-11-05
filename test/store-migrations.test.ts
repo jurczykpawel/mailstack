@@ -4,13 +4,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createSqliteStore } from '../src/core/store/sqlite';
 
 const dir = '.wrangler/migrations/';
-const files = () => readdirSync(dir).filter(f => /^000\d_/.test(f) && !f.startsWith('0003_')).sort();
+const files = () => readdirSync(dir).filter(f => /^00\d\d_/.test(f) && !f.startsWith('0003_')).sort();
 const schema = (db: Database.Database) => db.prepare("select type,name,sql from sqlite_master where name not like 'sqlite_%' order by type,name").all();
 
 it('generates the same core schema for sequential D1 migrations and Node startup', async () => {
   const d1 = new Database(':memory:'), node = new Database(':memory:'), store = createSqliteStore(node);
   try {
-    expect(files().at(-1)).toBe('0009_read_schema.sql');
+    expect(files().at(-1)).toBe('0010_resend_result.sql');
     for (const file of files()) d1.exec(readFileSync(dir + file, 'utf8'));
     await store.migrate();
     expect(schema(d1)).toEqual(schema(node));

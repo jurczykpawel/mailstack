@@ -124,8 +124,21 @@ export const migrationFile = (m: CompiledMigration) => migrationQueries(m).map(q
 
 /** Node applies every manifest migration missing from the ledger, each atomically with its ledger row. */
 export async function applyMigrations(store: KyselyStore, manifest: CompiledMigration[]): Promise<void> {
-  const applied = new Set((await ledger(store, manifest[0]?.extension ?? '')).map(r => r.version));
-  for (const m of manifest) if (!applied.has(m.version)) await store.batch(migrationQueries(m));
+  const rows = await ledger(store, manifest[0]?.extension ?? '');
+  if (manifest.some(m => rows.some(r => r.version === m.version && r.checksum !== m.checksum))) throw new Error('Extension migration checksum mismatch');
+  const applied = new Set(rows.map(r => r.version));
+  for (const m of manifest) if (!applied.has(m.version)) {
+    const queries = migrationQueries(m), pending: CompiledQuery[] = [];
+    for (const q of queries) {
+      const add = /^alter table "([a-zA-Z0-9_]+)" add column "([a-zA-Z0-9_]+)" /.exec(q.sql);
+      if (add) {
+        const columns = await sql.raw<{ name: string }>(`pragma table_info("${add[1]}")`).execute(store.db);
+        if (columns.rows.some(c => c.name === add[2])) continue;
+      }
+      pending.push(q);
+    }
+    await store.batch(pending);
+  }
 }
 const ledger = (store: KyselyStore, extension: string) => sql<{ version: number; checksum: string }>`select version, checksum
   from ext_migrations where extension = ${extension}`.execute(store.db).then(r => r.rows);

@@ -147,7 +147,7 @@ export async function createExtensionHost(config: Config, store: KyselyStore,
           if (!await reconcileDone(store, extension.name, configSha)) state = 'reconcile';
         }
       } catch { state = 'schema'; }
-      if (state !== 'schema') await extension.migrate?.(db);
+      if (state !== 'schema' && options.platform !== 'worker') await extension.migrate?.(db);
       await extension.routes?.({ route(method, path, handler) {
         if (!/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]*$/.test(path)) throw new Error('Invalid extension route');
         const key = `${method.toUpperCase()} /internal/ext/${extension.name}${path}`;

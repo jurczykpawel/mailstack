@@ -21,5 +21,6 @@ export interface ResendRequest { messageId: string; reason: string; idempotencyK
 export type ResendOutcome = SendResult & { resendId?: string; source?: ResendSource; ref?: string };
 export interface ResendCapability {
   source(messageId: string): Promise<ResendSource | SendResult>;
+  callbackFailed(input: ResendRequest): Promise<void>;
   request(input: ResendRequest): Promise<ResendOutcome>;
 }
