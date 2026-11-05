@@ -4,8 +4,6 @@ import { generateKeyPairSync } from 'node:crypto';
 import { sql } from 'kysely';
 import { createSqliteStore } from '../src/core/store/sqlite';
 import { createResendService } from '../src/core/resend';
-import { purchaseLicenseData } from '../src/purchase-licenses';
-import { bundlePurchase } from './purchase-license-fixture';
 import { parseConfig } from '../src/core/config/schema';
 import { config } from '../src/core/config';
 import { open } from '../src/core/crypto';
@@ -437,22 +435,6 @@ it.each(['masked', 'full'] as const)('retains ordinary payment resend at level %
   expect(await request('payment-request')).toMatchObject({ ok: true });
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   expect(vi.mocked(deps.sendEmail).mock.calls[0][1].text).toContain('123.00 PLN');
-});
-
-it.each(['masked', 'full'] as const)('omits purchase restore data at level %s', async level => {
-  cfg.logging.defaults.level = level;
-  cfg.logging.brands.acme.templates!.payment = { resend: 'replay' };
-  const body = bundlePurchase();
-  const data = { amount: '123.00', ...purchaseLicenseData(body.data, cfg.brands.acme) };
-  const result = await renderAndSend(deps, env, cfg.brands.acme, getTemplate('payment')!, data,
-    { to: ['buyer@example.com'], clientId: 'sender' });
-  id = result.id!;
-  expect(result.ok).toBe(true);
-  expect(await store.db.selectFrom('replays').selectAll().where('message_id', '=', id).execute()).toEqual([]);
-  const message = await store.db.selectFrom('messages').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
-  expect(message.replay_mac).toBeNull();
-  expect(await service.forPanel(principal()).source(id)).toMatchObject({ ok: false, code: 'resend_disabled' });
-  expect(await request('purchase-request', { template: 'payment', to: ['buyer@example.com'], data })).toMatchObject({ ok: false, code: 'resend_disabled' });
 });
 
 it('keeps callback failure cleanup bound to the approved reservation', async () => {

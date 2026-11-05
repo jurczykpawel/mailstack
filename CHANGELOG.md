@@ -4,6 +4,14 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- Breaking (Sellf preset): only `license.issued` sends keys, with idempotency by
+  `license.id`. `purchase.completed` ignores `licenses[]` and sends no keys.
+  Sellf older than 2026.11.0 without `license.issued` no longer gets license emails.
+  Update explicit `sources.sellf` configurations from the preset; the
+  `purchase-licenses`, `sellf-license` and `free-access` transforms are removed.
+- `access.granted` sends welcome for every received event. Sellf must emit/subscribe
+  only where it wants an email; Mailstack does not filter grantSource.
+
 - CI builds what a release ships without secrets: setup with the example configuration,
   `wrangler deploy --dry-run`, the Node bundle and the container image with the release
   smoke test (the previous `npm run setup` step failed without `MAILSTACK_CONFIG`).
@@ -13,8 +21,8 @@ All notable changes to mailstack are documented here.
   `overrides` stay open for review, and a red CI mentions the owner. Merging never deploys.
 - Replace the Sellf adapter with the configurable source preset in
   `docs/sources/sellf.json`, installed by default when `sources` is omitted.
-- Preserve valid email content and purchase licenses with closed `first`, `format`
-  and `purchase-licenses` operations; minor units render with a decimal dot.
+- Map email content with closed `first` and `format` operations; minor units render
+  with a decimal dot.
 - Retain the Sellf adapter's amount rounding and runtime timezone for purchase dates.
 - Limit webhook data validation to recipient and template requirements. Sellf owns
   refund status, cumulative totals, full/partial consistency and currency rules.

@@ -338,7 +338,7 @@ it.each(['{data.name + 1}', '{data.constructor}', '{data.name', 'data.name}', '{
 it('loads the Sellf preset by default and respects an explicit replacement registry', () => {
   const defaults = parseConfig({ ...original, sources: undefined });
   expect(defaults.sources).toEqual(original.sources);
-  expect(defaults.sources.sellf.events['purchase.completed']).toMatchObject({ action: 'send', transform: 'purchase-licenses' });
+  expect(defaults.sources.sellf.events['purchase.completed']).toMatchObject({ action: 'send', template: 'payment' });
   expect(parseConfig({ ...original, sources: {} }).sources).toEqual({});
   expect(Object.keys(parseConfig({ ...original, sources: { github: source() } }).sources)).toEqual(['github']);
 });

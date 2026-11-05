@@ -1,0 +1,36 @@
+{
+  "event": "access.granted",
+  "timestamp": "2026-11-05T12:00:00.000Z",
+  "data": {
+    "customer": {
+      "email": "customer@example.com",
+      "userId": "00000000-0000-4000-8000-000000000002"
+    },
+    "product": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "name": "Example course",
+      "slug": "example-course"
+    },
+    "actor": {
+      "type": "system",
+      "id": null
+    },
+    "reason": "access_change",
+    "sourceOrder": null,
+    "sourceOrders": [],
+    "accessGrantedAt": "2099-01-01T00:00:00Z",
+    "accessExpiresAt": "2099-01-08T00:00:00Z",
+    "occurredAt": "2099-01-01T00:00:00Z",
+    "grantSource": "free",
+    "accessEndsAt": "2099-01-08T00:00:00Z",
+    "access": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "grantedAt": "2099-01-01T00:00:00Z",
+      "expiresAt": "2099-01-08T00:00:00Z",
+      "expiredAt": null,
+      "revokedAt": null,
+      "statusBefore": "none",
+      "statusAfter": "active"
+    }
+  }
+}

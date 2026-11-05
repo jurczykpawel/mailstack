@@ -255,6 +255,7 @@ original form behavior.
 | `contact` *(public)* | Contact-form submission | any fields → rendered as a label/value table; `message` → its own block; `type` tweaks the subject. Reply-To = submitter `email`. |
 | `welcome` | Onboarding / welcome | `name`, `intro`, `body`, `ctaUrl`, `ctaLabel` |
 | `received` | "We got your message" ack | `name`, `refId`, `summary` |
+| `bank-transfer` | Bank transfer instructions/reminder | `orderId`, `holder`, `account`, `bank`, `title`, `amount`, `currency`, `deadline`, `orderUrl`, optional `reminder`; `orderUrl` is secret |
 | `payment` | Payment confirmation | `amount` (shown), `currency` (default `PLN`), `item`/`description`, `orderId`, `date`, `invoiceUrl` (→ "Pobierz fakturę" button), `name` |
 | `license` | License delivery | `name`, `productName`, `tier`, `domain`, `licenseKey`, `activationUrl`, `instructions`; `licenseKey` and `activationUrl` are secret |
 | `notice` | Generic catch-all | `heading`, `paragraphs` (string or array of strings), `ctaUrl`, `ctaLabel`, `subject` (subject override) |
@@ -370,7 +371,7 @@ them as `RenderedBody.jsonLd` (see `src/templates/types/payment.ts`).
 ## Sellf webhook (`/v1/hooks/sellf`)
 
 `POST /v1/hooks/sellf` turns Sellf webhook events into branded emails to the customer,
-reusing the existing templates (no new template types).
+using the shared templates, including bank-transfer instructions.
 
 - **Auth: Bearer required.** Sellf uses the full API key or a Pro client with `hook:sellf`
   scope. `legacyApiKey.signatureSecretEnv` (free) or a Pro client's signature reference additionally require a valid
@@ -404,11 +405,21 @@ Defined in `docs/sources/sellf.json`, consumed by `src/sources.ts`. Omitting
 
 | Sellf event | Template | Key mapping |
 |---|---|---|
-| `purchase.completed` | `payment` | customer.email, product.name, order.amount (minor), currency, CS or PI, envelope timestamp |
+| `purchase.completed` | `payment` | customer.email, product.name, order.amount (minor), currency, order UUID or PI/CS, timestamp; bank_transfer renders received payment; licenses[] ignored; no keys |
 | `refund.issued` | `refund` | customer.email, product.name, refund.amount (minor), refund.currency, payment CS or PI |
 | `waitlist.signup` | `notice` | customer.email, product.name |
 | `lead.captured` | `welcome` | customer.email, product.name; no CTA |
 | `access.expired` | `notice` | customer.email, product.name |
+| `order.placed` / `order.payment_reminder` | `bank-transfer` | customer.email, order.orderId, transfer holder/account/bank/title, amount/currency, paymentDeadline, payUrl; key/ref: orderId |
+| `order.cancelled` | `notice` | customer.email, order.orderId, cancelReason and optional cancelReasonText; key/ref: orderId |
+| `order.participants_needed` | `notice` | customer.email, product.name, order.orderId, reminder.stage (1/2), participantsUrl; key: orderId + stage, ref: orderId |
+| `access.granted` | `welcome` | every grantSource; customer.email, product.name, access.id; key/ref: access.id |
+| `license.issued` | `license` | customer.email, product.id/name, licenseKey, license.id; key: license.id, ref: license.orderId/order/id |
+
+Only `license.issued` sends keys; purchases ignore `licenses[]`. Sellf selects where to emit/subscribe
+to `access.granted`; every received event sends welcome. Source actions may add mapped `requiredFields`;
+refs and identity selections also accept `join`. See README for explicit source
+registry upgrades and the 24-hour idempotency window.
 
 Source `invoice.paid` amounts are major and its subscription has only an ID, without
 status/period. Source revocation has license.email/id/order/revokedAt and optional
@@ -418,8 +429,7 @@ not implemented. The README table lists every explicitly unsupported event.
 
 ### Add a new event mapping
 Edit `docs/sources/sellf.json` and the example configuration, selecting an existing
-template and covering its `requiredFields`. Use only the closed transforms; the
-built-in `purchase-licenses` preserves the existing license limits and brand URLs.
+template and covering its `requiredFields`. Use only closed field mappings; license keys are sent exclusively by `license.issued`.
 Remove a reject action only after implementing a complete consumer contract.
 Recommend only `purchase.completed` and `refund.issued` for purchase/refund emails;
 enable other supported events only when needed, and disable all rejected events.

@@ -87,7 +87,7 @@ it("builds external config and verifies subsequent input changes", async () => {
   mkdirSync(join(root, "src/core/config"), { recursive: true });
   for (const file of ["schema.ts", "sources.ts", "load.ts", "node.ts"]) cpSync(`src/core/config/${file}`, join(root, "src/core/config", file));
   for (const file of ["bundle-config.ts", "env.ts"]) cpSync(`scripts/${file}`, join(root, "scripts", file));
-  for (const file of ["urls.ts", "purchase-licenses.ts", "clients.ts"]) cpSync(`src/${file}`, join(root, "src", file));
+  for (const file of ["urls.ts", "clients.ts"]) cpSync(`src/${file}`, join(root, "src", file));
   cpSync("src/templates", join(root, "src/templates"), { recursive: true });
   cpSync("src/markup", join(root, "src/markup"), { recursive: true });
   cpSync("docs/sources", join(root, "docs/sources"), { recursive: true });

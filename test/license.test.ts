@@ -1,4 +1,3 @@
-import { purchaseLicenseSecrets } from "../src/purchase-licenses";
 import { expect, it } from "vitest";
 import { parseConfig } from "../src/core/config/schema";
 import { getTemplate, renderLayout } from "../src/templates";
@@ -10,7 +9,6 @@ const config = () => parseConfig(structuredClone(example));
 it("classifies registered templates and validates license replay", () => {
   expect(getTemplate("contact")?.subjectRoles).toEqual(["email"]);
   expect(getTemplate("license")?.secretFields).toEqual(["licenseKey", "activationUrl"]);
-  expect(getTemplate("payment")?.optionalSecretFields).toEqual(purchaseLicenseSecrets);
   const value = config();
   value.logging.brands.acme = { templates: { license: { level: "masked", resend: "replay" } } };
   expect(() => parseConfig(value)).toThrow("$.logging.brands.acme.templates.license.resend");
@@ -40,4 +38,15 @@ it("renders long license keys in a wrapping code box below the summary", () => {
   expect(summary).not.toContain("Klucz licencji");
   expect(body.bodyHtml).toMatch(/Klucz licencji<\/p>\s*<table\b/);
   expect(body.bodyText).toBe(`Witaj,\n\nTwoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:\n\nProdukt: Example Pro\n\nKlucz licencji: ${licenseKey}`);
+});
+
+it('validates activation configuration and retains existing brands', () => {
+  const original = config();
+  for (const brand of Object.values(original.brands)) delete brand.licenseActivationUrls;
+  expect(parseConfig(original).brands.acme.licenseActivationUrls).toBeUndefined();
+  for (const url of ['https://source.test.example/activate/bundle', 'http://source.test.example/activate/component']) {
+    expect(parseConfig({ ...original, brands: { acme: { ...original.brands.acme, licenseActivationUrls: { bundle: url } } } }).brands.acme.licenseActivationUrls).toEqual({ bundle: url });
+  }
+  for (const urls of [[], { bundle: 'javascript:alert(1)' }, { bundle: '/activate' }, { bundle: 123 }, { '': 'https://source.test.example/' }])
+    expect(() => parseConfig({ ...original, brands: { acme: { ...original.brands.acme, licenseActivationUrls: urls } } })).toThrow('licenseActivationUrls');
 });

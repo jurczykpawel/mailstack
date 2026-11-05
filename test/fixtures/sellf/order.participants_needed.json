@@ -1,0 +1,32 @@
+{
+  "event": "order.participants_needed",
+  "timestamp": "2026-11-05T12:00:00.000Z",
+  "data": {
+    "amountUnit": "minor",
+    "customer": {
+      "email": "buyer@example.com",
+      "locale": "en"
+    },
+    "product": {
+      "id": "prod_1",
+      "name": "Workshop",
+      "slug": "workshop"
+    },
+    "order": {
+      "orderId": "order_1",
+      "orderNumber": 42,
+      "amount": 20000,
+      "currency": "PLN",
+      "status": "completed"
+    },
+    "orderDetails": {
+      "quantity": {
+        "value": 2
+      }
+    },
+    "reminder": {
+      "stage": 1,
+      "participantsUrl": "https://shop.example/en/order/order_1/participants?token=example"
+    }
+  }
+}

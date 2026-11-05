@@ -604,21 +604,22 @@ When upgrading an existing configuration, add `refund` alongside `payment`,
 `notice` and `welcome` in the Sellf hook client's `templates` list. Otherwise
 `refund.issued` returns `403` with code `scope`. A `"*"` selection already includes it.
 
-### Purchase licenses and activation
+### License delivery and activation
 
-The first `purchase.completed` payment email includes every supplied `licenses[]`
-entry, each with its full key in a separate code box and in plain text. Names come
-from `product` and `bundleComponents` by product ID; an unknown ID is displayed
-explicitly. Bump products do not implicitly receive licenses. Missing or empty
-`licenses` means an ordinary payment email. Invalid entries, repeated product IDs,
-more than 32 entries, or more than 48 KiB of serialized license data return
-`422 invalid_event_data` before recording or sending. The hook body remains capped
-at 64 KiB. Keys are never silently shortened, including when their total exceeds
-5000 characters. License dates are not derived from tokens.
+Only `license.issued` sends a license key, in a separate `license` email for every
+issuance source. Its idempotency identity is `license.id`; retries use the existing
+24-hour delivery deduplication. `purchase.completed` sends a payment confirmation
+without keys and ignores `licenses[]`. There is no cross-event deduplication.
+
+**Compatibility change:** Sellf older than **2026.11.0**, without `license.issued`,
+will no longer deliver license keys through Mailstack. Upgrade Sellf and subscribe
+to `license.issued`, permitting the `license` template on the hook client. Explicit
+`sources.sellf` configurations must copy the updated preset; the removed
+`purchase-licenses`, `sellf-license` and `free-access` transforms are no longer valid.
 
 The owner may configure `licenseActivationUrls` on each brand as a product-ID to
-HTTP(S)-URL map. Omission is equivalent to an empty map. Use exact, owner-managed
-product settings pages, with no license tokens in their URLs:
+HTTP(S)-URL map. Omission is equivalent to an empty map. The standalone license
+email uses this map for its activation button; no URL is derived from tokens:
 
 ```json
 "licenseActivationUrls": {
@@ -627,33 +628,14 @@ product settings pages, with no license tokens in their URLs:
 }
 ```
 
-The example `acme` brand demonstrates both routes; `demo` has an empty map. Replace
-these synthetic routes in your external config with your own product settings
-pages. The email tells the buyer to paste each key into the matching product's
-license settings and activate each component separately. Without a configured
-page, it gives the same complete instructions and the brand inbox for help,
-without an activation button. JWKS, CRL, custom domains and token contents never
-supply activation links. Configured activation URLs and individual keys use the
-payment template's optional secret fields in standard archives. Existing payment
-`resend: "replay"` policies remain valid for ordinary payments. When a purchase
-contains a key or activation URL, core stores no replay payload or replay MAC and
-disables replay for that message. Use `off` or an explicitly supported source
-callback for those purchases.
+`licenseKey` and activation URLs are secret fields in the license template.
+Payment emails retain their normal replay policy; they no longer contain keys.
 
-Purchase order IDs, correlation refs and automatic deduplication prefer PI, falling
-back to CS. This changes the key for purchases carrying both IDs. At an upgrade,
-coordinate pending producer retries over the 24-hour deduplication window: an old
-CS-keyed purchase and a new PI-keyed retry can be distinct sends. No historical
+Purchase order IDs, correlation refs and automatic deduplication prefer the saved
+`order.orderId`, then PI, then CS. At an upgrade, coordinate pending producer retries
+over the 24-hour deduplication window: a previous PI/CS-keyed purchase and a new
+UUID-keyed retry can be distinct sends. No historical
 jobs are guessed or migrated. Refund identifiers are unchanged by this rule.
-
-For local review, generate synthetic first-email fixtures with
-`node test/generate-purchase-license-fixtures.ts <output-directory>` and serve that
-directory locally. The index provides configured/unconfigured emails and full
-expected keys for copy checks at 390 and 1440 px. The isolated test fixture serves
-`https://source.test.example/activate/bundle` and `/activate/component`, where a
-buyer can paste the complete synthetic key and confirm the matching product.
-These pages are explicitly demonstrations, with no provider activation. Browser
-review and real provider integration are separate checks.
 
 ### Configurable webhook sources
 
@@ -669,7 +651,7 @@ customize it, for example:
 
 Each send map declares a template, recipient path, fields, optional `ref` and
 `idempotencyKey` selections. Startup rejects unknown templates, invalid paths and
-maps missing required template fields. `ignore` acknowledges without sending;
+maps missing required template fields or action `requiredFields`. `ignore` acknowledges without sending;
 `reject` returns `422 unsupported_event`; unlisted events are ignored.
 Bearer plus `hook:<id>` scope and brand/template permissions are always required.
 Signatures support `t-v1`, `sha256-prefix` and `bearer-only`; signing is additional
@@ -694,12 +676,11 @@ Missing, null, structured, nonfinite and unmatched values map to empty.
 Numbers use JavaScript's canonical string representation; `-0` and `0` share `number:0`.
 Minor units use division by 100 and `toFixed(2)`, preserving the former Sellf
 adapter's rounding, including near the safe integer limit. `ref` and
-`idempotencyKey` accept a path or `first`. No expressions or executable code are
+`idempotencyKey` accept a path, `first` or `join`. No expressions or executable code are
 accepted. General limits: 64 KiB body, depth 20, 40 mapped fields, 5000 characters
-per value. `transform: "purchase-licenses"` is the single built-in Sellf transform:
-it calls the existing license formatter on envelope data after validation. Its
-output uses the existing license limits rather than general field/count limits.
-Other custom behavior belongs in an operator-installed runtime extension.
+per value. An action may add `requiredFields` naming nonblank mapped keys.
+Source actions only map data to templates; they do not filter issuance or access
+sources, inspect other event mappings, or extract purchase license arrays.
 
 ### Sellf event contract
 
@@ -710,7 +691,7 @@ Malformed JSON returns `400 invalid JSON`; a malformed envelope returns
 64 KiB body limits apply before delivery. Extra custom fields are allowed.
 
 Mailstack checks sender authentication, the recipient address and nonblank mapped
-`requiredFields` declared by the selected template. It does **not** validate the
+`requiredFields` declared by the selected template and source action. It does **not** validate the
 sender's business rules: refund status, cumulative totals, full/partial consistency,
 nonnegative amounts, three-letter currencies or matching currencies. Sellf must
 validate those before sending. Scalar field values become strings; objects and
@@ -722,11 +703,16 @@ Validation follows mapping and precedes storage, deduplication and provider call
 
 | Event | Outcome and template requirements beyond a valid customer email |
 |---|---|
-| `purchase.completed` | `payment`: nonblank amount, currency, item and orderId. PI preferred, CS fallback. Optional `licenses` retain the existing 32-entry/48 KiB validation and configured activation URLs. |
+| `purchase.completed` | `payment`: nonblank amount, currency, item and orderId. Saved order UUID preferred, then PI, then CS. `settledVia=bank_transfer` renders “Płatność otrzymana”. `licenses[]` is ignored; no keys are included. |
 | `refund.issued` | `refund`: amount, currency, productName, transactionId (PI preferred, CS fallback), paymentId, refundId, isFullRefund, totalRefunded and refundedAt. Only boolean isFullRefund maps to a scope: true means pełny, false means częściowy. Missing/null/text (including "true") maps to empty and returns 422 invalid_event_data with field isFullRefund before recording or sending; no scope is guessed. Status is not inspected; the template describes a completed refund. Send only completed refunds. |
 | `waitlist.signup` | Signup notice with configured heading and paragraphs; product name is optional interpolation. |
 | `lead.captured` | Welcome email with access intro; no required template fields. |
 | `access.expired` | Expiry notice with configured heading and paragraphs; product name is optional interpolation. |
+| `order.placed` / `order.payment_reminder` | `bank-transfer`: orderId, transfer holder/account/bank/title, amount, currency, paymentDeadline and payUrl are required. Identity/ref: saved orderId, separate namespace per event. |
+| `order.cancelled` | `notice`: orderId and cancelReason required; optional cancelReasonText is displayed. Identity/ref: orderId. |
+| `order.participants_needed` | `notice`: orderId, product.name, numeric reminder.stage (1: after 24 h, 2: two days before the event), participantsUrl required. Identity: orderId + stage; ref: orderId. |
+| `access.granted` | `welcome` for every event; access.id and product.name required. grantSource is ignored. Identity/ref: access.id. This is product access, not an authentication link. |
+| `license.issued` | `license`: license.id, product.id/name and licenseKey required. Identity: license.id; ref: license.orderId, order, then id. Every issuance source sends mail. |
 | `subscription.created` | `422 unsupported_event` |
 | `subscription.updated` | `422 unsupported_event` |
 | `subscription.canceled` | `422 unsupported_event` |
@@ -736,6 +722,19 @@ Validation follows mapping and precedes storage, deduplication and provider call
 | `invoice.payment_failed` | `422 unsupported_event`; source invoice amounts are in major units. |
 | `license.revoked` | `422 unsupported_event`; source recipient is `license.email`, with `license.id`, `order`, `revokedAt` and nullable/optional expiry. No token is included. |
 | Any other event | `200 {success:true,ignored:"<event>"}` after envelope validation; no email or message id. |
+
+Sellf must emit/subscribe to `access.granted` only where it wants a welcome email.
+Mailstack sends every received event, regardless of grantSource. Sellf owns the
+choice of flows and subscriptions; Mailstack does not infer it from other events.
+
+Participant and transfer links are delivery credentials. They are secret fields in
+the respective templates and cannot be replayed from stored message content.
+`lead.captured` remains a separate welcome notification: subscribe to it or to
+`access.granted` according to the desired flow; enabling both sends both.
+
+Omitting `sources` installs the updated preset. If your external configuration has
+an explicit `sources.sellf`, copy the updated mappings from
+`docs/sources/sellf.json` and validate the configuration before release.
 
 For the Sellf webhook endpoint, select **only events supported by Mailstack** in
 Sellf's sender settings (see the table above). For purchase and refund emails,
@@ -958,6 +957,7 @@ The example configuration omits `show` so staging compositions inherit these def
 
 | Template | Default visible fields |
 |---|---|
+| `bank-transfer` | `orderId`, `amount`, `currency`, `deadline` |
 | `payment` | `amount`, `currency`, `item`, `description`, `orderId`, `date` |
 | `refund` | `amount`, `currency`, `productName`, `transactionId`, `paymentId`, `refundId`, `isFullRefund`, `totalRefunded`, `refundedAt` |
 | `license` | `productName`, `tier` |

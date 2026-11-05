@@ -1,7 +1,6 @@
-import { purchaseLicenseData, purchaseLicensesSchema } from './purchase-licenses';
 import { z } from 'zod';
 import { config, getBrand } from './core/config';
-import { SOURCE_LIMITS } from './core/config/sources';
+import { SOURCE_LIMITS, requiredSourceFields } from './core/config/sources';
 import type { Source, SourceField } from './core/config/sources';
 import { boundedBytes } from './core/http';
 import { authenticate, licenseRequired, permits, tokenSha256 } from './clients';
@@ -104,18 +103,14 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (!template) return invalid(['template']);
   const mapped: TemplateData = Object.fromEntries(Object.entries(action.fields).map(([key, field]) => [key, sourceField(body, field)]));
   const to = text(read(body, action.to)).trim();
-  const fields = missingRequiredFields(template, mapped);
+  const fields = [...missingRequiredFields(template, mapped), ...requiredSourceFields(action).filter(key => !mapped[key]?.trim())];
   if (!z.email().safeParse(to).success) fields.push(action.to);
   for (const [key, value] of Object.entries(mapped)) if (value.length > SOURCE_LIMITS.valueChars) fields.push(key);
   const ref = action.ref ? sourceField(body, action.ref).trim() : '';
   if (ref.length > 128) fields.push('ref');
-  if (action.transform === 'purchase-licenses') {
-    const input = data as Record<string, unknown>;
-    const licenses = purchaseLicensesSchema.optional().safeParse(input.licenses);
-    if (!licenses.success) fields.push(...licenses.error.issues.map(issue => [source.envelope.data, 'licenses', ...issue.path].join('.')));
-    else Object.assign(mapped, purchaseLicenseData(input, brand));
-  }
   if (fields.length) return invalid([...new Set(fields)]);
+  const urls = brand.licenseActivationUrls;
+  if (template.id === 'license' && urls && Object.hasOwn(urls, mapped.productId)) mapped.activationUrl = urls[mapped.productId];
   const identity = action.idempotencyKey ? sourceField(body, action.idempotencyKey).trim() : '';
   const idempotencyKey = `source:${id}:${event}:${JSON.stringify([brandId, identity || (await tokenSha256(raw)).slice(0, 32)])}`;
   const result = await renderAndSend(deps, env, brand, template, mapped, {

@@ -7,7 +7,8 @@ const path = z.string().min(1).max(512).refine(value =>
   value.split('.').length <= SOURCE_LIMITS.depth && value.split('.').every(part =>
     /^(?:[A-Za-z_][A-Za-z0-9_-]*|0|[1-9][0-9]*)$/.test(part) && safeKey.safeParse(part).success));
 const first = z.strictObject({ first: z.array(path).min(1).max(SOURCE_LIMITS.fields) });
-const selection = z.union([path, first]);
+const join = z.strictObject({ join: z.array(path).min(1).max(SOURCE_LIMITS.fields) });
+const selection = z.union([path, first, join]);
 const format = z.string().max(SOURCE_LIMITS.valueChars).refine(value => {
   const placeholders = [...value.matchAll(/\{([^{}]+)\}/g)];
   return !/[{}]/.test(value.replace(/\{[^{}]+\}/g, "")) && placeholders.every(match => path.safeParse(match[1]).success);
@@ -18,13 +19,13 @@ const field = z.union([
   z.strictObject({ path, as: z.enum(['money-minor', 'upper', 'date-pl']) }),
   z.strictObject({ path, as: z.literal('map'), map: z.record(safeKey.regex(/^(?:boolean:(?:true|false)|number:.+|string:.*)$/s), z.string().max(SOURCE_LIMITS.valueChars))
     .refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields) }),
-  z.strictObject({ join: z.array(path).min(1).max(SOURCE_LIMITS.fields) }),
+  join,
 ]);
 const action = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('send'), template: safeKey, to: path,
     fields: z.record(safeKey, field).refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields),
     ref: selection.optional(), idempotencyKey: selection.optional(),
-    transform: z.literal('purchase-licenses').optional() }),
+    requiredFields: z.array(safeKey).max(SOURCE_LIMITS.fields).optional() }),
   z.strictObject({ action: z.literal('ignore') }),
   z.strictObject({ action: z.literal('reject') }),
 ]);
@@ -40,3 +41,7 @@ export const sourceSchema = z.strictObject({
 });
 export type Source = z.infer<typeof sourceSchema>;
 export type SourceField = z.infer<typeof field>;
+
+export function requiredSourceFields(action: Extract<Source['events'][string], { action: 'send' }>): string[] {
+  return action.requiredFields ?? [];
+}

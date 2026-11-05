@@ -8,7 +8,6 @@ import { getTemplate } from '../src/templates/index';
 import { config, getBrand } from '../src/core/config';
 import { paymentTemplate } from '../src/templates/types/payment';
 import { renderLayout } from '../src/templates/layout';
-import { purchaseLicenseData } from '../src/purchase-licenses';
 
 function cases() {
   const purchase = bundlePurchase();
@@ -33,7 +32,7 @@ function cases() {
   } }))];
 }
 
-it('preserves adapter subject, HTML and text digests across the valid Sellf matrix', async () => {
+it('renders subject, HTML and text digests across the valid Sellf matrix', async () => {
   const digests = [];
   for (const brand of ['acme', 'demo']) for (const body of cases()) {
     const sendEmail = vi.fn(async (_env: Env, _mail: SendParams) => ({ ok: true, status: 200 }));
@@ -69,7 +68,6 @@ function adapterPurchase(body: ReturnType<typeof bundlePurchase>, brandId = 'acm
     amount: (order.amount / 100).toFixed(2), currency: order.currency.toUpperCase(),
     item: product.name, orderId: order.paymentIntentId || order.sessionId,
     date: new Date(body.timestamp).toLocaleDateString('pl-PL'),
-    ...purchaseLicenseData(body.data, brand),
   };
   return { subject: paymentTemplate.subject(brand, data), ...renderLayout(brand, paymentTemplate.render(brand, data)) };
 }
@@ -164,8 +162,8 @@ it.each(['acme', 'demo'])('compares every preset content operation with adapter 
 
 it('preserves all preset correlation and identity first selections', () => {
   for (const [event, action] of Object.entries(config.sources.sellf.events)) {
-    if (action.action !== 'send') continue;
-    const paths = event === 'purchase.completed' ? ['data.order.paymentIntentId', 'data.order.sessionId']
+    if (action.action !== 'send' || !['purchase.completed', 'refund.issued', 'waitlist.signup', 'lead.captured', 'access.expired'].includes(event)) continue;
+    const paths = event === 'purchase.completed' ? ['data.order.orderId', 'data.order.paymentIntentId', 'data.order.sessionId']
       : event === 'refund.issued' ? ['data.payment.paymentIntentId', 'data.payment.sessionId']
       : ['data.order.sessionId', 'data.order.paymentIntentId', 'data.payment.sessionId', 'data.payment.paymentIntentId'];
     for (let index = 0; index <= paths.length; index++) {

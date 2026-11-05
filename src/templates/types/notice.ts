@@ -6,6 +6,7 @@ export const noticeTemplate: TemplateDef = {
   id: "notice",
   maskedFields: [],
   requiredFields: ["heading", "paragraphs"],
+  optionalSecretFields: ['ctaUrl'],
 
   subject(brand: Brand, data: TemplateData): string {
     const subject = (data.subject || "").trim();

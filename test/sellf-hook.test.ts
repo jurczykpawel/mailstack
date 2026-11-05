@@ -301,7 +301,7 @@ describe("handleSellfHook — send failure", () => {
   });
 });
 
-it("includes every bundle key in the first provider email", async () => {
+it("sends bundle payment confirmation without license keys", async () => {
   const deps = makeDeps();
   const purchase = bundlePurchase();
   const response = await handleSellfHook(hook(purchase), makeEnv(), deps);
@@ -309,15 +309,15 @@ it("includes every bundle key in the first provider email", async () => {
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   const mail = deps.sendEmail.mock.calls[0][1] as SendParams;
   for (const license of purchase.data.licenses) {
-    expect(mail.text).toContain(license.token);
-    expect(mail.html).toContain(license.token);
+    expect(mail.text).not.toContain(license.token);
+    expect(mail.html).not.toContain(license.token);
   }
-  expect(mail.html.match(/<pre /g)).toHaveLength(2);
-  expect(mail.html).toContain('href="https://source.test.example/activate/bundle"');
-  expect(mail.html).toContain('href="https://source.test.example/activate/component"');
+  expect(mail.html).not.toContain("<pre ");
+  expect(mail.html).not.toContain('href="https://source.test.example/activate/bundle"');
+  expect(mail.html).not.toContain('href="https://source.test.example/activate/component"');
   expect(mail.text).toContain("123.00 PLN");
   expect(mail.text).toContain("Pakiet Żółw");
-  expect(mail.text).toContain("Moduł Łączność");
-  expect(mail.text).toContain("Każdy komponent aktywuje się oddzielnie");
+  expect(mail.text).not.toContain("Moduł Łączność");
+  expect(mail.text).not.toContain("Każdy komponent aktywuje się oddzielnie");
   expect(mail.subject).toContain("pi_bundle");
 });
