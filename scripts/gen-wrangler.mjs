@@ -72,6 +72,7 @@ writeFileSync(resolve(root, ".wrangler/migrations/0006_domain_events.sql"), EVEN
 writeFileSync(resolve(root, ".wrangler/migrations/0007_partial_indexes.sql"), PARTIAL_INDEX_SCHEMA);
 writeFileSync(resolve(root, ".wrangler/migrations/0008_without_rowid.sql"), WITHOUT_ROWID_SCHEMA);
 writeFileSync(resolve(root, ".wrangler/migrations/0009_read_schema.sql"), READ_SCHEMA);
+writeFileSync(resolve(root, ".wrangler/migrations/0010_resend_result.sql"), "ALTER TABLE resend_jobs ADD COLUMN error TEXT;\n");
 // Extension migrations: validated and compiled from the schema builder; an invalid statement fails setup.
 // Names are fixed per version (`<1000+version>_ext_<name>_<version>.sql`), so a regenerated file is never applied twice.
 for (const file of readdirSync(resolve(root, ".wrangler/migrations"))) if (/^\d+_ext_.+\.sql$/.test(file)) rmSync(resolve(root, ".wrangler/migrations", file));

@@ -454,3 +454,15 @@ it.each(['masked', 'full'] as const)('omits purchase restore data at level %s', 
   expect(await service.forPanel(principal()).source(id)).toMatchObject({ ok: false, code: 'resend_disabled' });
   expect(await request('purchase-request', { template: 'payment', to: ['buyer@example.com'], data })).toMatchObject({ ok: false, code: 'resend_disabled' });
 });
+
+it('keeps callback failure cleanup bound to the approved reservation', async () => {
+  id = await original('license');
+  const first = port(), next = port();
+  const input = { messageId: id, reason: 'Requested by customer', idempotencyKey: 'source-key', envelope: await sealFor(id, undefined, 'ORDER-1') };
+  expect((await first.request(input)).ok).toBe(true);
+  await first.callbackFailed(input);
+  expect((await next.request({ ...input, envelope: await sealFor(id, undefined, 'ORDER-1') })).ok).toBe(true);
+  await first.callbackFailed(input);
+  expect((await sql<{state: string}>`select state from resend_jobs`.execute(store.db)).rows[0].state).toBe('pending');
+  expect(await reservations()).toHaveLength(3);
+});

@@ -253,7 +253,7 @@ connect your form in step 9.
 ```bash
 npm run setup                               # bundles MAILSTACK_CONFIG and prepares Wrangler config
 npx wrangler d1 migrations apply DB --local   # development database
-# Before deployment instead: npx wrangler d1 migrations apply DB --remote
+# Existing Worker databases: use npm run release (or npm run migrate:worker after setup)
 
 npx wrangler secret put SES_ACCESS_KEY_ID       # paste the AWS Access key ID (step 3)
 npx wrangler secret put SES_SECRET_ACCESS_KEY   # paste the AWS Secret access key
@@ -293,9 +293,13 @@ The command fails if the deployed commit differs from HEAD. With no exported
 For a release that changes the schema use `npm run release` instead (same guard and health
 check): it runs setup with `MAILSTACK_CONFIG` (and `MAILSTACK_PRO_PATH` when the configuration
 uses Pro), refuses a migration set that misses core or Pro files or whose extension files differ
-from those compiled for the configuration (none for Pro without webhooks), applies
-`wrangler d1 migrations apply DB --remote`, checks the migration files again and deploys the
-same set. Do not run `npm test` or `npm run typecheck` between setup and deploy: they
+from those compiled for the configuration, applies the shared Node/Worker schema upgrade
+through `npm run migrate:worker`, checks the migration files again and deploys the same set.
+The upgrade runs before uploading the Worker, including on existing tables. It retains legacy
+callback request keys, adopts existing extension columns, and records each extension version
+with its schema changes. Pro's schema includes resend and SES tables with or without webhooks.
+The generated SQL files remain available for inspection and fresh local databases; use the
+shared upgrader for existing remote databases instead of applying those files separately. Do not run `npm test` or `npm run typecheck` between setup and deploy: they
 regenerate the example bundle and remove Pro migrations, which the release then refuses.
 That's your live email service.
 
@@ -1318,7 +1322,9 @@ makes both unavailable. All hooks are optional:
   versions at start, each in one transaction ending with its row in `ext_migrations`.
   `npm run setup` writes `.wrangler/migrations/<1000+version>_ext_<name>_<version>.sql`
   (ledger row as the last statement; an invalid statement fails setup) for
-  `wrangler d1 migrations apply`. A manifest version missing from the ledger or with
+  inspection or fresh local databases. `npm run release` and the staging deployment use
+  the shared schema upgrader, which adopts columns already created by older Node versions.
+  Changed ledger checksums stop the upgrade. A manifest version missing from the ledger or with
   another checksum leaves the extension `unavailable: schema`; its routes return
   `503 {code:"extension_unavailable", reason}`. Newer ledger versions are accepted, so
   versions only add (expand); remove columns or tables two releases later at the earliest.
@@ -1340,7 +1346,7 @@ makes both unavailable. All hooks are optional:
   `ops` (default 6) is the most D1 calls plus subrequests one attempt may take: a Worker
   invocation (Free: 50 D1 calls, the core keeps 40 for its meter, 990 with `cloudflare.plan: "paid"`)
   claims a job only while that fits, and each attempt is charged at least `ops`.
-- `migrate(db)` (legacy, until extensions move to `migrations`/`reconcile`) runs before listening. Use Kysely schema/query builders and tables
+- `migrate(db)` (legacy, Node only) runs before listening. Worker extensions must declare all schema changes in `migrations`; no schema hooks run on Worker requests or cron. Use Kysely schema/query builders and tables
   beginning with `ext_<name>_`; referenced tables must use the same prefix. Raw SQL,
   schema-qualified tables and dropping indexes are not supported. Index names also
   use this prefix. Migrations should be repeatable, for example with `ifNotExists()`.

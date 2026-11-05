@@ -19,7 +19,10 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 function run(command: string, change = false, ses = false, tables = '', extra: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-staging-')); dirs.push(dir);
   const preload = join(dir, 'mock.mjs');
-  writeFileSync(preload, `let writes=0;
+  writeFileSync(preload, `import Database from ${JSON.stringify(new URL('../node_modules/better-sqlite3/lib/index.js', import.meta.url).pathname)};
+const db=new Database(':memory:');
+// A real SQL store keeps the deployment test sensitive to missing columns and indexes.
+let writes=0;
 const response=result=>Response.json({success:true,result});
 globalThis.fetch=async(url,options={})=>{
 if(url instanceof Request){(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'b2.log'))},url.method+' '+new URL(url.url).pathname+'\\n');return new Response('<ListBucketResult></ListBucketResult>');}
@@ -31,7 +34,10 @@ if(path.endsWith('/workers/domains')&&(!options.method||options.method==='GET'))
 if(path.endsWith('/workers/scripts')&&(!options.method||options.method==='GET'))return response([]);
 if(path.endsWith('/account-settings'))return response({default_usage_model:'standard'});
 if(path==='/client/v4/zones')return response([{id:'zone',account:{id:'test-account'}}]);
-if(path.endsWith('/query')&&JSON.parse(options.body).sql.startsWith('SELECT'))return response([{results:(process.env.MS_TABLES??'').split(',').filter(Boolean).map(name=>({name}))}]);
+if(path.endsWith('/query')){
+ const statements=JSON.parse(options.body).sql.split(';').map(s=>s.trim()).filter(Boolean);
+ return response(db.transaction(()=>statements.map(sql=>{const s=db.prepare(sql);return {success:true,results:s.reader?s.all():[],meta:{changes:s.reader?0:s.run().changes}};}))());
+}
 if(path.endsWith('/workers/scripts/mailstack-staging')&&options.method==='PUT'){
  const m=JSON.parse(await options.body.get('metadata').text());
  const safe=m.bindings.map(b=>({name:b.name,type:b.type,...(b.type==='plain_text'?{text:b.text}:{})}));
@@ -51,24 +57,18 @@ it('stops deployment after the first changed production fingerprint', () => {
   expect(child.stderr).toContain('Production fingerprint changed');
   expect(readdirSync(dir).filter(value => value.startsWith('mutation-'))).toHaveLength(1);
 });
-it('adds only the tables an older staging database lacks', () => {
-  const { child, dir } = run('deploy', false, false, 'messages,audit,events');
+it('uses the shared deployment schema runner', () => {
+  const { child, dir } = run('deploy');
   expect(child.status, child.stderr).toBe(0);
-  const labels = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')).label);
-  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'migrate-without-rowid', 'migrate-read-schema']);
-});
-it('adds the register to a database that already has jobs', () => {
-  const { child, dir } = run('deploy', false, false, 'messages,jobs');
-  expect(child.status, child.stderr).toBe(0);
-  const records = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
-  expect(records.map(value => value.label)).toContain('migrate-read-schema');
   expect(readFileSync(join(dir, 'queries.jsonl'), 'utf8')).toContain('CREATE TABLE IF NOT EXISTS erasure_registry');
+  expect(readFileSync(join(dir, 'queries.jsonl'), 'utf8')).toContain('ADD COLUMN error TEXT');
 });
 it('deploys isolated resources with a record for each write', () => {
   const { child, dir } = run('deploy');
   expect(child.status, child.stderr).toBe(0);
   const records = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
-  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-messages', 'migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'migrate-read-schema', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
+  expect(records.map(value => value.label).filter(label => label !== 'migrate-schema')).toEqual(['create-database', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
+  expect(records.some(value => value.label === 'migrate-schema')).toBe(true);
   expect(records.every(value => value.identical)).toBe(true);
   expect(child.stdout).not.toContain('synthetic');
   const [commit] = readdirSync(join(dir, 'source'));

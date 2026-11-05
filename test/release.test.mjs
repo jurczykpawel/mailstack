@@ -6,7 +6,7 @@ import { extensionManifest, release } from "../scripts/release.mjs";
 
 let cwd, config, calls;
 const PRO = ["0003_pro_license_cache.sql", "1001_ext_pro_1.sql"];
-const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql", "0009_read_schema.sql"];
+const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql", "0009_read_schema.sql", "0010_resend_result.sql"];
 const migrations = () => join(cwd, ".wrangler/migrations");
 beforeEach(() => {
   cwd = mkdtempSync(resolve("node_modules/.release-")); mkdirSync(migrations(), { recursive: true });
@@ -23,14 +23,14 @@ const go = ({ env = { MAILSTACK_CONFIG: config, MAILSTACK_PRO_PATH: "/opt/pro" }
   run: (cmd, args) => {
     calls.push([cmd, ...args].join(" "));
     if (args[1] === "setup") for (const f of files) writeFileSync(join(migrations(), f), `-- ${f}`);
-    if (args.includes("apply")) between();
+    if (args.includes("--remote")) between();
   },
   deployRelease: (pro) => calls.push(`deploy ${pro}`),
 });
 
 it("runs guard, setup, the remote migrations and the deploy of the same set, in that order", async () => {
   await go();
-  expect(calls).toEqual(["guard /opt/pro", "npm run setup", "npx wrangler d1 migrations apply DB --remote", "deploy /opt/pro"]);
+  expect(calls).toEqual(["guard /opt/pro", "npm run setup", "node scripts/migrate-worker.ts --remote", "deploy /opt/pro"]);
 });
 
 it("passes the Worker name to the guard, so only production requires origin/main", async () => {
@@ -65,7 +65,7 @@ it("N: refuses without the external configuration, or a Pro configuration withou
   await expect(go({ env: { MAILSTACK_CONFIG: config } })).rejects.toThrow("Pro migrations without MAILSTACK_PRO_PATH");
   rmSync(migrations(), { recursive: true }); mkdirSync(migrations()); calls = [];
   await go({ env: { MAILSTACK_CONFIG: config }, files: CORE, expected: {} });
-  expect(calls).toEqual(["guard undefined", "npm run setup", "npx wrangler d1 migrations apply DB --remote", "deploy undefined"]);
+  expect(calls).toEqual(["guard undefined", "npm run setup", "node scripts/migrate-worker.ts --remote", "deploy undefined"]);
 });
 
 it("accepts a Pro configuration whose compiled extension schema is empty, and only the compiled extension files", async () => {
