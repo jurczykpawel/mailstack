@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
-import { sql, type RawBuilder } from 'kysely';
+import { sql, type CompiledQuery, type RawBuilder } from 'kysely';
 import { createD1Store } from '../src/core/store/d1';
 import { appendAudit, verifyChain, type AuditRow } from '../src/core/audit';
 import { runRetention } from '../src/core/retention';
@@ -13,6 +13,8 @@ import { createExtensionHost } from '../src/core/extension-host';
 import { metered } from '../src/core/budget';
 import { PARTIAL_INDEX_SCHEMA } from '../src/core/store/migration';
 import type { DomainEvent } from '../src/core/extensions';
+import { internalFetch } from '../src/core/internal';
+import { panelClaims } from './fixtures/panel';
 
 // D1 suites seed thousands of rows in workerd; 5 s is too tight on a busy CI runner.
 vi.setConfig({ testTimeout: 30000 });
@@ -37,9 +39,44 @@ beforeAll(async () => {
 });
 afterAll(async () => { await store.db.destroy(); await mf.dispose(); });
 beforeEach(async () => {
-  for (const table of ['audit', 'jobs', 'guards', 'domain_events', 'ext_event_cursor', 'messages']) await sql`delete from ${sql.table(table)}`.execute(store.db);
+  for (const table of ['audit', 'jobs', 'guards', 'domain_events', 'ext_event_cursor', 'recipients', 'messages']) await sql`delete from ${sql.table(table)}`.execute(store.db);
   await sql`delete from sqlite_sequence where name = 'domain_events'`.execute(store.db);
   reset();
+});
+
+it('lists consecutive pages with bounded D1 reads and stable timestamp ties', async () => {
+  const at = Date.now(), ids = sql`with recursive n(i) as (select 1 union all select i+1 from n where i<2683)
+    select 'm' || printf('%05d', i) id, ${at} - cast(i/3 as integer) at from n`;
+  await store.batch([
+    sql`insert into messages(id,client_id,brand,template,level,policy_hash,status,created_at,meta_expires_at)
+      select id,'demo','acme','notice','meta','h','sent',at,${at + 86400000} from (${ids})`,
+    sql`insert into recipients select id,0,'to','idx','k1','sealed','hint','sent',null from (${ids})`,
+  ].map(q => q.compile(store.db)));
+  const ordered = (await sql<{ id: string; created_at: number }>`select id,created_at from messages order by created_at desc,id desc`.execute(store.db)).rows;
+  const expected = ordered.slice(0, 200).map(r => r.id).concat(ordered.slice(1900, 2000).map(r => r.id));
+  const executor = store.db.getExecutor(), execute = executor.executeQuery.bind(executor), queries: CompiledQuery[] = [];
+  vi.spyOn(executor, 'executeQuery').mockImplementation(async (query, ...rest) => {
+    if (query.sql.includes('addr_hints from messages')) queries.push(query);
+    return execute(query, ...rest);
+  });
+  const seen: string[] = [], costs: unknown[] = [];
+  let cursor: string | null = null;
+  for (const page of [1, 2, 20]) {
+    if (page === 20) cursor = btoa(JSON.stringify([ordered[1899].created_at, ordered[1899].id]));
+    reset();
+    const res = await internalFetch(new Request('http://localhost/internal/v2/messages?limit=100' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '')),
+      {}, store, config, { ...panelClaims(), scopes: ['panel'], brands: '*', templates: '*' }, { platform: 'worker', extensions: async () => ({ features: () => [], resendSource: undefined }) });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { messages: { id: string; addr_hints: string[] }[]; cursor: string | null };
+    expect(body.messages).toHaveLength(100); expect(body.messages.every(m => m.addr_hints.join() === 'hint')).toBe(true);
+    seen.push(...body.messages.map(m => m.id)); cursor = body.cursor;
+    costs.push({ page, calls, reads, writes });
+  }
+  vi.restoreAllMocks();
+  const plans = await Promise.all(queries.map(async query => (await store.db.executeQuery({ ...query, sql: 'explain query plan ' + query.sql })).rows));
+  console.log(JSON.stringify({ listCosts: costs, plans }));
+  expect(seen).toEqual(expected);
+  for (const cost of costs as { reads: number }[]) expect(cost.reads).toBeLessThanOrEqual(500);
 });
 
 it('appends with bounded reads on a long audit chain and retains its conditional insert', async () => {
@@ -111,8 +148,8 @@ it('runs idle retention in at most six D1 calls and retains live data', async ()
 it('indexes provider, ref and resend columns only when set; lookups search those indexes; the migration replaces full ones', async () => {
   const insert = (id: string, ref: string | null, root: string | null) => sql`insert into messages(id,client_id,brand,template,level,policy_hash,
     status,created_at,meta_expires_at,ref_idx,resend_root) values(${id},'legacy','acme','notice','meta','h','sending',${t},${t},${ref},${root})`.execute(store.db);
-  reset(); await insert('m1', null, null); expect(writes).toBe(4); // row (the id is the table key, R12), brand/time, status/time, metadata expiry
-  reset(); await insert('m2', 'r', 'm1'); expect(writes).toBe(6);
+  reset(); await insert('m1', null, null); expect(writes).toBe(5); // row, brand/time, status/time, metadata expiry, time/id
+  reset(); await insert('m2', 'r', 'm1'); expect(writes).toBe(7);
   reset(); await sql`update messages set provider_account='a', provider_message_id='p' where id='m1'`.execute(store.db); expect(writes).toBe(2);
   const plan = async (query: string) => JSON.stringify(await rows(sql.raw('explain query plan ' + query)));
   expect(await plan(`select id from messages where provider_account='a' and provider_message_id='p'`)).toContain('messages_provider_set');

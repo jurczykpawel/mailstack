@@ -233,6 +233,7 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
   const rowid = schema.WITHOUT_ROWID_TABLES ? (await query("SELECT name FROM sqlite_master WHERE type='table' AND sql NOT LIKE '%WITHOUT ROWID'"))
     .map(r => r.name).filter(t => schema.WITHOUT_ROWID_TABLES.includes(t)) : [];
   if (rowid.length) await mutate('migrate-without-rowid', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: rowid.flatMap(schema.withoutRowid).join(';\n') });
+  if (schema.READ_SCHEMA) await mutate('migrate-read-schema', `${base}/d1/database/${database.uuid}/query`, 'POST', { sql: schema.READ_SCHEMA });
   if (pro) {
     const { compileMigrations, migrationFile } = await import(pathToFileURL(`${root}/src/core/ext-migrations.ts`).href);
     const { name: ext, migrations } = proWorker.workerMigrations(cfg.extensions[0].options);

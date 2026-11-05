@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/ensure-config.mjs && node scripts/bundle-config.ts --example && node scripts/gen-wrangler.mjs",
     "test": "vitest run",
+    "lint:migrations": "npm run pretest && vitest run test/store-migrations.test.ts",
     "mailstack": "node scripts/mailstack.ts",
     "keys": "node scripts/keys.mjs",
     "build:node": "node scripts/build-node.mjs",

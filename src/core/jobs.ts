@@ -15,7 +15,7 @@ const CLAIM_OPS = 3, RELEASE_OPS = 1, STEP_OPS = 6;
 /** `attempt`: claims since the last saved progress (1 on the first claim). */
 export interface Job { id: string; kind: string; cursor: string | null; payload: unknown; attempt: number }
 /** One portion of work; `writes` commit atomically with the new cursor or the result, and only under a valid token. */
-export type Step = ({ cursor: string } | { result: unknown } | { retry: true }) & { writes?: CompiledQuery[] };
+export type Step = ({ cursor: string } | { result: unknown } | { error: string } | { retry: true }) & { writes?: CompiledQuery[] };
 /** `reserveMs`: the longest a single step may take; no step starts with less budget left (default 3 s).
  * `registry`: the erasure register writer, built when used; erasure requires it unless an explicit development writer is supplied. */
 export interface JobContext { store: KyselyStore; now: number; beforeDelete?: BeforeMessageDelete; consumers?: Map<string, EventConsumer>; registry?: () => TombstoneRegistry | undefined }
@@ -99,6 +99,7 @@ async function run(store: KyselyStore, budget: Budget, row: Claimed, token: stri
       const from = budget.used();
       try {
         const step = await kind.step(job(), { store, now: now(), ...hooks });
+        if ('error' in step) return await finish('dead', { error: step.error }, step.writes);
         if ('result' in step) return await finish('done', step.result, step.writes);
         if ('retry' in step) return await failed(step.writes);
         await commit(sql`update jobs set cursor = ${step.cursor}, attempts = 1, lease_until = ${now() + LEASE_MS},

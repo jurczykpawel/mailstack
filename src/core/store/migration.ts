@@ -126,11 +126,15 @@ CREATE TABLE IF NOT EXISTS ses_status (
 );
 `;
 
-export const JOBS_SCHEMA = `
+const ERASURE_REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS erasure_registry (
   seq INTEGER PRIMARY KEY, job TEXT NOT NULL UNIQUE, sealed TEXT NOT NULL, hash TEXT NOT NULL, confirmed INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS jobs (
+`;
+export const READ_SCHEMA = ERASURE_REGISTRY_SCHEMA + `
+CREATE INDEX IF NOT EXISTS messages_time ON messages(created_at, id);
+`;
+export const JOBS_SCHEMA = ERASURE_REGISTRY_SCHEMA + `CREATE TABLE IF NOT EXISTS jobs (
   id          TEXT PRIMARY KEY,
   kind        TEXT NOT NULL,
   state       TEXT NOT NULL CHECK (state IN ('pending','running','done','dead')),

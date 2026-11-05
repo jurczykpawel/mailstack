@@ -145,6 +145,11 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`erase job: ${driver}`,
     expect(await jobs()).toEqual([]);
   });
 
+  it('reports phase zero until the register step has committed', async () => {
+    const id = await start();
+    expect(await (await api('/jobs/' + id)).json()).toMatchObject({ state: 'pending', progress: { phase: 0, count: 0 } });
+  });
+
   it('requires an admin with a recent step-up to start an erasure', async () => {
     await seed(1);
     for (const p of [principal({ stepUpAt: null }), principal({ stepUpAt: Date.now() - 300001 }), principal({ role: 'operator' })])

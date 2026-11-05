@@ -31,8 +31,11 @@ export const ERASE_JOB: JobKind = {
     const result = { count: c.count, tombstones: tombstones(scope) };
     if (c.phase === 3) return { result };
     if (c.phase === 0) {
-      const writer = registry?.(); if (!writer) throw new Error('Erasure register required');
+      let writer;
+      try { writer = registry?.(); } catch { return { error: 'erasure_registry_unavailable' }; }
+      if (!writer) return { error: 'erasure_registry_unavailable' };
       const registered = await writer(job.id, result.tombstones, store);
+      if (registered.error) return { error: registered.error };
       return { cursor: JSON.stringify({ phase: registered.registered ? 1 : 0, after: '', count: 0 }), writes: registered.writes };
     }
     const rows = (await sql<MessageDeletion['messages'][number]>`select m.id,m.brand,m.template from messages m

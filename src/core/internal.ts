@@ -91,7 +91,8 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
       const limit = integer(q.get('limit'), 50, LIMITS.listPage); if (!limit) fail(400);
       const from = integer(q.get('from'), 0, Number.MAX_SAFE_INTEGER), to = integer(q.get('to'), Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
       if (from > to) fail(400);
-      const filters = [scope, live, sql`m.created_at >= ${from} and m.created_at <= ${to}`];
+      const filters = [scope, live, sql`m.created_at >= ${from}`];
+      let upper = sql`m.created_at <= ${to}`;
       for (const name of ['brand', 'template', 'status']) if (q.has(name)) {
         const value = q.get(name)!; if (!value || value.length > 128) fail(400);
         filters.push(sql`${sql.ref('m.' + name)}=${value}`);
@@ -100,9 +101,10 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
         try {
           const c = JSON.parse(atob(q.get('cursor')!));
           if (!Array.isArray(c) || c.length !== 2 || !Number.isSafeInteger(c[0]) || c[0] < 0 || typeof c[1] !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(c[1])) fail(400);
-          filters.push(sql`(m.created_at < ${c[0]} or (m.created_at=${c[0]} and m.id < ${c[1]}))`);
+          if (c[0] <= to) upper = sql`(m.created_at,m.id) < (${c[0]},${c[1]})`;
         } catch { fail(400); }
       }
+      filters.push(upper);
       if (found) {
         const keys = parseIndexKeys(Reflect.get(env, 'INDEX_KEYS'));
         if (found.rcpt !== undefined) {
@@ -170,7 +172,7 @@ export async function internalFetch(req: Request, env: object, store: KyselyStor
         from jobs where id=${job} and kind='erase'`))[0];
       const fixed = row && JSON.parse(row.payload) as EraseScope;
       if (!row || !covers(panel.brands, fixed.brands) || !covers(panel.templates, fixed.templates)) return fail(404);
-      const { phase = 1, count = 0 } = row.cursor ? JSON.parse(row.cursor) : {};
+      const { phase = 0, count = 0 } = row.cursor ? JSON.parse(row.cursor) : {};
       return response({ id: job, kind: 'erase', state: row.state, progress: { phase, count }, result: row.result === null ? null : JSON.parse(row.result), created_at: row.created_at, done_at: row.done_at });
     }
     if ((path === '/subjects/export' || path === '/subjects/erase') && req.method === 'POST') {

@@ -56,7 +56,8 @@ describe.each(['sqlite', 'd1'] as const)('%s', kind => {
     const before = await snapshot(store), indexes = (await layout(store)).filter(r => r.type === 'index');
     await store.migrate();
     expect(await snapshot(store)).toEqual(before);
-    expect((await layout(store)).filter(r => r.type === 'index')).toEqual(indexes);
+    expect((await layout(store)).filter(r => r.type === 'index' && r.name !== 'messages_time')).toEqual(indexes);
+    expect((await layout(store)).some(r => r.name === 'messages_time')).toBe(true);
     expect((await layout(store)).filter(r => r.type === 'table' && r.wr).map(r => r.name).sort()).toEqual(HOT);
     await store.migrate(); // converted tables are skipped (a second copy by rowid would fail)
     expect(await snapshot(store)).toEqual(before);

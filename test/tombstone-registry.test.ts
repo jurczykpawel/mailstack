@@ -29,6 +29,27 @@ it('is off without register variables and refuses a partial set', () => {
   expect(() => tombstoneRegistry({ BACKUP_AGE_RECIPIENT: recipient, B2_BUCKET: 'b' })).toThrow('B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY');
 });
 
+it('ends an erasure with a readable error when the register table is missing', async () => {
+  const b2 = fakeB2(), f = await erasure();
+  await initTombstoneRegistry(env);
+  await sql`drop table erasure_registry`.execute(f.store.db);
+  await runJobs(f.store, 'cron', { registry: () => tombstoneRegistry(env) });
+  const [row] = (await sql<{ state: string; cursor: string | null; result: string }>`select state,cursor,result from jobs where id=${f.id}`.execute(f.store.db)).rows;
+  console.log(JSON.stringify({ missingRegistry: row }));
+  expect(row.state).toBe('dead');
+  expect(JSON.parse(row.result)).toEqual({ error: 'erasure_registry_unavailable' });
+  expect(await f.visible()).toBe(1); expect(b2.objects.size).toBe(2);
+  await f.store.db.destroy();
+});
+
+it.each([{}, { ...b2Env }])('ends an accepted erasure when its register configuration becomes unavailable', async vars => {
+  const f = await erasure();
+  await runJobs(f.store, 'cron', { registry: () => tombstoneRegistry(vars) });
+  expect((await sql`select state,result from jobs where id=${f.id}`.execute(f.store.db)).rows)
+    .toEqual([{ state: 'dead', result: JSON.stringify({ error: 'erasure_registry_unavailable' }) }]);
+  expect(await f.visible()).toBe(1); await f.store.db.destroy();
+});
+
 it('writes the encrypted register before the erasure deletes anything and retries it until B2 accepts', async () => {
   const b2 = fakeB2(), { store, id, scope, visible } = await erasure(), registry = () => tombstoneRegistry(env);
   await initTombstoneRegistry(env); b2.down = true;
