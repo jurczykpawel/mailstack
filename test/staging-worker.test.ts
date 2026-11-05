@@ -24,7 +24,7 @@ const response=result=>Response.json({success:true,result});
 globalThis.fetch=async(url,options={})=>{
 if(url instanceof Request){(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'b2.log'))},url.method+' '+new URL(url.url).pathname+'\\n');return new Response('<ListBucketResult></ListBucketResult>');}
 const path=new URL(url).pathname;
-if(path.endsWith('/query'))(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'queries.jsonl'))},JSON.stringify(JSON.parse(options.body))+'\n');
+if(path.endsWith('/query'))(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'queries.jsonl'))},JSON.stringify(JSON.parse(options.body))+'\\n');
 if(path.endsWith('/mailstack/deployments'))return response({id:${change ? "writes ? 'changed' : 'initial'" : "'initial'"}});
 if(path.endsWith('/d1/database')&&(!options.method||options.method==='GET'))return response([]);
 if(path.endsWith('/workers/domains')&&(!options.method||options.method==='GET'))return response([]);
