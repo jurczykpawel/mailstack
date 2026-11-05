@@ -10,6 +10,23 @@ D1/SQLite for logging and atomic guards. Worker entry: `src/worker.ts` (the `src
 `src/runtime/node-api.ts`. Installation, keys, policies, event setup, retention and
 ntfy operations are documented in [README.md](README.md).
 
+## Development rule: Mailstack is a sender, nothing more
+
+Owner decision (2026-11-05), binding for every change: Mailstack renders a configured template and
+sends the email. It does not enforce business rules or the logic of the systems that call it
+(Sellf, forms, other products) — like a post office that does not check whether a ZUS form or a
+contest entry is filled in correctly. Each integration would otherwise require Mailstack to know
+and track that system's rules.
+
+- Any logic that guards another system's rules (cross-event deduplication, "send only if X happened",
+  validating business consistency of amounts/statuses, ordering between events) is an exception and
+  needs the owner's explicit approval before implementation. Default: the sending system decides
+  what to send and when; Mailstack sends exactly what it receives.
+- Allowed by default: template rendering and escaping, recipient/payload validation needed to send
+  safely, authentication, anti-abuse guards, idempotency of the same request, logging and delivery events.
+- Example: the Sellf license key is sent only from `license.issued`; Sellf guarantees one event per
+  license, Mailstack does not deduplicate between `purchase.completed` and `license.issued`.
+
 ## Public API
 
 Base URL is wherever the Worker is deployed (e.g. `https://mail.example.com`).
