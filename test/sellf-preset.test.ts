@@ -164,8 +164,8 @@ it.each(['acme', 'demo'])('compares every preset content operation with adapter 
 
 it('preserves all preset correlation and identity first selections', () => {
   for (const [event, action] of Object.entries(config.sources.sellf.events)) {
-    if (action.action !== 'send') continue;
-    const paths = event === 'purchase.completed' ? ['data.order.paymentIntentId', 'data.order.sessionId']
+    if (action.action !== 'send' || !['purchase.completed', 'refund.issued', 'waitlist.signup', 'lead.captured', 'access.expired'].includes(event)) continue;
+    const paths = event === 'purchase.completed' ? ['data.order.orderId', 'data.order.paymentIntentId', 'data.order.sessionId']
       : event === 'refund.issued' ? ['data.payment.paymentIntentId', 'data.payment.sessionId']
       : ['data.order.sessionId', 'data.order.paymentIntentId', 'data.payment.sessionId', 'data.payment.paymentIntentId'];
     for (let index = 0; index <= paths.length; index++) {

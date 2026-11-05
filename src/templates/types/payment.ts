@@ -9,6 +9,8 @@ import type {
 import { codeBox, ctaButton, ctaText, paragraph, summaryTable } from "../layout.ts";
 import { viewAction } from "../../markup/index.ts";
 
+const paymentHeading = (data: TemplateData) => data.settledVia === 'bank_transfer' ? 'Płatność otrzymana' : 'Potwierdzenie płatności';
+
 /** Payment confirmation with an amount summary and optional invoice CTA. */
 export const paymentTemplate: TemplateDef = {
   id: "payment",
@@ -18,7 +20,7 @@ export const paymentTemplate: TemplateDef = {
 
   subject(_brand: Brand, data: TemplateData): string {
     const orderId = (data.orderId || "").trim();
-    return `Potwierdzenie płatności${orderId ? " - " + orderId : ""}`;
+    return `${paymentHeading(data)}${orderId ? " - " + orderId : ""}`;
   },
 
   render(brand: Brand, data: TemplateData): RenderedBody {
@@ -30,9 +32,9 @@ export const paymentTemplate: TemplateDef = {
     const date = (data.date || "").trim();
     const invoiceUrl = (data.invoiceUrl || "").trim();
 
-    const heading = "Potwierdzenie płatności";
+    const heading = paymentHeading(data);
     const greeting = name ? `Witaj ${name},` : "Witaj,";
-    const intro = "Dziękujemy za płatność. Poniżej podsumowanie:";
+    const intro = data.settledVia === 'bank_transfer' ? 'Otrzymaliśmy Twój przelew. Dziękujemy za płatność. Poniżej podsumowanie:' : "Dziękujemy za płatność. Poniżej podsumowanie:";
 
     const amountValue = amount ? `${amount} ${currency}`.trim() : "";
     const rows = [
@@ -90,7 +92,7 @@ export const paymentTemplate: TemplateDef = {
       bodyHtml: htmlParts.join("\n"),
       bodyText: textParts.join("\n\n"),
       previewText: amountValue
-        ? `Potwierdzenie płatności: ${amountValue}`
+        ? `${heading}: ${amountValue}`
         : intro,
       jsonLd: jsonLd.length ? jsonLd : undefined,
     };

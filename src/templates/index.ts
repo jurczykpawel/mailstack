@@ -13,6 +13,7 @@ import { paymentTemplate } from "./types/payment.ts";
 import { noticeTemplate } from "./types/notice.ts";
 import { licenseTemplate } from "./types/license.ts";
 import { refundTemplate } from "./types/refund.ts";
+import { bankTransferTemplate } from "./types/bank-transfer.ts";
 
 /** Registry of all email types, keyed by id. */
 export const TEMPLATES: Record<string, TemplateDef> = {
@@ -23,6 +24,7 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   notice: noticeTemplate,
   license: licenseTemplate,
   refund: refundTemplate,
+  'bank-transfer': bankTransferTemplate,
 };
 
 export function getTemplate(id: string): TemplateDef | undefined {

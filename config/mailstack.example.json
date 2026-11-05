@@ -108,6 +108,7 @@
             "item": "data.product.name",
             "orderId": {
               "first": [
+                "data.order.orderId",
                 "data.order.paymentIntentId",
                 "data.order.sessionId"
               ]
@@ -115,16 +116,19 @@
             "date": {
               "path": "timestamp",
               "as": "date-pl"
-            }
+            },
+            "settledVia": "data.order.settledVia"
           },
           "ref": {
             "first": [
+              "data.order.orderId",
               "data.order.paymentIntentId",
               "data.order.sessionId"
             ]
           },
           "idempotencyKey": {
             "first": [
+              "data.order.orderId",
               "data.order.paymentIntentId",
               "data.order.sessionId"
             ]
@@ -156,7 +160,10 @@
             "isFullRefund": {
               "path": "data.refund.isFullRefund",
               "as": "map",
-              "map": { "boolean:true": "true", "boolean:false": "false" }
+              "map": {
+                "boolean:true": "true",
+                "boolean:false": "false"
+              }
             },
             "totalRefunded": {
               "path": "data.refund.totalRefunded",
@@ -283,6 +290,207 @@
         },
         "license.revoked": {
           "action": "reject"
+        },
+        "order.placed": {
+          "action": "send",
+          "template": "bank-transfer",
+          "to": "data.customer.email",
+          "fields": {
+            "orderId": "data.order.orderId",
+            "holder": "data.order.transfer.holder",
+            "account": "data.order.transfer.account",
+            "bank": "data.order.transfer.bank",
+            "title": "data.order.transfer.title",
+            "amount": {
+              "path": "data.order.amount",
+              "as": "money-minor"
+            },
+            "currency": {
+              "path": "data.order.currency",
+              "as": "upper"
+            },
+            "deadline": "data.order.paymentDeadline",
+            "orderUrl": "data.order.payUrl",
+            "reminder": {
+              "format": "false"
+            }
+          },
+          "ref": "data.order.orderId",
+          "idempotencyKey": "data.order.orderId"
+        },
+        "order.payment_reminder": {
+          "action": "send",
+          "template": "bank-transfer",
+          "to": "data.customer.email",
+          "fields": {
+            "orderId": "data.order.orderId",
+            "holder": "data.order.transfer.holder",
+            "account": "data.order.transfer.account",
+            "bank": "data.order.transfer.bank",
+            "title": "data.order.transfer.title",
+            "amount": {
+              "path": "data.order.amount",
+              "as": "money-minor"
+            },
+            "currency": {
+              "path": "data.order.currency",
+              "as": "upper"
+            },
+            "deadline": "data.order.paymentDeadline",
+            "orderUrl": "data.order.payUrl",
+            "reminder": {
+              "format": "true"
+            }
+          },
+          "ref": "data.order.orderId",
+          "idempotencyKey": "data.order.orderId"
+        },
+        "order.cancelled": {
+          "action": "send",
+          "template": "notice",
+          "to": "data.customer.email",
+          "fields": {
+            "heading": {
+              "format": "Zamówienie anulowane"
+            },
+            "paragraphs": {
+              "format": "Zamówienie {data.order.orderNumber} zostało anulowane.\n\nPowód: {data.order.cancelReason}.\n\n{data.order.cancelReasonText}"
+            },
+            "orderId": "data.order.orderId",
+            "cancelReason": "data.order.cancelReason",
+            "ctaUrl": "data.order.payUrl",
+            "ctaLabel": {
+              "format": "Zobacz zamówienie"
+            }
+          },
+          "requiredFields": [
+            "orderId",
+            "cancelReason"
+          ],
+          "ref": "data.order.orderId",
+          "idempotencyKey": "data.order.orderId"
+        },
+        "order.participants_needed": {
+          "action": "send",
+          "template": "notice",
+          "to": "data.customer.email",
+          "fields": {
+            "heading": {
+              "format": "Uzupełnij uczestników: {data.product.name}"
+            },
+            "paragraphs": {
+              "path": "data.reminder.stage",
+              "as": "map",
+              "map": {
+                "number:1": "Po 24 h lista uczestników nadal jest pusta.",
+                "number:2": "Wydarzenie odbędzie się za 2 dni. Lista uczestników nadal jest pusta."
+              }
+            },
+            "productName": "data.product.name",
+            "orderId": "data.order.orderId",
+            "ctaUrl": "data.reminder.participantsUrl",
+            "ctaLabel": {
+              "format": "Uzupełnij uczestników"
+            }
+          },
+          "requiredFields": [
+            "productName",
+            "orderId",
+            "ctaUrl"
+          ],
+          "ref": "data.order.orderId",
+          "idempotencyKey": {
+            "join": [
+              "data.order.orderId",
+              "data.reminder.stage"
+            ]
+          }
+        },
+        "access.granted": {
+          "action": "send",
+          "template": "welcome",
+          "to": "data.customer.email",
+          "fields": {
+            "name": {
+              "join": [
+                "data.customer.firstName",
+                "data.customer.lastName"
+              ]
+            },
+            "intro": {
+              "format": "Twój dostęp do {data.product.name} jest gotowy."
+            },
+            "body": {
+              "format": "Zaloguj się na swoje konto w sklepie, aby otworzyć produkt."
+            },
+            "productName": "data.product.name",
+            "accessId": "data.access.id",
+            "grantSource": {
+              "path": "data.grantSource",
+              "as": "map",
+              "map": {
+                "string:free": "free",
+                "string:purchase": "purchase",
+                "string:bundle": "bundle",
+                "string:bank_transfer": "bank_transfer",
+                "string:subscription": "subscription",
+                "string:manual": "manual",
+                "string:unknown": "unknown"
+              }
+            }
+          },
+          "requiredFields": [
+            "accessId",
+            "productName",
+            "grantSource"
+          ],
+          "ref": "data.access.id",
+          "idempotencyKey": "data.access.id",
+          "transform": "free-access"
+        },
+        "license.issued": {
+          "action": "send",
+          "template": "license",
+          "to": "data.customer.email",
+          "fields": {
+            "name": {
+              "join": [
+                "data.customer.firstName",
+                "data.customer.lastName"
+              ]
+            },
+            "productName": "data.product.name",
+            "productId": "data.product.id",
+            "licenseKey": "data.licenseKey",
+            "tier": "data.license.tier",
+            "domain": "data.license.domain",
+            "licenseId": "data.license.id",
+            "licenseOrder": "data.license.order",
+            "issuanceSource": {
+              "path": "data.license.issuanceSource",
+              "as": "map",
+              "map": {
+                "string:purchase": "purchase",
+                "string:manual": "manual",
+                "string:api": "api"
+              }
+            }
+          },
+          "requiredFields": [
+            "licenseId",
+            "licenseOrder",
+            "issuanceSource",
+            "productId"
+          ],
+          "ref": {
+            "first": [
+              "data.license.orderId",
+              "data.license.order",
+              "data.license.id"
+            ]
+          },
+          "idempotencyKey": "data.license.id",
+          "transform": "sellf-license"
         }
       }
     }

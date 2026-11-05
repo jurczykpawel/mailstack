@@ -15,6 +15,10 @@ import { PARTIAL_INDEX_SCHEMA } from '../src/core/store/migration';
 import type { DomainEvent } from '../src/core/extensions';
 import { internalFetch } from '../src/core/internal';
 import { panelClaims } from './fixtures/panel';
+import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
+import { createApp } from '../src/index';
+import type { Env } from '../src/types';
 
 // D1 suites seed thousands of rows in workerd; 5 s is too tight on a busy CI runner.
 vi.setConfig({ testTimeout: 30000 });
@@ -42,6 +46,27 @@ beforeEach(async () => {
   for (const table of ['audit', 'jobs', 'guards', 'domain_events', 'ext_event_cursor', 'recipients', 'messages']) await sql`delete from ${sql.table(table)}`.execute(store.db);
   await sql`delete from sqlite_sequence where name = 'domain_events'`.execute(store.db);
   reset();
+});
+
+it('keeps Sellf notifications within the existing source D1 call count', async () => {
+  const sendEmail = vi.fn(async () => ({ ok: true, status: 200 }));
+  const logging = { ...config.logging, defaults: { ...config.logging.defaults, level: 'none' as const }, brands: {} };
+  const app = createApp({ store, sendEmail, logging, now: () => new Date('2026-11-05T12:00:00Z') });
+  const costs: Record<string, number> = {};
+  for (const event of ['purchase.completed', 'order.placed', 'order.payment_reminder', 'order.cancelled', 'order.participants_needed', 'access.granted', 'license.issued']) {
+    const body = JSON.parse(readFileSync(new URL(`./fixtures/sellf/${event}.json`, import.meta.url), 'utf8'));
+    if (event === 'license.issued') body.data.license.issuanceSource = 'api';
+    reset();
+    const response = await app.fetch(new Request('https://mail.example/v1/hooks/sellf?brand=acme', {
+      method: 'POST', headers: { authorization: 'Bearer example' }, body: JSON.stringify(body),
+    }), { API_KEY: 'example' } as Env, {} as ExecutionContext);
+    expect(response.status).toBe(200);
+    costs[event] = calls;
+  }
+  expect(sendEmail).toHaveBeenCalledTimes(7);
+  expect(costs['purchase.completed']).toBeGreaterThan(0);
+  expect(Object.values(costs)).toEqual(Array(7).fill(costs['purchase.completed']));
+  console.log(JSON.stringify({ sellfNotificationD1Calls: costs }));
 });
 
 it('lists consecutive pages with bounded D1 reads and stable timestamp ties', async () => {

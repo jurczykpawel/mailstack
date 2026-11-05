@@ -1,7 +1,7 @@
 import { purchaseLicenseData, purchaseLicensesSchema } from './purchase-licenses';
 import { z } from 'zod';
 import { config, getBrand } from './core/config';
-import { SOURCE_LIMITS } from './core/config/sources';
+import { SOURCE_LIMITS, requiredSourceFields } from './core/config/sources';
 import type { Source, SourceField } from './core/config/sources';
 import { boundedBytes } from './core/http';
 import { authenticate, licenseRequired, permits, tokenSha256 } from './clients';
@@ -104,7 +104,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (!template) return invalid(['template']);
   const mapped: TemplateData = Object.fromEntries(Object.entries(action.fields).map(([key, field]) => [key, sourceField(body, field)]));
   const to = text(read(body, action.to)).trim();
-  const fields = missingRequiredFields(template, mapped);
+  const fields = [...missingRequiredFields(template, mapped), ...requiredSourceFields(action).filter(key => !mapped[key]?.trim())];
   if (!z.email().safeParse(to).success) fields.push(action.to);
   for (const [key, value] of Object.entries(mapped)) if (value.length > SOURCE_LIMITS.valueChars) fields.push(key);
   const ref = action.ref ? sourceField(body, action.ref).trim() : '';
@@ -116,6 +116,14 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
     else Object.assign(mapped, purchaseLicenseData(input, brand));
   }
   if (fields.length) return invalid([...new Set(fields)]);
+  if (action.transform === 'free-access' && mapped.grantSource !== 'free') return json({ success: true, ignored: event });
+  if (action.transform === 'sellf-license') {
+    const purchase = source.events['purchase.completed'];
+    if (mapped.issuanceSource === 'purchase' && !mapped.licenseOrder.startsWith('free_') &&
+      purchase?.action === 'send' && purchase.transform === 'purchase-licenses') return json({ success: true, ignored: event });
+    const urls = brand.licenseActivationUrls;
+    if (urls && Object.hasOwn(urls, mapped.productId)) mapped.activationUrl = urls[mapped.productId];
+  }
   const identity = action.idempotencyKey ? sourceField(body, action.idempotencyKey).trim() : '';
   const idempotencyKey = `source:${id}:${event}:${JSON.stringify([brandId, identity || (await tokenSha256(raw)).slice(0, 32)])}`;
   const result = await renderAndSend(deps, env, brand, template, mapped, {

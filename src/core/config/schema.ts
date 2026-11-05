@@ -1,6 +1,6 @@
 import sellfPreset from "../../../docs/sources/sellf.json" with { type: "json" };
 import { z } from "zod";
-import { sourceSchema, sourceId } from "./sources.ts";
+import { sourceSchema, sourceId, requiredSourceFields } from "./sources.ts";
 import { TEMPLATES } from "../../templates/index.ts";
 import { PRO_KEYS } from "../../clients.ts";
 
@@ -91,6 +91,9 @@ function schemaWithTemplates(templates: TemplatePolicies) {
         if (!Object.hasOwn(templates, action.template)) fail([...path, "template"], "unknown template");
         else for (const field of templates[action.template]?.requiredFields ?? []) {
           if (!Object.hasOwn(action.fields, field)) fail([...path, "fields", field], "required template field");
+        }
+        for (const field of requiredSourceFields(action)) {
+          if (!Object.hasOwn(action.fields, field)) fail([...path, "fields", field], "required source field");
         }
       }
     }

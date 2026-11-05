@@ -1,0 +1,88 @@
+{
+  "event": "purchase.completed",
+  "timestamp": "2026-11-05T12:00:00.000Z",
+  "data": {
+    "amountUnit": "minor",
+    "customer": {
+      "email": "customer@example.com",
+      "firstName": "Jan",
+      "lastName": "Kowalski",
+      "userId": null
+    },
+    "product": {
+      "id": "prod_12345678",
+      "name": "Premium Course",
+      "slug": "premium-course",
+      "price": 4999,
+      "currency": "usd",
+      "icon": "🎓"
+    },
+    "bumpProduct": null,
+    "licenses": [
+      {
+        "productId": "prod_12345678",
+        "token": "example.signed-license",
+        "kid": "kid-example",
+        "jwksUrl": "https://example.com/api/licenses/jwks?seller=seller-id",
+        "expiresAt": null
+      }
+    ],
+    "order": {
+      "orderId": "00000000-0000-4000-8000-000000000001",
+      "orderNumber": 1001,
+      "amount": 4999,
+      "grossTotal": 4999,
+      "netTotal": null,
+      "taxTotal": null,
+      "taxSnapshotStatus": "unavailable",
+      "currency": "usd",
+      "paymentIntentId": null,
+      "couponId": null,
+      "isGuest": false,
+      "settledVia": "bank_transfer"
+    },
+    "attribution": {
+      "channel": "email",
+      "firstChannel": "paid_social",
+      "kind": "payment",
+      "mode": "stored",
+      "last": {
+        "source": "newsletter",
+        "medium": "email",
+        "campaign": "autumn-launch",
+        "content": "cta-1",
+        "term": null,
+        "utm_id": null,
+        "referrer_host": null,
+        "landing_path": "/offer",
+        "at": "2026-11-03T10:00:00.000Z"
+      },
+      "first": {
+        "source": "facebook",
+        "medium": "paid_social",
+        "campaign": "autumn",
+        "content": null,
+        "term": null,
+        "utm_id": null,
+        "referrer_host": null,
+        "landing_path": "/",
+        "at": "2026-10-30T10:00:00.000Z"
+      },
+      "sessionsCount": 3,
+      "daysToPurchase": 4,
+      "clickIdType": null,
+      "deviceClass": "mobile",
+      "country": "PL",
+      "affiliateMemberId": null
+    },
+    "invoice": {
+      "needsInvoice": true,
+      "nip": "1234567890",
+      "companyName": "Przykładowa Firma Sp. z o.o.",
+      "address": "ul. Testowa 123/45",
+      "city": "Warszawa",
+      "postalCode": "00-001",
+      "country": "PL"
+    }
+  }
+}
