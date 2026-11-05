@@ -28,7 +28,6 @@ async function request(body: Payload, level: 'none' | 'full' = 'none', extraEnv:
 
 it.each(events)('delivers the Sellf example for %s with stable correlation', async event => {
   const body = fixture(event);
-  if (event === 'license.issued') body.data.license.issuanceSource = 'manual';
   const response = await request(body);
   expect(response.status).toBe(200);
   expect(sendEmail).toHaveBeenCalledOnce();
@@ -56,8 +55,8 @@ const missing = [
   ...['order.placed', 'order.payment_reminder'].flatMap(event => ['order.orderId', 'order.transfer.account', 'order.transfer.bank', 'order.transfer.holder', 'order.transfer.title', 'order.amount', 'order.currency', 'order.paymentDeadline', 'order.payUrl'].map(path => [event, path])),
   ...['order.orderId', 'order.cancelReason'].map(path => ['order.cancelled', path]),
   ...['order.orderId', 'product.name', 'reminder.stage', 'reminder.participantsUrl'].map(path => ['order.participants_needed', path]),
-  ...['access.id', 'product.name', 'grantSource'].map(path => ['access.granted', path]),
-  ...['license.id', 'licenseKey', 'product.name', 'license.issuanceSource', 'license.order'].map(path => ['license.issued', path]),
+  ...['access.id', 'product.name'].map(path => ['access.granted', path]),
+  ...['license.id', 'licenseKey', 'product.name'].map(path => ['license.issued', path]),
   ...['order.orderId', 'order.amount', 'product.name'].map(path => ['purchase.completed', path]),
   ...events.map(event => [event, 'customer.email']),
 ];
@@ -89,11 +88,16 @@ it.each([false, true])('delivers each paid license once, issuance first=%s', asy
   const purchase = fixture('purchase.completed'), license = fixture('license.issued');
   const bodies = issuanceFirst ? [license, purchase] : [purchase, license];
   for (const body of [...bodies, ...bodies]) expect((await request(body)).status).toBe(200);
-  expect(sendEmail).toHaveBeenCalledOnce();
-  expect(sendEmail.mock.calls[0][1].text.split(license.data.licenseKey)).toHaveLength(2);
+  expect(sendEmail).toHaveBeenCalledTimes(2);
+  const mails = sendEmail.mock.calls.map(call => call[1]);
+  const payment = mails.find(mail => mail.subject.startsWith('Płatność otrzymana'))!;
+  const issued = mails.find(mail => mail.subject.startsWith('Twój klucz licencji'))!;
+  expect(payment.text).not.toContain(license.data.licenseKey);
+  expect(payment.html).not.toContain(license.data.licenseKey);
+  expect(issued.text.split(license.data.licenseKey)).toHaveLength(2);
 });
 
-it.each(['manual', 'api', 'free'])('delivers standalone %s licenses once per license ID', async source => {
+it.each(['purchase', 'manual', 'api', 'free', 'future-source', undefined])('delivers standalone %s licenses once per license ID', async source => {
   const body = fixture('license.issued');
   body.data.license.issuanceSource = source === 'free' ? 'purchase' : source;
   body.data.license.order = source === 'free' ? 'free_user_product' : 'api_order';
@@ -125,10 +129,11 @@ it('accepts an automatic cancellation without administrator text', async () => {
   expect(sendEmail.mock.calls[0][1].text).toContain('payment_window_expired');
 });
 
-it.each(['purchase', 'bank_transfer', 'manual', 'subscription'])('does not send a free welcome for %s access', async source => {
+it.each(['free', 'purchase', 'bundle', 'bank_transfer', 'manual', 'subscription', 'future-source', undefined])('delivers welcome for %s access', async source => {
   const body = fixture('access.granted'); body.data.grantSource = source;
-  expect(await (await request(body)).json()).toMatchObject({ success: true, ignored: 'access.granted' });
-  expect(sendEmail).not.toHaveBeenCalled();
+  expect((await request(body)).status).toBe(200);
+  expect(sendEmail).toHaveBeenCalledOnce();
+  expect(sendEmail.mock.calls[0][1].text).toContain(body.data.product.name);
 });
 
 it('uses the shared layout helpers for bank transfer values', () => {
@@ -159,27 +164,24 @@ it('checks required source fields at configuration load', () => {
   expect(() => parseConfig(cfg)).toThrow('required source field');
 });
 
-it('checks license transform inputs even when custom requirements are omitted', () => {
-  const cfg = structuredClone(config), action = cfg.sources.sellf.events['license.issued'];
-  if (action.action !== 'send') throw new Error('Expected send');
-  delete action.requiredFields;
-  delete action.fields.licenseOrder;
-  expect(() => parseConfig(cfg)).toThrow('required source field');
+it.each([[], [{ token: 'sample-key', productId: 'example' }], 'unused', null])('ignores purchase licenses payload %j', async licenses => {
+  const body = fixture('purchase.completed'); body.data.licenses = licenses;
+  expect((await request(body)).status).toBe(200);
+  expect(sendEmail).toHaveBeenCalledOnce();
+  for (const content of [sendEmail.mock.calls[0][1].text, sendEmail.mock.calls[0][1].html]) {
+    expect(content).not.toContain('sample-key');
+    expect(content).not.toContain('Twoje licencje');
+  }
 });
 
-it('delivers paid issuance separately when the purchase action omits keys', async () => {
-  const purchaseAction = config.sources.sellf.events['purchase.completed'];
-  if (purchaseAction.action !== 'send') throw new Error('Expected send');
-  const previous = purchaseAction.transform;
-  delete purchaseAction.transform;
-  try {
-    const license = fixture('license.issued');
-    expect((await request(fixture('purchase.completed'))).status).toBe(200);
-    expect((await request(license)).status).toBe(200);
-    expect(sendEmail).toHaveBeenCalledTimes(2);
-    expect(sendEmail.mock.calls[0][1].text).not.toContain(license.data.licenseKey);
-    expect(sendEmail.mock.calls[1][1].text).toContain(license.data.licenseKey);
-  } finally { purchaseAction.transform = previous; }
+it('accepts license delivery without issuance metadata', async () => {
+  const body = fixture('license.issued');
+  delete body.data.license.issuanceSource;
+  delete body.data.license.order;
+  expect((await request(body)).status).toBe(200);
+  expect(sendEmail.mock.calls[0][1].text).toContain(body.data.licenseKey);
+  expect(await (await request(body)).json()).toMatchObject({ idempotent: true });
+  expect(sendEmail).toHaveBeenCalledOnce();
 });
 
 it.each(['order.placed', 'order.participants_needed', 'license.issued'])('archives %s with delivery credentials masked', async event => {
@@ -199,4 +201,10 @@ it.each(['order.placed', 'order.participants_needed', 'license.issued'])('archiv
   expect(JSON.stringify(archive)).not.toContain(secret);
   expect(sendEmail.mock.calls[0][1].text).toContain(secret);
   expect(await store.db.selectFrom('replays').selectAll().execute()).toEqual([]);
+});
+
+it.each(['purchase-licenses', 'sellf-license', 'free-access'])('requires updating removed transform %s in explicit configs', transform => {
+  const cfg = structuredClone(config);
+  Object.assign(cfg.sources.sellf.events['purchase.completed'], { transform });
+  expect(() => parseConfig(cfg)).toThrow('transform');
 });

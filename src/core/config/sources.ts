@@ -25,8 +25,7 @@ const action = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('send'), template: safeKey, to: path,
     fields: z.record(safeKey, field).refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields),
     ref: selection.optional(), idempotencyKey: selection.optional(),
-    requiredFields: z.array(safeKey).max(SOURCE_LIMITS.fields).optional(),
-    transform: z.enum(['purchase-licenses', 'sellf-license', 'free-access']).optional() }),
+    requiredFields: z.array(safeKey).max(SOURCE_LIMITS.fields).optional() }),
   z.strictObject({ action: z.literal('ignore') }),
   z.strictObject({ action: z.literal('reject') }),
 ]);
@@ -44,7 +43,5 @@ export type Source = z.infer<typeof sourceSchema>;
 export type SourceField = z.infer<typeof field>;
 
 export function requiredSourceFields(action: Extract<Source['events'][string], { action: 'send' }>): string[] {
-  const transform = action.transform === 'sellf-license' ? ['licenseOrder', 'issuanceSource', 'productId']
-    : action.transform === 'free-access' ? ['grantSource'] : [];
-  return [...new Set([...(action.requiredFields ?? []), ...transform])];
+  return action.requiredFields ?? [];
 }

@@ -16,7 +16,7 @@ The provider's preview data is stored as fixed JSON, with a fixed envelope time.
 Transfer previews are completed with the customer and effective deadline exactly
 as emitted by their producer; the cancellation example selects the documented
 admin reason and optional text. Access selects the documented free grant source.
-The payment example selects bank-transfer settlement (no PI/CS), and uses the
-license example's sample key to exercise both notification paths for that key.
+The payment example selects bank-transfer settlement (no PI/CS), and retains the
+license example's sample key in licenses[] to verify that payment ignores it.
 Tests derive stage 2, manual/API issuance, optional omissions and incomplete data
 from these examples. No live checkout or provider connection is used.

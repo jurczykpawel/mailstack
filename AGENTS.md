@@ -10,6 +10,23 @@ D1/SQLite for logging and atomic guards. Worker entry: `src/worker.ts` (the `src
 `src/runtime/node-api.ts`. Installation, keys, policies, event setup, retention and
 ntfy operations are documented in [README.md](README.md).
 
+## Development rule: Mailstack is a sender, nothing more
+
+Owner decision (2026-11-05), binding for every change: Mailstack renders a configured template and
+sends the email. It does not enforce business rules or the logic of the systems that call it
+(Sellf, forms, other products) — like a post office that does not check whether a ZUS form or a
+contest entry is filled in correctly. Each integration would otherwise require Mailstack to know
+and track that system's rules.
+
+- Any logic that guards another system's rules (cross-event deduplication, "send only if X happened",
+  validating business consistency of amounts/statuses, ordering between events) is an exception and
+  needs the owner's explicit approval before implementation. Default: the sending system decides
+  what to send and when; Mailstack sends exactly what it receives.
+- Allowed by default: template rendering and escaping, recipient/payload validation needed to send
+  safely, authentication, anti-abuse guards, idempotency of the same request, logging and delivery events.
+- Example: the Sellf license key is sent only from `license.issued`; Sellf guarantees one event per
+  license, Mailstack does not deduplicate between `purchase.completed` and `license.issued`.
+
 ## Public API
 
 Base URL is wherever the Worker is deployed (e.g. `https://mail.example.com`).
@@ -388,7 +405,7 @@ Defined in `docs/sources/sellf.json`, consumed by `src/sources.ts`. Omitting
 
 | Sellf event | Template | Key mapping |
 |---|---|---|
-| `purchase.completed` | `payment` | customer.email, product.name, order.amount (minor), currency, order UUID or PI/CS, timestamp; bank_transfer renders received payment; purchase-licenses sends paid keys |
+| `purchase.completed` | `payment` | customer.email, product.name, order.amount (minor), currency, order UUID or PI/CS, timestamp; bank_transfer renders received payment; licenses[] ignored; no keys |
 | `refund.issued` | `refund` | customer.email, product.name, refund.amount (minor), refund.currency, payment CS or PI |
 | `waitlist.signup` | `notice` | customer.email, product.name |
 | `lead.captured` | `welcome` | customer.email, product.name; no CTA |
@@ -396,15 +413,11 @@ Defined in `docs/sources/sellf.json`, consumed by `src/sources.ts`. Omitting
 | `order.placed` / `order.payment_reminder` | `bank-transfer` | customer.email, order.orderId, transfer holder/account/bank/title, amount/currency, paymentDeadline, payUrl; key/ref: orderId |
 | `order.cancelled` | `notice` | customer.email, order.orderId, cancelReason and optional cancelReasonText; key/ref: orderId |
 | `order.participants_needed` | `notice` | customer.email, product.name, order.orderId, reminder.stage (1/2), participantsUrl; key: orderId + stage, ref: orderId |
-| `access.granted` | `welcome` | free grantSource only; customer.email, product.name, access.id; key/ref: access.id |
-| `license.issued` | `license` | customer.email, product.id/name, licenseKey, license.id/order/issuanceSource; key: license.id, ref: license.orderId/order/id |
+| `access.granted` | `welcome` | every grantSource; customer.email, product.name, access.id; key/ref: access.id |
+| `license.issued` | `license` | customer.email, product.id/name, licenseKey, license.id; key: license.id, ref: license.orderId/order/id |
 
-Paid purchase keys are sent by `purchase-licenses`; `sellf-license` acknowledges
-matching purchased issuance without mail, in either arrival order. Free `free_`
-orders, manual and API issuance send a standalone secret-key email. Removing the
-purchase transform selects standalone delivery for all issuance. Keep purchases
-subscribed/permitted with the default preset. No additional storage queries.
-`free-access` filters non-free access. Source actions may add mapped `requiredFields`;
+Only `license.issued` sends keys; purchases ignore `licenses[]`. Sellf selects where to emit/subscribe
+to `access.granted`; every received event sends welcome. Source actions may add mapped `requiredFields`;
 refs and identity selections also accept `join`. See README for explicit source
 registry upgrades and the 24-hour idempotency window.
 
@@ -416,8 +429,7 @@ not implemented. The README table lists every explicitly unsupported event.
 
 ### Add a new event mapping
 Edit `docs/sources/sellf.json` and the example configuration, selecting an existing
-template and covering its `requiredFields`. Use only the closed transforms; the
-built-in `purchase-licenses` preserves the existing license limits and brand URLs.
+template and covering its `requiredFields`. Use only closed field mappings; license keys are sent exclusively by `license.issued`.
 Remove a reject action only after implementing a complete consumer contract.
 Recommend only `purchase.completed` and `refund.issued` for purchase/refund emails;
 enable other supported events only when needed, and disable all rejected events.

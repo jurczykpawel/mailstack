@@ -56,8 +56,7 @@
           "data.order.paymentIntentId",
           "data.order.sessionId"
         ]
-      },
-      "transform": "purchase-licenses"
+      }
     },
     "refund.issued": {
       "action": "send",
@@ -348,29 +347,14 @@
           "format": "Zaloguj się na swoje konto w sklepie, aby otworzyć produkt."
         },
         "productName": "data.product.name",
-        "accessId": "data.access.id",
-        "grantSource": {
-          "path": "data.grantSource",
-          "as": "map",
-          "map": {
-            "string:free": "free",
-            "string:purchase": "purchase",
-            "string:bundle": "bundle",
-            "string:bank_transfer": "bank_transfer",
-            "string:subscription": "subscription",
-            "string:manual": "manual",
-            "string:unknown": "unknown"
-          }
-        }
+        "accessId": "data.access.id"
       },
       "requiredFields": [
         "accessId",
-        "productName",
-        "grantSource"
+        "productName"
       ],
       "ref": "data.access.id",
-      "idempotencyKey": "data.access.id",
-      "transform": "free-access"
+      "idempotencyKey": "data.access.id"
     },
     "license.issued": {
       "action": "send",
@@ -388,22 +372,10 @@
         "licenseKey": "data.licenseKey",
         "tier": "data.license.tier",
         "domain": "data.license.domain",
-        "licenseId": "data.license.id",
-        "licenseOrder": "data.license.order",
-        "issuanceSource": {
-          "path": "data.license.issuanceSource",
-          "as": "map",
-          "map": {
-            "string:purchase": "purchase",
-            "string:manual": "manual",
-            "string:api": "api"
-          }
-        }
+        "licenseId": "data.license.id"
       },
       "requiredFields": [
         "licenseId",
-        "licenseOrder",
-        "issuanceSource",
         "productId"
       ],
       "ref": {
@@ -413,8 +385,7 @@
           "data.license.id"
         ]
       },
-      "idempotencyKey": "data.license.id",
-      "transform": "sellf-license"
+      "idempotencyKey": "data.license.id"
     }
   }
 }

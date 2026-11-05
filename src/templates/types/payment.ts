@@ -1,4 +1,3 @@
-import { purchaseLicenseSecrets, purchaseLicenseSlots } from "../../purchase-licenses.ts";
 import type {
   Brand,
   JsonLdBlock,
@@ -6,7 +5,7 @@ import type {
   TemplateData,
   TemplateDef,
 } from "../../types.ts";
-import { codeBox, ctaButton, ctaText, paragraph, summaryTable } from "../layout.ts";
+import { ctaButton, ctaText, paragraph, summaryTable } from "../layout.ts";
 import { viewAction } from "../../markup/index.ts";
 
 const paymentHeading = (data: TemplateData) => data.settledVia === 'bank_transfer' ? 'Płatność otrzymana' : 'Potwierdzenie płatności';
@@ -16,7 +15,6 @@ export const paymentTemplate: TemplateDef = {
   id: "payment",
   maskedFields: ["amount", "currency", "item", "description", "orderId", "date"],
   requiredFields: ["amount", "currency", "item", "orderId"],
-  optionalSecretFields: purchaseLicenseSecrets,
 
   subject(_brand: Brand, data: TemplateData): string {
     const orderId = (data.orderId || "").trim();
@@ -57,22 +55,6 @@ export const paymentTemplate: TemplateDef = {
     }
     const cta = ctaText(invoiceUrl, "Pobierz fakturę");
     if (cta) textParts.push(cta);
-
-    const licenses = purchaseLicenseSlots.filter(slot => data[slot.key]);
-    if (licenses.length) {
-      const instruction = "Wklej każdy klucz w ustawieniach licencji właściwego produktu. Każdy komponent aktywuje się oddzielnie.";
-      const contact = `Jeśli potrzebujesz pomocy, napisz do: ${brand.to[0]}.`;
-      htmlParts.push(paragraph("Twoje licencje"), paragraph(instruction));
-      textParts.push("Twoje licencje", instruction);
-      for (const slot of licenses) {
-        const product = data[slot.product] || "Produkt";
-        const label = `Otwórz aktywację: ${product}`;
-        htmlParts.push(paragraph(product), codeBox(data[slot.key]), ctaButton(brand, data[slot.url] || "", label));
-        textParts.push(`${product}:\n${data[slot.key]}`, ctaText(data[slot.url] || "", label));
-      }
-      htmlParts.push(paragraph(contact));
-      textParts.push(contact);
-    }
 
     // Auto-markup: a Gmail action button. Prefer an explicit order URL; fall back
     // to the invoice URL. Absent both -> no block (fail-soft, email unchanged).
