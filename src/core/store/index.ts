@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely';
 import type { Dialect } from 'kysely';
 import type { Store } from '../ports';
-import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, PARTIAL_INDEX_SCHEMA, SES_STATUS_SCHEMA, WITHOUT_ROWID_TABLES, withoutRowid } from './migration.ts';
+import { EVENTS_SCHEMA, EXT_SCHEMA, INITIAL_SCHEMA, JOBS_SCHEMA, PARTIAL_INDEX_SCHEMA, READ_SCHEMA, SES_STATUS_SCHEMA, WITHOUT_ROWID_TABLES, withoutRowid } from './migration.ts';
 import { MessageOperations } from './messages.ts';
 import type { AtomicBatch, Database } from './messages.ts';
 
@@ -21,6 +21,7 @@ export class KyselyStore extends MessageOperations implements Store {
     const pending = (await sql<{ name: string }>`select name from sqlite_master where type = 'table'
       and name in (${sql.join(WITHOUT_ROWID_TABLES)}) and sql not like '%WITHOUT ROWID'`.execute(this.db)).rows;
     if (pending.length) await this.batch(pending.flatMap(t => withoutRowid(t.name)).map(s => sql.raw(s).compile(this.db)));
+    for (const statement of READ_SCHEMA.split(';').map(s => s.trim()).filter(Boolean)) await sql.raw(statement).execute(this.db);
   }
 
   async consume(key: string, expiresAt: number): Promise<boolean> {

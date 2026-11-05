@@ -48,7 +48,7 @@ export async function seal(recipient: string, bytes: Uint8Array | string) {
   return encrypter.encrypt(bytes);
 }
 
-export type TombstoneRegistry = (job: string, tombstones: Tombstone[], store: KyselyStore) => Promise<{ registered: boolean; writes?: CompiledQuery[] }>;
+export type TombstoneRegistry = (job: string, tombstones: Tombstone[], store: KyselyStore) => Promise<{ registered: boolean; error?: 'erasure_registry_unavailable'; writes?: CompiledQuery[] }>;
 export interface RegisteredErasure { job: string; tombstones: Tombstone[] }
 const REGISTRY = ['B2_ENDPOINT', 'B2_BUCKET', 'B2_KEY_ID', 'B2_APP_KEY', 'BACKUP_AGE_RECIPIENT', 'TOMBSTONE_REGISTRY_ID'];
 const prefix = (env: Vars) => typeof env.TOMBSTONE_PREFIX === 'string' && env.TOMBSTONE_PREFIX ? env.TOMBSTONE_PREFIX : 'tombstones/';
@@ -90,6 +90,8 @@ export function tombstoneRegistry(env: object): TombstoneRegistry {
   if (missing.length) throw new Error(`The erasure register needs ${missing.join(', ')}`);
   registryId(vars);
   return async (job, tombstones, store) => {
+    const { rows: [schema] } = await sql`select 1 from sqlite_master where type='table' and name='erasure_registry'`.execute(store.db);
+    if (!schema) return { registered: false, error: 'erasure_registry_unavailable' };
     const { b2, p, head } = await registryHead(vars);
     const rows = (await sql<RecordRow>`select * from erasure_registry order by seq desc limit 1`.execute(store.db)).rows, last = rows[0];
     const own = (await sql<RecordRow>`select * from erasure_registry where job=${job}`.execute(store.db)).rows[0];

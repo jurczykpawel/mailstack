@@ -24,6 +24,7 @@ const response=result=>Response.json({success:true,result});
 globalThis.fetch=async(url,options={})=>{
 if(url instanceof Request){(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'b2.log'))},url.method+' '+new URL(url.url).pathname+'\\n');return new Response('<ListBucketResult></ListBucketResult>');}
 const path=new URL(url).pathname;
+if(path.endsWith('/query'))(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'queries.jsonl'))},JSON.stringify(JSON.parse(options.body))+'\\n');
 if(path.endsWith('/mailstack/deployments'))return response({id:${change ? "writes ? 'changed' : 'initial'" : "'initial'"}});
 if(path.endsWith('/d1/database')&&(!options.method||options.method==='GET'))return response([]);
 if(path.endsWith('/workers/domains')&&(!options.method||options.method==='GET'))return response([]);
@@ -54,13 +55,20 @@ it('adds only the tables an older staging database lacks', () => {
   const { child, dir } = run('deploy', false, false, 'messages,audit,events');
   expect(child.status, child.stderr).toBe(0);
   const labels = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')).label);
-  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'migrate-without-rowid']);
+  expect(labels.filter(label => label.startsWith('migrate-'))).toEqual(['migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'migrate-without-rowid', 'migrate-read-schema']);
+});
+it('adds the register to a database that already has jobs', () => {
+  const { child, dir } = run('deploy', false, false, 'messages,jobs');
+  expect(child.status, child.stderr).toBe(0);
+  const records = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
+  expect(records.map(value => value.label)).toContain('migrate-read-schema');
+  expect(readFileSync(join(dir, 'queries.jsonl'), 'utf8')).toContain('CREATE TABLE IF NOT EXISTS erasure_registry');
 });
 it('deploys isolated resources with a record for each write', () => {
   const { child, dir } = run('deploy');
   expect(child.status, child.stderr).toBe(0);
   const records = mutations(dir).map(value => JSON.parse(readFileSync(join(dir, value), 'utf8')));
-  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-messages', 'migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
+  expect(records.map(value => value.label)).toEqual(['create-database', 'migrate-messages', 'migrate-ses_status', 'migrate-jobs', 'migrate-ext_migrations', 'migrate-domain_events', 'migrate-partial-indexes', 'migrate-read-schema', 'upload-worker', 'set-cron', 'disable-workers-dev', 'attach-domain']);
   expect(records.every(value => value.identical)).toBe(true);
   expect(child.stdout).not.toContain('synthetic');
   const [commit] = readdirSync(join(dir, 'source'));

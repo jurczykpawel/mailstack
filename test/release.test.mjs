@@ -6,7 +6,7 @@ import { extensionManifest, release } from "../scripts/release.mjs";
 
 let cwd, config, calls;
 const PRO = ["0003_pro_license_cache.sql", "1001_ext_pro_1.sql"];
-const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql"];
+const CORE = ["0001_initial.sql", "0002_ses_status.sql", "0004_jobs.sql", "0005_ext.sql", "0006_domain_events.sql", "0007_partial_indexes.sql", "0008_without_rowid.sql", "0009_read_schema.sql"];
 const migrations = () => join(cwd, ".wrangler/migrations");
 beforeEach(() => {
   cwd = mkdtempSync(resolve("node_modules/.release-")); mkdirSync(migrations(), { recursive: true });
