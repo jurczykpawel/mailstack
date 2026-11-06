@@ -4,6 +4,7 @@ import { relative, resolve, isAbsolute } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { readConfigFile } from "../src/core/config/node.ts";
 import { loadConfig } from "../src/core/config/load.ts";
+import { templatePlans } from "../src/templates/config.ts";
 import { requireKeyProvider } from "../src/clients.ts";
 import { loadEnv } from "./env.ts";
 
@@ -20,11 +21,12 @@ try {
   const proPath = mode === "--example" ? undefined : loadEnv(root).MAILSTACK_PRO_PATH?.trim() || undefined;
   if (proPath && !isAbsolute(proPath)) throw new Error("$: MAILSTACK_PRO_PATH must be absolute");
   const worker = proPath && resolve(realpathSync(proPath), "src/worker.ts");
-  if (worker) (await import(worker)).checkConfig(loadConfig(json));
-  else requireKeyProvider(loadConfig(json));
+  const config = loadConfig(json);
+  if (worker) (await import(worker)).checkConfig(config);
+  else requireKeyProvider(config);
   const sha = createHash("sha256").update(json).digest("hex");
   const outputs: [string, string][] = [
-    ["src/core/config/bundled.ts", `export const CONFIG_JSON = ${JSON.stringify(json)};\nexport const BUILD_CONFIG_SHA = "${sha}";\n`],
+    ["src/core/config/bundled.ts", `export const CONFIG_JSON = ${JSON.stringify(json)};\nexport const BUILD_CONFIG_SHA = "${sha}";\nexport const VALIDATED_CONFIG = ${JSON.stringify(config)};\nexport const TEMPLATE_PLANS = ${JSON.stringify(templatePlans(config))};\n`],
     // `workerExtension` is optional in Pro: until it exists the Worker host has no extensions (unavailable).
     ["src/core/pro.generated.ts", worker ? `import * as pro from ${JSON.stringify(worker)};\nexport { workerKeys as proKeys, CACHE_SCHEMA as proSchema } from ${JSON.stringify(worker)};\nexport const proExtension: unknown = (pro as { workerExtension?: unknown }).workerExtension;\nexport const proMigrations: unknown = (pro as { workerMigrations?: unknown }).workerMigrations;\n`
       : `export const proKeys: import("../clients.ts").ProKeys | undefined = undefined;\nexport const proSchema: string | undefined = undefined;\nexport const proExtension: unknown = undefined;\nexport const proMigrations: unknown = undefined;\n`],

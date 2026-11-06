@@ -3,6 +3,8 @@ import { z } from "zod";
 import { sourceSchema, sourceId, requiredSourceFields } from "./sources.ts";
 import { TEMPLATES } from "../../templates/index.ts";
 import { PRO_KEYS } from "../../clients.ts";
+import { mailTemplatesSchema, brandMailTemplatesSchema } from "../../templates/config-schema.ts";
+import { compileTemplatePlans } from "../../templates/config.ts";
 
 const strings = z.array(z.string());
 const days = z.number().int().positive();
@@ -13,6 +15,7 @@ const policy = z.strictObject({
   show: strings.optional(), includeSecrets: z.boolean(),
 });
 const brand = z.strictObject({
+  mailTemplates: brandMailTemplatesSchema.optional(),
   id: z.string(), name: z.string(), from: z.string(), to: strings, allowedOrigins: strings,
   subjectPrefix: z.string(), autoReply: z.boolean().optional(), autoReplyTemplate: z.string().optional(),
   turnstileAction: z.string().optional(),
@@ -41,6 +44,7 @@ const legacySchema = z.strictObject({
   scopes: full(["send", "hook:sellf"]), brands: full("*"), templates: full("*"), recipientOverride: full(true),
 });
 const shape = z.strictObject({
+  mailTemplates: mailTemplatesSchema.optional(),
   extensions: z.array(z.strictObject({
     module: z.string().regex(/^(?:\/[^\s?#]+|(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*)$/),
     options: z.record(z.string(), z.unknown()).optional(),
@@ -115,6 +119,7 @@ function schemaWithTemplates(templates: TemplatePolicies) {
         fail(path("resend"), "replay requires masked or full");
       if (p.includeSecrets && p.level !== "full") fail(path("includeSecrets"), "requires full");
     }
+    compileTemplatePlans(config, (path, message) => ctx.addIssue({ code: "custom", path, message }));
   });
 }
 export const configSchema = schemaWithTemplates(TEMPLATES);
