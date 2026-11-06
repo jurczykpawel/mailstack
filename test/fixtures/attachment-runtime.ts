@@ -12,7 +12,7 @@ const publicKey = { ...pair.publicKey.export({ format: 'jwk' }), kty: 'OKP', crv
 const privateKey = { ...pair.privateKey.export({ format: 'jwk' }), kty: 'OKP', crv: 'X25519', kid: 'c1' };
 const env = { API_KEY: 'test-key', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [publicKey] }),
   INDEX_KEYS: JSON.stringify([{ kid: 'i1', key: Buffer.alloc(32, 11).toString('base64url') }]) } as Env;
-config.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
+config.legacyApiKey = { enabled: true, env: 'API_KEY', brands: '*', templates: '*', recipientOverride: true, attachments: true };
 const logging = structuredClone(config.logging);
 logging.defaults.level = 'full'; logging.defaults.requireLog = true; logging.defaults.resend = 'replay';
 const store = createSqliteStore(':memory:'); await store.migrate();

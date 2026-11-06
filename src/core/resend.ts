@@ -1,6 +1,10 @@
+import { config, compiledTemplates } from "./config";
+import { effectiveTemplate } from "../templates/privacy.ts";
+import { resolvePresentation } from "../templates/locale.ts";
+import { templatePlans } from "../templates/config.ts";
 import { sql } from 'kysely';
 import { permits } from '../clients';
-import { renderAndSend } from '../send';
+import { renderAndSend, prepareSend } from '../send';
 import { getTemplate } from '../templates';
 import type { Env, SendDeps, SendResult, Attachment } from '../types';
 import type { Config } from './config/schema';
@@ -18,10 +22,12 @@ import { resendPayload, type ResendCapability, type ResendOutcome, type ResendPa
 const fail = (status: number, code: string): never => { throw { ok: false, status, code, message: code.replaceAll('_', ' ') }; };
 async function attempt<T>(run: () => Promise<T>): Promise<T | SendResult> {
   try { return await run(); } catch (e) {
-    return e && typeof e === 'object' && 'ok' in e && e.ok === false ? e as SendResult : { ok: false, status: 503, code: 'log_unavailable', message: 'log unavailable' };
+    if (e instanceof Error && ['template_output_limit', 'replay_payload_limit', 'invalid_subject', 'template_empty_heading', 'template_sensitive_header'].includes(e.message)) return { ok: false, status: e.message === 'invalid_subject' ? 400 : 422, code: e.message, message: e.message.replaceAll('_', ' ') };
+    return e && typeof e === 'object' && 'ok' in e && typeof e.ok === 'boolean' ? e as SendResult : { ok: false, status: 503, code: 'log_unavailable', message: 'log unavailable' };
   }
 }
 export function createResendService(cfg: Config, store: KyselyStore, env: Env, deps: SendDeps) {
+  const plans = cfg === config ? compiledTemplates : cfg.mailTemplates ? templatePlans(cfg) : undefined;
   const at = () => deps.now().getTime();
   const jobId = async (key: string) => 'rs_' + await idempotencyHash('panel', key);
   const audit = (actor: string, action: string, target: string, details?: unknown) => appendAudit(store, { at: at(), actor: 'panel:' + actor, action, target, ...(details === undefined ? {} : { details }) });
@@ -37,8 +43,9 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     const m = await store.db.selectFrom('messages').selectAll().where('id', '=', id).executeTakeFirst();
     if (!m || m.meta_expires_at <= at() || m.created_at <= at() - cfg.logging.ceilings.metaDays * 86400000) return fail(404, 'not_found');
     if (panel && ((panel.brands !== '*' && !panel.brands.includes(m.brand)) || (panel.templates !== '*' && !panel.templates.includes(m.template)))) fail(403, 'scope');
-    const template = getTemplate(m.template), brand = cfg.brands[m.brand];
-    const { policy } = await resolvePolicy(cfg.logging, m.brand, m.template);
+    const rawTemplate = getTemplate(m.template), brand = cfg.brands[m.brand];
+    const template = rawTemplate && brand ? effectiveTemplate(rawTemplate, plans ? resolvePresentation(plans, brand, m.template).definition.secretFields : []) : undefined;
+    const { policy } = await resolvePolicy(cfg.logging, m.brand, m.template, template);
     if (!template || !Object.hasOwn(cfg.brands, m.brand) || policy.resend === 'off' || policy.level === 'none') return fail(409, 'resend_disabled');
     if (m.created_at <= at() - policy.metaDays * 86400000) fail(404, 'not_found');
     if (m.status === 'sending' || m.status === 'unknown') fail(409, 'original_unresolved');
@@ -54,14 +61,15 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     const source: ResendSource = { id, brand: m.brand, template: m.template, strategy: policy.resend,
       replay: policy.resend === 'replay' ? replay! : null, ref_sealed: m.ref_sealed,
       ...(owner ? { owner: { clientId: owner.id, callback: { ...owner.resendCallback! } } } : {}) };
-    return { m, source, brand, template };
+    return { m, source, brand, template, policy };
   }
-  async function validate(id: string, value: unknown, mac?: string | null): Promise<ResendPayload> {
+  async function validate(id: string, value: unknown, mac?: string | null, onPreparationFailure?: () => Promise<void>): Promise<ResendPayload> {
     const parsed = resendPayload.safeParse(value);
-    if (!parsed.success || new TextEncoder().encode(canonicalJson(value)).length > MAX_OPENED) return fail(409, 'resend_mismatch');
-    const payload = parsed.data;
+    const envelope = resendPayload.pick({ to: true, template: true, replyTo: true, subjectOverride: true }).passthrough().safeParse(value);
+    if (!envelope.success || !parsed.success && !onPreparationFailure) return fail(409, 'resend_mismatch');
+    const payload = parsed.success ? parsed.data : { ...envelope.data, data: {} } as ResendPayload;
     const keys = parseKeyring(env).indexKeys;
-    if (mac && !await verifyMac(value, JSON.parse(mac), keys)) fail(409, 'resend_mismatch');
+    if (mac) { let valid = false; try { valid = await verifyMac(value, JSON.parse(mac), keys); } catch {} if (!valid) fail(409, 'resend_mismatch'); }
     const recipients = await store.db.selectFrom('recipients').select(['addr_idx', 'idx_kid', 'role']).where('message_id', '=', id).execute();
     const supplied = new Set<string>();
     for (const r of recipients) {
@@ -74,6 +82,9 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     if (supplied.size !== new Set(recipients.map(r => r.idx_kid + ':' + r.addr_idx)).size || !recipients.length) fail(409, 'resend_mismatch');
     for (const address of payload.to) {
       if (!(await Promise.all(recipients.map(async r => (await blindIndex(address, keys.find(k => k.kid === r.idx_kid)!)).index === r.addr_idx))).some(Boolean)) fail(409, 'resend_mismatch');
+    }
+    if (!parsed.success || new TextEncoder().encode(canonicalJson(value)).length > MAX_OPENED) {
+      await onPreparationFailure?.(); return fail(409, 'resend_mismatch');
     }
     return payload;
   }
@@ -102,26 +113,50 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     if (job.state === 'pending') return { ...base, ok: true, status: 202 };
     return { ...base, ok: false, status: 409, code: job.state === 'sending' ? 'in_progress' : 'outcome_unknown' };
   }
-  async function execute(job: ResendJob, payload: ResendPayload, ref?: string, attachments?: Attachment[]): Promise<ResendOutcome> {
-    const { m, source, brand, template } = await inspect(job.message_id);
+  const identityOf = (payload: unknown, ref?: string, attachments?: Attachment[]) => ({ payload, ref: ref ?? null, attachments: attachments ?? null });
+  async function verifyIdentity(job: ResendJob, payload: unknown, ref?: string, attachments?: Attachment[]) {
+    if (!job.payload_mac) return;
+    let valid = false; try { valid = await verifyMac(identityOf(payload, ref, attachments), JSON.parse(job.payload_mac), parseKeyring(env).indexKeys); } catch {}
+    if (!valid) fail(409, 'idempotency_conflict');
+  }
+  function prepare(info: Awaited<ReturnType<typeof inspect>>, payload: ResendPayload, ref?: string, attachments?: Attachment[]) {
+    return prepareSend({ ...deps, logging: cfg.logging, templates: plans }, info.brand, info.template, payload.data, {
+      to: payload.to, replyTo: payload.replyTo, subject: payload.subjectOverride, explicitJsonLd: payload.markup, locale: payload.locale,
+      clientId: info.m.client_id, ref, attachments,
+    }, info.policy);
+  }
+  async function preparationFailure(job: ResendJob, error: unknown) {
+    const code = error instanceof Error ? error.message : '';
+    if (!['template_output_limit', 'replay_payload_limit', 'invalid_subject', 'template_empty_heading', 'template_sensitive_header'].includes(code)) throw error;
+    if (job.strategy === 'source' && job.state === 'pending') {
+      if (!await finishResend(store, job.id, 'failed', undefined, job.token, code)) {
+        const current = await loadJob(job.id, job); if (current) return outcome(current);
+      }
+    }
+    return fail(code === 'invalid_subject' ? 400 : 422, code);
+  }
+  async function execute(job: ResendJob, payload: ResendPayload, ref?: string, attachments?: Attachment[], ready?: import("./logging/delivery").PreparedDelivery, info?: Awaited<ReturnType<typeof inspect>>): Promise<ResendOutcome> {
+    info ??= await inspect(job.message_id);
+    const { m, source, brand, template } = info;
     if (payload.template !== m.template || source.strategy !== job.strategy || job.root !== (m.resend_root ?? m.id)) fail(409, 'resend_mismatch');
     payload = await validate(m.id, payload, job.strategy === 'replay' ? m.replay_mac : undefined);
-    const identity = { payload, ref: ref ?? null, attachments: attachments ?? null };
+    const identity = identityOf(payload, ref, attachments);
     const keys = parseKeyring(env).indexKeys;
-    if (job.payload_mac && !await verifyMac(identity, JSON.parse(job.payload_mac), keys)) fail(409, 'idempotency_conflict');
+    await verifyIdentity(job, payload, ref, attachments);
     if (job.state !== 'pending') return outcome(job);
+    try { ready ??= prepare(info, payload, ref, attachments); } catch (error) { return preparationFailure(job, error); }
     const tag = canonicalJson(await createMac(identity, keys));
     if (!await startResend(store, job.id, at(), tag, job.token)) {
       const current = await loadJob(job.id, job);
       if (!current) return fail(409, 'resend_mismatch');
-      if (current.payload_mac && !await verifyMac(identity, JSON.parse(current.payload_mac), keys)) fail(409, 'idempotency_conflict');
+      await verifyIdentity(current, payload, ref, attachments);
       if (current.state === 'pending') { await inspect(job.message_id); return fail(409, 'resend_mismatch'); }
       return outcome(current);
     }
     let result: SendResult;
     try {
-      result = await renderAndSend({ ...deps, store, logging: cfg.logging }, env, brand, template, payload.data, {
-        to: payload.to, replyTo: payload.replyTo, subject: payload.subjectOverride, explicitJsonLd: payload.markup,
+      result = await renderAndSend({ ...deps, store, logging: cfg.logging, templates: plans }, env, brand, template, payload.data, {
+        to: payload.to, replyTo: payload.replyTo, subject: payload.subjectOverride, explicitJsonLd: payload.markup, locale: payload.locale, prepared: ready,
         clientId: m.client_id, idempotencyKey: job.id, ref, attachments, resendOf: m.id, resendRoot: job.root,
       });
     } catch {
@@ -142,7 +177,7 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
         callbackFailed: async input => {
           const job = await getResend(store, await jobId(input.idempotencyKey));
           if (!job || job.message_id !== input.messageId || job.actor !== panel.actor || job.strategy !== 'source' || job.state !== 'pending' || sourceClaims.get(job.id) !== job.token) return;
-          await finishResend(store, job.id, 'failed', undefined, job.token, 'callback_unavailable');
+          if (!await finishResend(store, job.id, 'failed', undefined, job.token, 'callback_unavailable')) return;
           await audit(panel.actor, 'resend.failed', job.message_id, { code: 'callback_unavailable' });
         },
         source: id => attempt(async () => { const { source } = await inspect(id, panel); await audit(panel.actor, 'resend.source', id); return source; }),
@@ -150,7 +185,8 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
           const result = await attempt(async () => {
             if (typeof input.reason !== 'string' || input.reason.trim().length < 10 || input.reason.length > 500 ||
               typeof input.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.idempotencyKey)) fail(400, 'invalid_request');
-            const { m, source } = await inspect(input.messageId, panel);
+            const info = await inspect(input.messageId, panel);
+            const { m, source } = info;
             const opened = await unwrap(input.envelope, source.strategy, m.id, audience);
             if (source.strategy === 'source') {
               const ref = opened;
@@ -163,14 +199,16 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
             if (payload && payload.template !== m.template) fail(409, 'resend_mismatch');
             const identity = { message_id: m.id, root: m.resend_root ?? m.id, actor: panel.actor, strategy: source.strategy };
             const id = await jobId(input.idempotencyKey), existing = await loadJob(id, identity);
+            if (existing && payload) await verifyIdentity(existing, payload);
             if (existing && existing.state !== 'failed') {
               if (source.strategy === 'source') sourceClaims.set(id, existing.token);
               await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
               if (existing.state === 'pending' && payload) {
-                return execute(existing, payload);
+                return execute(existing, payload, undefined, undefined, undefined, info);
               }
               return { ...await outcome(existing), ...(source.strategy === 'source' ? { source, ref: opened as string } : {}) };
             }
+            const ready = payload ? prepare(info, payload) : undefined;
             await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
             const claimed = await claimResend(store, { id, messageId: m.id, root: m.resend_root ?? m.id, actor: panel.actor, now: at(),
               metaCutoff: at() - cfg.logging.ceilings.metaDays * 86400000, strategy: source.strategy });
@@ -180,13 +218,13 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
               if (job && job.state !== 'failed') {
                 if (source.strategy === 'source') sourceClaims.set(id, job.token);
                 await audit(panel.actor, 'resend.request', m.id, { reason: input.reason });
-                return job.state === 'pending' && payload ? execute(job, payload) :
+                return job.state === 'pending' && payload ? execute(job, payload, undefined, undefined, ready, info) :
                   { ...await outcome(job), ...(source.strategy === 'source' ? { source, ref: opened as string } : {}) };
               }
               return fail(429, 'rate_limited');
             }
             if (source.strategy === 'source') sourceClaims.set(id, job!.token);
-            return payload ? execute(job!, payload) : { ok: true, status: 202, resendId: id, source, ref: opened as string };
+            return payload ? execute(job!, payload, undefined, undefined, ready, info) : { ok: true, status: 202, resendId: id, source, ref: opened as string };
           });
           if (!result.ok && result.code !== 'log_unavailable') return attempt(async () => {
             await audit(panel.actor, 'resend.denied', typeof input.messageId === 'string' ? input.messageId.slice(0, 128) : 'message', { code: result.code });
@@ -201,21 +239,33 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
       if (!job || job.message_id !== messageId || job.strategy !== 'source' || job.expires_at <= at()) return fail(409, 'resend_mismatch');
       const owner = await store.db.selectFrom('messages').select(['client_id', 'brand']).where('id', '=', messageId).executeTakeFirst();
       if (!owner || owner.client_id !== clientId || (brandId !== undefined && owner.brand !== brandId)) return fail(409, 'resend_mismatch');
-      const { m, source } = await inspect(messageId);
+      const info = await inspect(messageId);
+      const { m, source } = info;
       if (source.strategy !== 'source' || source.owner?.clientId !== clientId || !job || job.strategy !== 'source' || job.message_id !== m.id || job.expires_at <= at()) fail(409, 'resend_mismatch');
-      const payload = await validate(m.id, value);
+      if (job.root !== (m.resend_root ?? m.id) || typeof ref !== 'string' || !ref.length || ref.length > 128 || !m.ref_idx ||
+        !(await Promise.all(parseKeyring(env).indexKeys.map(key => refIndex(ref, key)))).some(index => index.index === m.ref_idx)) fail(409, 'resend_mismatch');
+      if (!value || typeof value !== 'object' || Reflect.get(value, 'template') !== m.template) fail(409, 'resend_mismatch');
+      await verifyIdentity(job, value, ref, attachments);
+      const payload = await validate(m.id, value, undefined, async () => {
+        if (job.state === 'pending' && !await finishResend(store, job.id, 'failed', undefined, job.token, 'resend_mismatch')) {
+          const current = await loadJob(job.id, job); if (current) throw await outcome(current);
+        }
+      });
+      if (!['pending', 'failed'].includes(job.state)) return outcome(job);
+      let ready;
+      try { ready = prepare(info, payload, ref, attachments); } catch (error) { return preparationFailure(job, error); }
       if (job!.state === 'failed') {
         const claimed = await claimResend(store, { id: job!.id, messageId: m.id, root: job!.root, actor: job!.actor, now: at(),
           metaCutoff: at() - cfg.logging.ceilings.metaDays * 86400000, strategy: 'source' });
         if (!claimed) {
           const current = await loadJob(job.id, job);
           if (!current) return fail(409, 'resend_mismatch');
-          return current.state === 'failed' ? fail(429, 'rate_limited') : execute(current, payload, ref, attachments);
+          return current.state === 'failed' ? fail(429, 'rate_limited') : execute(current, payload, ref, attachments, ready, info);
         }
       }
       const current = await loadJob(job.id, job);
       if (!current) return fail(409, 'resend_mismatch');
-      return execute(current, payload, ref, attachments);
+      return execute(current, payload, ref, attachments, ready, info);
     }),
   };
 }

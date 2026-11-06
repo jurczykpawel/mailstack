@@ -135,7 +135,7 @@ it('returns the same Sellf message id on duplicate delivery', async () => {
 
 it('requires a configured Sellf signature in addition to the bearer', async () => {
   const token = 'msk_hook-client_' + 'a'.repeat(43);
-  const client = { id: 'hook-client', tokenSha256: await tokenSha256(token), scopes: ['hook:sellf' as const], brands: '*' as const, templates: '*' as const, recipientOverride: false, attachments: false, sellfSignatureSecretEnv: 'SELLF_SECRET' };
+  const client = { id: 'hook-client', tokenSha256: await tokenSha256(token), scopes: ['hook:sellf' as const], brands: '*' as const, templates: '*' as const, recipientOverride: false, attachments: false, signatureSecretEnv: 'SELLF_SECRET' };
   const previous = config.clients; config.clients = [client];
   const raw = JSON.stringify(hookBody);
   const t = String(now.getTime() / 1000);
@@ -371,7 +371,7 @@ it.each([true, false])('handles a slow alert with waitUntil=%s', async backgroun
 
 it('records attachment summaries and identity without archiving files', async () => {
   const previous = config.legacyApiKey;
-  config.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
+  config.legacyApiKey = { enabled: true, env: 'API_KEY', brands: '*', templates: '*', recipientOverride: true, attachments: true };
   deps.logging!.defaults.level = 'full'; deps.logging!.defaults.resend = 'replay';
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   const file = { filename: 'attachment-sentinel.txt', contentType: 'text/plain', contentBase64: Buffer.from('attachment content sentinel').toString('base64') };
@@ -655,4 +655,77 @@ it('rejects a numeric overflow before recording an intent', async () => {
   expect(deps.sendEmail).not.toHaveBeenCalled();
   expect(await rows()).toEqual([]);
   expect(await store.db.selectFrom('guards').selectAll().execute()).toEqual([]);
+});
+
+it('returns an acknowledged outcome before preparing the current template', async () => {
+  const first = await (await send()).json();
+  const { getTemplate } = await import('../src/templates/index.ts');
+  vi.spyOn(getTemplate('notice')!, 'render').mockImplementation(() => { throw new Error('current presentation unavailable'); });
+  expect(await (await send()).json()).toEqual({ ...first as object, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it('records a versioned intent and only the explicit subject for future delivery', async () => {
+  deps.logging!.defaults.level = 'full'; deps.logging!.defaults.resend = 'replay';
+  const result = await (await send()).json() as { id: string };
+  const row = (await rows())[0]; expect(JSON.parse(row.request_mac!)).toMatchObject({ version: 2 });
+  const saved = await store.db.selectFrom('replays').selectAll().where('message_id', '=', result.id).executeTakeFirstOrThrow();
+  const payload = await open(saved.sealed, { brand: 'acme', messageId: result.id, purpose: 'replay' }, [privateKey]);
+  expect(payload).not.toHaveProperty('subjectOverride'); expect(payload).not.toHaveProperty('locale');
+});
+
+it('reads the prior request format and declines changed or unknown formats', async () => {
+  const { createMac } = await import('../src/core/crypto/index.ts');
+  const first = await (await send()).json();
+  const row = (await rows())[0];
+  const legacy = { brand: 'acme', template: 'notice', recipients: [{ role: 'to', address: body.to }], data: { heading: body.heading, paragraphs: body.paragraphs }, subject: body.heading, replyTo: config.brands.acme.to[0], ref: body.ref, markup: null };
+  const tag = await createMac(legacy, JSON.parse(env.INDEX_KEYS!));
+  await store.db.updateTable('messages').set({ request_mac: JSON.stringify(tag) }).where('id', '=', row.id).execute();
+  expect(await (await send()).json()).toEqual({ ...first as object, idempotent: true });
+  const clear = vi.spyOn(store, 'clearIdempotency');
+  for (const version of [1, 3, null]) {
+    await store.db.updateTable('messages').set({ status: 'send_failed', request_mac: JSON.stringify({ ...tag, version }) }).where('id', '=', row.id).execute();
+    expect(await (await send()).json()).toMatchObject({ code: 'idempotency_conflict' });
+  }
+  expect(clear).not.toHaveBeenCalled(); expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it('keeps the prior failed intent until the next preparation succeeds', async () => {
+  vi.mocked(deps.sendEmail).mockResolvedValueOnce({ ok: false, status: 400 }); await send();
+  const clear = vi.spyOn(store, 'clearIdempotency');
+  const { getTemplate } = await import('../src/templates/index.ts');
+  vi.spyOn(getTemplate('notice')!, 'render').mockImplementationOnce(() => { throw new RangeError('template_output_limit'); });
+  expect(await (await send()).json()).toMatchObject({ code: 'template_output_limit' });
+  expect(clear).not.toHaveBeenCalled(); expect((await rows())[0].idem_key_hash).not.toBeNull(); expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+  expect((await send()).status).toBe(200); expect(deps.sendEmail).toHaveBeenCalledTimes(2);
+});
+it('stores the normalized preference and distinguishes it from the selected language', async () => {
+  const { parseConfig } = await import('../src/core/config/schema.ts');
+  const { templatePlans } = await import('../src/templates/config.ts');
+  const { renderAndSend } = await import('../src/send.ts');
+  const { getTemplate } = await import('../src/templates/index.ts');
+  const cfg = parseConfig({ ...structuredClone(config), mailTemplates: { version: 1, templates: { notice: { locales: { en: { heading: 'English' } } } } }, brands: { acme: { ...config.brands.acme, mailTemplates: { languages: { default: 'pl', allowed: ['pl', 'en', 'en-US'] } } } } });
+  deps.templates = templatePlans(cfg); deps.logging!.defaults.level = 'full'; deps.logging!.defaults.resend = 'replay';
+  const run = (locale: string) => renderAndSend(deps, env, cfg.brands.acme, getTemplate('notice')!, { heading: 'Heading', paragraphs: 'Body' }, { to: ['buyer@example.com'], locale, clientId: 'legacy', idempotencyKey: 'locale-1' });
+  const first = await run('EN-us'); expect(first.ok).toBe(true); expect(await run('en-US')).toMatchObject({ id: first.id, idempotent: true });
+  expect(await run('en')).toMatchObject({ code: 'idempotency_conflict' });
+  const saved = await store.db.selectFrom('replays').selectAll().where('message_id', '=', first.id!).executeTakeFirstOrThrow();
+  expect(await open(saved.sealed, { brand: 'acme', messageId: first.id!, purpose: 'replay' }, [privateKey])).toHaveProperty('locale', 'en-US');
+  const archive = await store.db.selectFrom('contents').selectAll().where('message_id', '=', first.id!).executeTakeFirstOrThrow();
+  expect(await open(archive.sealed, { brand: 'acme', messageId: first.id!, purpose: 'content' }, [privateKey])).toMatchObject({ metadata: { render: { locale: 'en' } } });
+});
+
+it('keeps the old locale content field when reading a prior request format', async () => {
+  const { createMac } = await import('../src/core/crypto/index.ts');
+  const { parseConfig } = await import('../src/core/config/schema.ts');
+  const { templatePlans } = await import('../src/templates/config.ts');
+  const { renderAndSend } = await import('../src/send.ts');
+  const { getTemplate } = await import('../src/templates/index.ts');
+  await send(); const row = (await rows())[0];
+  const data = { heading: body.heading, paragraphs: body.paragraphs };
+  const legacyData = { ...data, locale: 'en' };
+  const legacy = { brand: 'acme', template: 'notice', recipients: [{ role: 'to', address: body.to }], data: legacyData, subject: body.heading, replyTo: config.brands.acme.to[0], ref: body.ref, markup: null };
+  await store.db.updateTable('messages').set({ request_mac: JSON.stringify(await createMac(legacy, JSON.parse(env.INDEX_KEYS!))) }).where('id', '=', row.id).execute();
+  const cfg = parseConfig({ ...structuredClone(config), mailTemplates: { version: 1, templates: { notice: { locales: { en: { subject: 'English subject' } } } } }, brands: { acme: { ...config.brands.acme, mailTemplates: { languages: { default: 'pl', allowed: ['pl', 'en'] } } } } });
+  deps.templates = templatePlans(cfg);
+  expect(await renderAndSend(deps, env, cfg.brands.acme, getTemplate('notice')!, data, { to: [body.to], replyTo: config.brands.acme.to[0], ref: body.ref, clientId: 'legacy', idempotencyKey: 'request-1', locale: 'en', legacyData: () => legacyData })).toMatchObject({ ok: true, id: row.id, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
 });

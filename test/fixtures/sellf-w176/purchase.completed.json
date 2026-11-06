@@ -1,0 +1,45 @@
+{
+  "id": "baec647c-be9d-41e0-8640-2307fcfeadba",
+  "data": {
+    "order": {
+      "amount": 2000,
+      "isGuest": false,
+      "orderId": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+      "couponId": null,
+      "currency": "PLN",
+      "netTotal": null,
+      "taxTotal": null,
+      "grossTotal": 2000,
+      "paymentIntentId": null,
+      "taxSnapshotStatus": "unavailable"
+    },
+    "product": {
+      "id": "1e4660eb-3672-487b-b34b-7956621e9029",
+      "net": null,
+      "tax": null,
+      "icon": null,
+      "name": "Language workshop",
+      "slug": "language-1e4660eb-3672-487b-b34b-7956621e9029",
+      "gross": null,
+      "price": 2000,
+      "vatRate": null,
+      "currency": "PLN",
+      "taxBehavior": null,
+      "taxabilityReason": null
+    },
+    "customer": {
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com",
+      "locale": "en",
+      "userId": "79986440-8446-42f6-bf5d-4ba2931083e0",
+      "lastName": null,
+      "firstName": null
+    },
+    "buyerMail": {},
+    "amountUnit": "minor",
+    "bumpProduct": null,
+    "bumpProducts": [],
+    "bundleComponents": []
+  },
+  "event": "purchase.completed",
+  "timestamp": "2026-11-06T11:23:18.357Z"
+}

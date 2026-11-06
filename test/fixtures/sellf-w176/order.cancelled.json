@@ -1,0 +1,82 @@
+{
+  "id": "fae44369-c7e5-4037-a91f-3adb96827522",
+  "data": {
+    "lines": [
+      {
+        "id": "66a70e15-ead0-419c-932d-35befd9eb566",
+        "tier_id": null,
+        "currency": "PLN",
+        "metadata": {},
+        "quantity": 1,
+        "vat_rate": null,
+        "item_type": "main_product",
+        "created_at": "2026-11-06T11:23:18.266033+00:00",
+        "net_amount": null,
+        "product_id": "1e4660eb-3672-487b-b34b-7956621e9029",
+        "session_id": null,
+        "tax_amount": null,
+        "tier_label": null,
+        "unit_price": 2000,
+        "vat_exempt": false,
+        "total_price": 2000,
+        "gross_amount": null,
+        "product_name": null,
+        "tax_behavior": null,
+        "order_bump_id": null,
+        "session_label": null,
+        "tax_breakdown": [],
+        "transaction_id": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+        "discounted_total": 2000,
+        "session_starts_at": null,
+        "taxability_reason": null,
+        "access_duration_override": null
+      }
+    ],
+    "order": {
+      "dueAt": null,
+      "amount": 2000,
+      "payUrl": "[REDACTED]",
+      "status": "cancelled",
+      "orderId": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+      "currency": "PLN",
+      "netTotal": null,
+      "taxTotal": null,
+      "transfer": null,
+      "releaseAt": null,
+      "grossTotal": 2000,
+      "reminderAt": null,
+      "reopenedAt": null,
+      "orderNumber": 2393,
+      "reservation": "none",
+      "cancelReason": "admin",
+      "invoiceHoldAt": null,
+      "payUrlExpiresAt": "2027-01-06T11:23:18.000Z",
+      "paymentDeadline": "2099-01-01T00:00:00+00:00",
+      "cancelReasonText": "Buyer cancelled",
+      "taxSnapshotStatus": "none",
+      "lateTransferPolicy": "admin_decision",
+      "transferDeclaredAt": null,
+      "transferDeclaredNote": null
+    },
+    "access": {
+      "grants": [
+        {
+          "status": "granted",
+          "expiresAt": null,
+          "grantedAt": "2026-11-06T11:23:18.244045+00:00",
+          "productId": "1e4660eb-3672-487b-b34b-7956621e9029"
+        }
+      ],
+      "policy": "after_payment"
+    },
+    "customer": {
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com",
+      "locale": "en",
+      "userId": "79986440-8446-42f6-bf5d-4ba2931083e0"
+    },
+    "amountUnit": "minor",
+    "orderDetails": null
+  },
+  "event": "order.cancelled",
+  "timestamp": "2026-11-06T11:23:18.319Z"
+}

@@ -27,7 +27,7 @@ const containers=inspect(), container=command==='hmac-swap'?requireOne(container
 if(command==='hmac-swap') {
   const config=JSON.parse(docker(['exec',container.Id,'node','-e',"process.stdout.write(require('node:fs').readFileSync(process.env.MAILSTACK_CONFIG,'utf8'))"]));
   const client=config.clients?.find(c=>c.id==='staging-hook');
-  if(!client||!(client.scopes??[]).includes('hook:sellf')||(client.signatureSecretEnv??client.sellfSignatureSecretEnv)!==envName) throw Error('Configure the dedicated staging-hook HMAC binding first');
+  if(!client||!(client.scopes??[]).includes('hook:sellf')||client.signatureSecretEnv!==envName) throw Error('Configure the dedicated staging-hook HMAC binding first');
 }
 const path=stack+'/.env', pattern=new RegExp(`^${envName}=([A-Za-z0-9_-]{16,256})$`,'m');
 const current=()=>{

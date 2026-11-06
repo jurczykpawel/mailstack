@@ -127,11 +127,11 @@ it('reserves source sends for the owning client and approved key only', async ()
   const approved = await request('source-key', undefined);
   expect(approved).toMatchObject({ ok: true, status: 202, source: { owner: { clientId: 'sender' } } });
   const sourcePayload = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'new-synthetic-key' } };
-  expect(await service.sendSource('other', id, 'source-key', sourcePayload)).toMatchObject({ code: 'resend_mismatch' });
+  expect(await service.sendSource('other', id, 'source-key', sourcePayload, 'ORDER-1')).toMatchObject({ code: 'resend_mismatch' });
   expect(await service.sendSource('sender', id, 'wrong-key', sourcePayload)).toMatchObject({ code: 'resend_mismatch' });
   expect(await service.sendSource('sender', id, 'source-key', { ...sourcePayload, to: ['other@example.com'] })).toMatchObject({ code: 'resend_mismatch' });
-  expect(await service.sendSource('sender', id, 'source-key', sourcePayload)).toMatchObject({ ok: true });
-  expect(await service.sendSource('sender', id, 'source-key', sourcePayload)).toMatchObject({ ok: true, idempotent: true });
+  expect(await service.sendSource('sender', id, 'source-key', sourcePayload, 'ORDER-1')).toMatchObject({ ok: true });
+  expect(await service.sendSource('sender', id, 'source-key', sourcePayload, 'ORDER-1')).toMatchObject({ ok: true, idempotent: true });
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
 });
 it('requires an available audit writer for an existing source request', async () => {
@@ -197,7 +197,7 @@ it('accepts approved source calls through the send handler', async () => {
   id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
   const call = (key = 'source-key', address = 'buyer@example.com') => handleSend(new Request('https://mail.example/v1/send', {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'Idempotency-Key': key },
-    body: JSON.stringify({ brand: 'acme', template: 'license', to: address, licenseKey: 'fresh-key', resendOf: id }),
+    body: JSON.stringify({ brand: 'acme', template: 'license', to: address, licenseKey: 'fresh-key', ref: 'ORDER-1', resendOf: id }),
   }), env, { ...deps, resendSource: (_env, client, messageId, key, payload, ref, attachments) => service.sendSource(client, messageId, key, payload, ref, attachments) });
   try {
     expect(await (await call()).json()).toMatchObject({ code: 'resend_mismatch' });
@@ -228,8 +228,8 @@ it('allows the owning source to retry an explicit refusal without a new approval
   await request('source-key', undefined);
   const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'fresh-key' } };
   vi.mocked(deps.sendEmail).mockResolvedValueOnce({ ok: false, status: 400 });
-  expect(await service.sendSource('sender', id, 'source-key', value)).toMatchObject({ code: 'send_failed' });
-  expect(await service.sendSource('sender', id, 'source-key', value)).toMatchObject({ ok: true });
+  expect(await service.sendSource('sender', id, 'source-key', value, 'ORDER-1')).toMatchObject({ code: 'send_failed' });
+  expect(await service.sendSource('sender', id, 'source-key', value, 'ORDER-1')).toMatchObject({ ok: true });
   expect(deps.sendEmail).toHaveBeenCalledTimes(2);
 });
 it('returns a denial audit record for a disabled source', async () => {
@@ -240,8 +240,8 @@ it('returns a denial audit record for a disabled source', async () => {
 it('rejects a changed source payload after a successful request', async () => {
   id = await original('license'); await request('source-key', undefined);
   const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'fresh-key' } };
-  expect(await service.sendSource('sender', id, 'source-key', value)).toMatchObject({ ok: true });
-  expect(await service.sendSource('sender', id, 'source-key', { ...value, data: { licenseKey: 'different-key' } })).toMatchObject({ code: 'idempotency_conflict' });
+  expect(await service.sendSource('sender', id, 'source-key', value, 'ORDER-1')).toMatchObject({ ok: true });
+  expect(await service.sendSource('sender', id, 'source-key', { ...value, data: { licenseKey: 'different-key' } }, 'ORDER-1')).toMatchObject({ code: 'idempotency_conflict' });
 });
 
 it('returns one response for unapproved source identifiers', async () => {
@@ -301,7 +301,7 @@ it('keeps concurrent source payload identities distinct', async () => {
   id = await original('license'); vi.mocked(deps.sendEmail).mockClear();
   await request('source-key', undefined);
   const values = Array.from({ length: 20 }, (_, i) => ({ to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'key-' + i } }));
-  const results = await Promise.all(values.map(value => service.sendSource('sender', id, 'source-key', value)));
+  const results = await Promise.all(values.map(value => service.sendSource('sender', id, 'source-key', value, 'ORDER-1')));
   expect(results.filter(r => r.ok)).toHaveLength(1);
   expect(results.filter(r => r.code === 'idempotency_conflict')).toHaveLength(19);
   expect(deps.sendEmail).toHaveBeenCalledTimes(1);
@@ -447,4 +447,115 @@ it('keeps callback failure cleanup bound to the approved reservation', async () 
   await first.callbackFailed(input);
   expect((await sql<{state: string}>`select state from resend_jobs`.execute(store.db)).rows[0].state).toBe('pending');
   expect(await reservations()).toHaveLength(3);
+});
+
+it.each([undefined, '', 'ORDER-2'])('requires the bound source reference on the returned payload: %s', async ref => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); await request('source-key');
+  const before = await reservations();
+  expect(await service.sendSource('sender', id, 'source-key', { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'new-key' } }, ref)).toMatchObject({ code: 'resend_mismatch' });
+  expect(await reservations()).toEqual(before); expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('completes preparation before reserving a stored payload', async () => {
+  vi.spyOn(getTemplate('notice')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  expect(await request()).toMatchObject({ code: 'template_output_limit' });
+  expect((await sql`select * from resend_jobs`.execute(store.db)).rows).toHaveLength(0); expect(await reservations()).toHaveLength(0); expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('releases only a bound pending source after a preparation refusal', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); const result = await request('source-key');
+  vi.spyOn(getTemplate('license')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  const value = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'new-key' } };
+  expect(await service.sendSource('sender', id, 'source-key', value, 'ORDER-1')).toMatchObject({ code: 'template_output_limit' });
+  expect(await reservations()).toHaveLength(0);
+  expect((await sql`select * from resend_jobs where id=${result.resendId}`.execute(store.db)).rows).toMatchObject([{ state: 'failed', error: 'template_output_limit' }]);
+  expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+
+it('returns the completed job before preparing the current stored presentation', async () => {
+  const first = await request(); expect(first.ok).toBe(true);
+  vi.spyOn(getTemplate('notice')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  expect(await request()).toMatchObject({ ok: true, id: first.id, idempotent: true }); expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it.each(['sending', 'unknown'] as const)('keeps source state %s ahead of current preparation', async state => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); const approved = await request('source-key');
+  await sql`update resend_jobs set state=${state} where id=${approved.resendId}`.execute(store.db);
+  vi.spyOn(getTemplate('license')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  expect(await service.sendSource('sender', id, 'source-key', { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'key' } }, 'ORDER-1')).toMatchObject({ code: state === 'sending' ? 'in_progress' : 'outcome_unknown' });
+  expect(await reservations()).toHaveLength(3); expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it.each([null, { key: 'value' }, { licenseKey: 'x'.repeat(5001) }])('attributes a source data refusal only after envelope and reference checks', async data => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); const approved = await request('source-key');
+  const value = { to: ['buyer@example.com'], template: 'license', data };
+  expect(await service.sendSource('sender', id, 'source-key', value, 'ORDER-2')).toMatchObject({ code: 'resend_mismatch' });
+  expect(await reservations()).toHaveLength(3);
+  const invalid = data && 'key' in data ? { ...value, data: { licenseKey: {} } } : value;
+  expect(await service.sendSource('sender', id, 'source-key', invalid, 'ORDER-1')).toMatchObject({ code: 'resend_mismatch' });
+  expect(await reservations()).toHaveLength(0);
+  expect((await sql`select state from resend_jobs where id=${approved.resendId}`.execute(store.db)).rows).toMatchObject([{ state: 'failed' }]);
+});
+
+async function languageConfig(translated = true, enabled = true, defaultLocale = 'pl') {
+  const { templatePlans } = await import('../src/templates/config.ts');
+  cfg = parseConfig({ ...cfg, mailTemplates: { version: 1, templates: { notice: translated ? { locales: { en: { heading: 'English notice' } } } : {} } },
+    brands: { ...cfg.brands, acme: { ...cfg.brands.acme, mailTemplates: enabled ? { languages: { default: defaultLocale, allowed: ['pl', 'en'] } } : {} } } });
+  deps.templates = templatePlans(cfg); deps.logging = cfg.logging; deps.keys = testKeys(cfg); service = createResendService(cfg, store, env, deps);
+}
+it('uses the signed preference with current language availability', async () => {
+  await languageConfig();
+  const result = await renderAndSend(deps, env, cfg.brands.acme, getTemplate('notice')!, { paragraphs: 'Body' }, { to: ['buyer@example.com'], clientId: 'sender', locale: 'en' });
+  id = result.id!; const row = await store.db.selectFrom('replays').selectAll().where('message_id', '=', id).executeTakeFirstOrThrow();
+  payload = await open(row.sealed, { brand: 'acme', messageId: id, purpose: 'replay' }, [privateKey]) as ResendPayload;
+  expect(payload.locale).toBe('en'); vi.mocked(deps.sendEmail).mockClear();
+  expect(await request('language-en')).toMatchObject({ ok: true }); expect(vi.mocked(deps.sendEmail).mock.lastCall![1].html).toContain('<title>English notice</title>');
+  now += 600001; await languageConfig(false);
+  expect(await request('language-fallback')).toMatchObject({ ok: true }); expect(vi.mocked(deps.sendEmail).mock.lastCall![1].html).toContain('lang="pl"');
+  now += 600001; await languageConfig(false, false);
+  expect(await request('language-neutral')).toMatchObject({ ok: true }); expect(vi.mocked(deps.sendEmail).mock.lastCall![1].html).toContain('lang="pl"');
+});
+it('uses the current default for a signed payload without a locale', async () => {
+  const { createMac } = await import('../src/core/crypto/index.ts');
+  payload.subjectOverride = 'Historical subject';
+  await store.db.updateTable('messages').set({ replay_mac: JSON.stringify(await createMac(payload, JSON.parse(env.INDEX_KEYS!))) }).where('id', '=', id).execute();
+  await languageConfig(false, true, 'en');
+  expect(await request()).toMatchObject({ ok: true });
+  const sent = vi.mocked(deps.sendEmail).mock.lastCall![1]; expect(sent.subject).toBe('Historical subject'); expect(sent.html).toContain('lang="en"'); expect(payload).not.toHaveProperty('locale');
+});
+
+it('keeps a newer pending generation when preparation of an older one finishes', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); const approved = await request('source-key');
+  const batch = store.batch.bind(store);
+  vi.spyOn(store, 'batch').mockImplementation(async queries => {
+    if (queries[0].sql.includes("and state='pending' and strategy='source'")) await sql`update resend_jobs set token='next-generation' where id=${approved.resendId}`.execute(store.db);
+    return batch(queries);
+  });
+  vi.spyOn(getTemplate('license')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  expect(await service.sendSource('sender', id, 'source-key', { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'key' } }, 'ORDER-1')).toMatchObject({ ok: true, status: 202 });
+  expect(await reservations()).toHaveLength(3); expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it.each([true, false])('uses only retained reference keys for source preparation: %s', async retained => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); await request('source-key');
+  const rotated = { ...env, INDEX_KEYS: JSON.stringify([{ kid: 'i2', key: Buffer.alloc(32, 8).toString('base64url') }, ...(retained ? JSON.parse(env.INDEX_KEYS!) : [])]) };
+  service = createResendService(cfg, store, rotated, deps);
+  vi.spyOn(getTemplate('license')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  expect(await service.sendSource('sender', id, 'source-key', { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'key' } }, 'ORDER-1')).toMatchObject({ code: retained ? 'template_output_limit' : 'resend_mismatch' });
+  expect(await reservations()).toHaveLength(retained ? 0 : 3); expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+
+it('keeps pending source reservations when a stored payload tag is unreadable', async () => {
+  id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); const approved = await request('source-key');
+  await sql`update resend_jobs set payload_mac='unreadable' where id=${approved.resendId}`.execute(store.db);
+  expect(await service.sendSource('sender', id, 'source-key', { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'key' } }, 'ORDER-1')).toMatchObject({ code: 'idempotency_conflict' });
+  expect(await reservations()).toHaveLength(3); expect(deps.sendEmail).not.toHaveBeenCalled();
+});
+it('uses the current default for an unsupported source preference', async () => {
+  await languageConfig(); id = await original('license'); vi.mocked(deps.sendEmail).mockClear(); await request('source-key');
+  const value = { to: ['buyer@example.com'], template: 'license', locale: 'fr', data: { licenseKey: 'key' } };
+  const first = await service.sendSource('sender', id, 'source-key', value, 'ORDER-1'); expect(first.ok).toBe(true);
+  expect(vi.mocked(deps.sendEmail).mock.lastCall![1].html).toContain('lang="pl"');
+  vi.spyOn(getTemplate('license')!, 'render').mockImplementation(() => { throw new RangeError('template_output_limit'); });
+  expect(await service.sendSource('sender', id, 'source-key', value, 'ORDER-1')).toMatchObject({ ok: true, id: first.id, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});
+it('verifies the entire stored payload before interpreting an added locale', async () => {
+  expect(await request('changed-locale', { ...payload, locale: 'fr' })).toMatchObject({ code: 'resend_mismatch' });
+  expect(await reservations()).toHaveLength(0); expect(deps.sendEmail).not.toHaveBeenCalled();
 });

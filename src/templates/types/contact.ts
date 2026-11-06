@@ -1,6 +1,6 @@
+import { Recipe } from "../recipe.ts";
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
-import { selfwareContact, selfwareContactSubject } from "./selfware.ts";
-import { escapeHtml, humanizeLabel, summaryTable } from "../layout.ts";
+
 
 /**
  * Meta keys injected by the handler (request-time context, not user content).
@@ -31,56 +31,44 @@ export const contactTemplate: TemplateDef = {
   publicAllowed: true,
 
   subject(brand: Brand, data: TemplateData): string {
-    if (brand.id === "selfware") return selfwareContactSubject(brand, data);
     const type = (data.type || "").trim();
     const typePart = type ? ` — ${type}` : "";
     return `${brand.subjectPrefix}${typePart} — ${brand.name}`;
   },
 
-  render(_brand: Brand, data: TemplateData): RenderedBody {
-    if (_brand.id === "selfware") return selfwareContact(_brand, data);
+  render(_brand: Brand, data: TemplateData, recipe = new Recipe()): RenderedBody {
     const rows = Object.entries(data)
       .filter(([key, value]) => !RESERVED_CONTENT.has(key) && value.trim() !== "")
-      .map(([key, value]) => ({ label: humanizeLabel(key), value }));
+      .map(([key, value]) => ({ label: recipe.label(key), value }));
 
-    const table = summaryTable(rows);
+    const table = recipe.table(rows);
 
     const message = (data.message || "").trim();
-    const messageHtml = message
-      ? `
-                <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">${escapeHtml(
-                  humanizeLabel("message"),
-                )}</p>
-                <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
-                  message,
-                )}</div>`
-      : "";
+    const messageHtml = message ? recipe.message(message, recipe.copy("messageLabel", recipe.label("message"))) : "";
+    const metaHtml = recipe.metadata([
+      { label: recipe.copy("receivedAtLabel", "Otrzymano"), value: metaValue(data, META_KEYS.receivedAt) },
+      { label: recipe.copy("originLabel", "Źródło"), value: metaValue(data, META_KEYS.origin) },
+      { label: recipe.copy("ipLabel", "IP"), value: metaValue(data, META_KEYS.ip) },
+    ]);
 
-    const metaHtml = `
-                <p style="margin:18px 0 0 0;font-size:11px;color:#b0b0b0;line-height:1.6;">
-                  Otrzymano: ${escapeHtml(metaValue(data, META_KEYS.receivedAt))}<br>
-                  Źródło: ${escapeHtml(metaValue(data, META_KEYS.origin))}<br>
-                  IP: ${escapeHtml(metaValue(data, META_KEYS.ip))}
-                </p>`;
-
-    const bodyHtml = `${table}${messageHtml}${metaHtml}`;
+    const bodyHtml = recipe.html([table, messageHtml, metaHtml], "");
 
     const textLines: string[] = [];
     for (const r of rows) textLines.push(`${r.label}: ${r.value}`);
     if (message) {
       textLines.push("");
-      textLines.push(`${humanizeLabel("message")}:`);
+      textLines.push(`${recipe.copy("messageLabel", recipe.label("message"))}:`);
       textLines.push(message);
     }
     textLines.push("");
-    textLines.push(`Otrzymano: ${metaValue(data, META_KEYS.receivedAt)}`);
-    textLines.push(`Źródło: ${metaValue(data, META_KEYS.origin)}`);
-    textLines.push(`IP: ${metaValue(data, META_KEYS.ip)}`);
+    textLines.push(`${recipe.copy("receivedAtLabel", "Otrzymano")}: ${metaValue(data, META_KEYS.receivedAt)}`);
+    textLines.push(`${recipe.copy("originLabel", "Źródło")}: ${metaValue(data, META_KEYS.origin)}`);
+    textLines.push(`${recipe.copy("ipLabel", "IP")}: ${metaValue(data, META_KEYS.ip)}`);
 
     return {
-      heading: this.subject(_brand, data),
+      heading: this.subject(_brand, data, recipe),
       bodyHtml,
-      bodyText: textLines.join("\n"),
+      bodyText: recipe.text(textLines, "\n"),
     };
   },
 };

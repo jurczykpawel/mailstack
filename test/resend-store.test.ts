@@ -95,4 +95,12 @@ it('keeps a newer reservation when an older completion arrives', async () => {
   expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(3);
 });
 
+it('retains current guards when a pending completion does not update the job', async () => {
+  await claimResend(store, { id: 'source-job', messageId: source, root: source, actor: 'actor', now, metaCutoff: 0, strategy: 'source' });
+  const job = (await getResend(store, 'source-job'))!;
+  await sql`update resend_jobs set state='failed' where id=${job.id}`.execute(store.db);
+  await finishResend(store, job.id, 'failed', undefined, job.token, 'template_output_limit');
+  expect(await store.db.selectFrom('guards').selectAll().execute()).toHaveLength(3);
+});
+
 });

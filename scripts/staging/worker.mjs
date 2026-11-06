@@ -180,6 +180,10 @@ if (command.startsWith('hmac-')) {
   put('secrets.json', secrets);
   put('mailstack.json', cfg);
   const configJSON = JSON.stringify(cfg), sha = digest(configJSON);
+  await build({ stdin: { contents: `import {loadConfig} from "./src/core/config/load.ts"; import {templatePlans} from "./src/templates/config.ts";
+    export const VALIDATED_CONFIG=loadConfig(${JSON.stringify(configJSON)}); export const TEMPLATE_PLANS=templatePlans(VALIDATED_CONFIG);`, resolveDir: source, loader: 'ts' },
+    outfile: `${state}/config.mjs`, bundle: true, platform: 'node', format: 'esm', nodePaths: [`${root}/node_modules`] });
+  const { VALIDATED_CONFIG, TEMPLATE_PLANS } = await import(pathToFileURL(`${state}/config.mjs`).href);
   // The staging composition restricts every enabled provider call to the simulator.
   const fixture = existsSync(`${state}/fixture-jwks.json`) ? JSON.parse(readFileSync(`${state}/fixture-jwks.json`)) : { keys: [] };
   const limits = { day: Number(process.env.MAILSTACK_STAGING_SES_DAY ?? 50), hour: Number(process.env.MAILSTACK_STAGING_SES_HOUR ?? 10) };
@@ -214,7 +218,7 @@ export default {async scheduled(event,env,ctx){ctx.waitUntil(receiverCleanup(que
 export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.env,this.ctx,true);}}`;
   await build({ stdin: { contents, resolveDir: source, sourcefile: 'staging-entry.ts', loader: 'ts' }, outfile: `${state}/worker.mjs`, bundle: true, platform: 'browser', format: 'esm', nodePaths: [`${root}/node_modules`, ...pro ? [`${pro}/node_modules`] : []], alias: { mailstack: source, zod: `${root}/node_modules/zod` }, conditions: ['workerd', 'worker', 'browser'], external: ['node:*', 'cloudflare:*'], plugins: [{ name: 'staging-config', setup(b) {
     b.onResolve({ filter: /\/bundled\.ts$/ }, () => ({ path: 'config', namespace: 'staging' }));
-    b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)};` }));
+    b.onLoad({ filter: /.*/, namespace: 'staging' }, () => ({ contents: `export const CONFIG_JSON=${JSON.stringify(configJSON)}; export const BUILD_CONFIG_SHA=${JSON.stringify(sha)}; export const VALIDATED_CONFIG=${JSON.stringify(VALIDATED_CONFIG)}; export const TEMPLATE_PLANS=${JSON.stringify(TEMPLATE_PLANS)};` }));
     b.onResolve({ filter: /\/assets\/logo$/ }, () => ({ path: `${source}/src/assets/logo.example.ts` }));
     b.onResolve({ filter: /\/pro\.generated$/ }, () => ({ path: 'pro', namespace: 'staging-pro' }));
     b.onLoad({ filter: /.*/, namespace: 'staging-pro' }, () => ({ resolveDir: source, loader: 'ts', contents: pro ? `import * as pro from ${JSON.stringify(`${proSource}/src/worker.ts`)}; export { workerKeys as proKeys } from ${JSON.stringify(`${proSource}/src/worker.ts`)}; export const proExtension = pro.workerExtension;` : 'export const proKeys = undefined; export const proExtension = undefined;' }));
@@ -227,7 +231,7 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
   try { await migrateWorker(store, proWorker || undefined, cfg.extensions?.[0]?.options); }
   finally { await store.db.destroy(); }
   if (register) { await (await import(pathToFileURL(`${root}/src/core/offsite.ts`).href)).initTombstoneRegistry({ ...secrets, ...registerVars }); console.log('Erasure register ready'); }
-  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));

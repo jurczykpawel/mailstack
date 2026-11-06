@@ -1,3 +1,4 @@
+import { Recipe } from "../recipe.ts";
 import type {
   Brand,
   JsonLdBlock,
@@ -5,7 +6,7 @@ import type {
   TemplateData,
   TemplateDef,
 } from "../../types.ts";
-import { ctaButton, ctaText, paragraph, summaryTable } from "../layout.ts";
+import { ctaText } from "../layout.ts";
 import { viewAction } from "../../markup/index.ts";
 
 const paymentHeading = (data: TemplateData) => data.settledVia === 'bank_transfer' ? 'Płatność otrzymana' : 'Potwierdzenie płatności';
@@ -16,12 +17,12 @@ export const paymentTemplate: TemplateDef = {
   maskedFields: ["amount", "currency", "item", "description", "orderId", "date"],
   requiredFields: ["amount", "currency", "item", "orderId"],
 
-  subject(_brand: Brand, data: TemplateData): string {
+  subject(_brand: Brand, data: TemplateData, recipe = new Recipe()): string {
     const orderId = (data.orderId || "").trim();
-    return `${paymentHeading(data)}${orderId ? " - " + orderId : ""}`;
+    return `${recipe.copy(data.settledVia === "bank_transfer" ? "transferHeading" : "branchHeading", paymentHeading(data))}${orderId ? " - " + orderId : ""}`;
   },
 
-  render(brand: Brand, data: TemplateData): RenderedBody {
+  render(brand: Brand, data: TemplateData, recipe = new Recipe()): RenderedBody {
     const name = (data.name || "").trim();
     const amount = (data.amount || "").trim();
     const currency = (data.currency || "PLN").trim() || "PLN";
@@ -30,30 +31,30 @@ export const paymentTemplate: TemplateDef = {
     const date = (data.date || "").trim();
     const invoiceUrl = (data.invoiceUrl || "").trim();
 
-    const heading = paymentHeading(data);
-    const greeting = name ? `Witaj ${name},` : "Witaj,";
-    const intro = data.settledVia === 'bank_transfer' ? 'Otrzymaliśmy Twój przelew. Dziękujemy za płatność. Poniżej podsumowanie:' : "Dziękujemy za płatność. Poniżej podsumowanie:";
+    const heading = recipe.copy(data.settledVia === "bank_transfer" ? "transferHeading" : "branchHeading", paymentHeading(data));
+    const greeting = name ? recipe.copy("greetingWithName", `Witaj ${name},`) : recipe.copy("greetingWithoutName", "Witaj,");
+    const intro = recipe.copy(data.settledVia === 'bank_transfer' ? 'transferIntro' : 'intro', data.settledVia === 'bank_transfer' ? 'Otrzymaliśmy Twój przelew. Dziękujemy za płatność. Poniżej podsumowanie:' : 'Dziękujemy za płatność. Poniżej podsumowanie:');
 
     const amountValue = amount ? `${amount} ${currency}`.trim() : "";
     const rows = [
-      { label: "Kwota", value: amountValue },
-      { label: "Pozycja", value: item },
-      { label: "Nr zamówienia", value: orderId },
-      { label: "Data", value: date },
+      { label: recipe.label("amount", "Kwota"), value: amountValue },
+      { label: recipe.label("item", "Pozycja"), value: item },
+      { label: recipe.label("orderId", "Nr zamówienia"), value: orderId },
+      { label: recipe.label("date", "Data"), value: date },
     ];
 
     const htmlParts: string[] = [
-      paragraph(greeting),
-      paragraph(intro),
-      summaryTable(rows),
-      ctaButton(brand, invoiceUrl, "Pobierz fakturę"),
+      recipe.paragraph(greeting),
+      recipe.paragraph(intro),
+      recipe.table(rows),
+      recipe.button(brand, invoiceUrl, recipe.cta("invoice", "Pobierz fakturę")),
     ];
 
     const textParts: string[] = [greeting, intro];
     for (const r of rows) {
       if (r.value.trim() !== "") textParts.push(`${r.label}: ${r.value}`);
     }
-    const cta = ctaText(invoiceUrl, "Pobierz fakturę");
+    const cta = ctaText(invoiceUrl, recipe.cta("invoice", "Pobierz fakturę"));
     if (cta) textParts.push(cta);
 
     // Auto-markup: a Gmail action button. Prefer an explicit order URL; fall back
@@ -63,7 +64,7 @@ export const paymentTemplate: TemplateDef = {
     const jsonLd: JsonLdBlock[] = [];
     if (actionUrl) {
       const action = viewAction({
-        name: orderUrl ? "Zobacz zamówienie" : "Pobierz fakturę",
+        name: orderUrl ? recipe.cta("orderMarkup", "Zobacz zamówienie") : recipe.cta("invoice", "Pobierz fakturę"),
         url: actionUrl,
       });
       if (action) jsonLd.push(action);
@@ -71,8 +72,8 @@ export const paymentTemplate: TemplateDef = {
 
     return {
       heading,
-      bodyHtml: htmlParts.join("\n"),
-      bodyText: textParts.join("\n\n"),
+      bodyHtml: recipe.html(htmlParts),
+      bodyText: recipe.text(textParts),
       previewText: amountValue
         ? `${heading}: ${amountValue}`
         : intro,

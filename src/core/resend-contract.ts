@@ -3,6 +3,7 @@ import type { SendResult } from '../types';
 
 export const resendPayload = z.strictObject({
   to: z.array(z.email().max(320)).min(1).max(5),
+  locale: z.string().regex(/^[a-z]{2}(?:-[A-Z]{2})?$/).optional(),
   template: z.string().min(1).max(128),
   data: z.record(z.string().max(128), z.string().max(5000)).refine(v => Object.keys(v).length <= 43),
   replyTo: z.email().max(320).optional(), subjectOverride: z.string().max(5000).optional(),

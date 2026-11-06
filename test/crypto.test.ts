@@ -192,3 +192,14 @@ describe('index and canonical MAC', () => {
     await expect(createMac(data, [{ kid: 'i1', key: 'sentinel-material' }])).rejects.toThrow(/^Unable to compute MAC$/);
   });
 });
+it('measures JSON before constructing the content blob', async () => {
+  const NativeBlob = Blob;
+  const constructed = vi.fn();
+  vi.stubGlobal('Blob', class extends NativeBlob {
+    constructor(...args: ConstructorParameters<typeof NativeBlob>) { constructed(); super(...args); }
+  });
+  try {
+    await expect(seal({ data: '"'.repeat(100) }, context, [publicKey], 100)).rejects.toThrow('Unable to seal content');
+    expect(constructed).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});

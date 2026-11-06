@@ -535,10 +535,106 @@ allowlist below is illustrative; replace both values before subscribing a real t
 
 The legacy key has attachment permission here solely for the local attachment example.
 
+### Template copy and optional languages
+
+Declare `mailTemplates.version: 1` to configure any of the eight registered types.
+Global `mailTemplates.templates` and each brand's `mailTemplates.templates` accept
+`subject`, `heading`, `previewText`, `copy`, `labels`, `ctaLabels` and `body`.
+Dictionaries merge; a later body replaces the whole block list. Omitted values keep
+the built-in recipe. This fragment changes payment copy without changing delivery:
+
+```json
+{
+  "mailTemplates": {
+    "version": 1,
+    "templates": {
+      "payment": {
+        "copy": {"branchHeading": "Payment received"},
+        "labels": {"amount": "Total"},
+        "ctaLabels": {"invoice": "Download invoice"}
+      }
+    }
+  }
+}
+```
+
+Text accepts `{field}`, `{brand.name}` and `{brand.subjectPrefix}`, or an array of
+strings and `{ "field": "orderId", "prefix": " - " }` fragments. Inserted values
+are escaped and are not interpreted again. Literal braces are not supported in
+configured Text. A replacement `body.blocks` can contain `paragraph`, `fieldTable`,
+`message`, `metadata`, `cta` and `code`; it cannot contain HTML or scripts.
+Additional referenced fields must be declared under the template's `fields`;
+`secretFields` adds private fields. Classification belongs to the base template,
+not a localized patch. Do not put private values in subjects, headings or previews.
+
+For English, merge the templates from
+[`config/mail-templates.en.example.json`](config/mail-templates.en.example.json)
+into your global configuration. It is an example fragment, not an automatic include.
+Then add this to the chosen brand:
+
+```json
+{
+  "mailTemplates": {
+    "languages": {"default": "pl", "allowed": ["pl", "en"]}
+  }
+}
+```
+
+`locales.en` patches the selected type. Complete neutral overrides of body, subject,
+heading or preview need matching localized coverage; otherwise that candidate falls
+back as a whole. `config check` prints inherited-copy and source-overlay warnings.
+Keep nonempty `defaults.copy` and `defaults.labels` in per-type patches when enabling
+languages. An English default requires English base copy.
+
+`POST /v1/send` accepts `locale` only for a brand with languages enabled. Selection is
+exact tag, base language, then that type's available brand default. Tags use `ll` or
+`ll-RR`, for example `en-US`; at most eight are allowed. Without languages, `locale`
+remains an ordinary content field. Rename an existing form field with that name
+before opting in. Public requests remain contact submissions; confirmation resolves
+its own type using the same preference. Names and confirmation summaries are capped
+to 100 and 200 code points after choosing the form kind.
+
+Sources can set a generic `locale` path, for example `payload.recipient.language`.
+The bundled Sellf preset uses `data.customer.locale`. A send action's
+`fieldsByLocale.en` can translate `heading/paragraphs/ctaLabel` for notice or
+`intro/body/ctaLabel` for welcome. It must cover the base copy fields and may read
+only paths already used by the same field. Selection uses the template's resolved
+locale. Without languages, the source keeps its base fields. Missing producer
+locale uses the default; Mailstack does not infer or translate customer data.
+Amounts, currency and supplied dates are unchanged; `date-pl` also stays unchanged
+under English copy. The fixed Mailstack `/pl` footer link stays the product link.
+
+Form presentation can select kinds using `forms.selector.byTemplate` (contact `type`,
+received `summary`), `values`, `empty` and `otherwise`, with patches under
+`forms.kinds.<kind>.templates`. This is presentation only. Migrate any custom form
+copy into configuration before removing its old renderer; there are no brand-id
+exceptions. Check the file, restart Node or run Worker setup, then verify the first
+notification and confirmation in an isolated mailbox.
+
+All template sections plus source copy overlays share a 256 KiB configuration
+budget. Compiled plans are limited to 1024 combinations and 8 MiB. Configured output
+is capped at 512 KiB HTML, 256 KiB text and 998 subject bytes. Validation runs before
+sending; output-limit errors do not create a delivery attempt. No language table,
+index or configuration lookup is added to D1.
+
+The archived projection preserves its recorded bytes and actual language. Pro shows
+that language after opening the content keyring; old archives say it was not recorded.
+Replay repeats the saved request with **current** presentation and its saved language
+preference. Source resend obtains current mapped data. Changing source copy can change
+request identity. New identity records use version 2; older records remain readable
+and a conflict never triggers a new send.
+
+For a presentation rollback, keep this compatible runtime and restore the previous
+copy/language configuration, retaining migrated source access/signature settings.
+Signed replay preferences remain intact and use the current fallback. A binary
+rollback must retain the reader for optional replay `locale` and version-2 identity;
+do not strip signed fields or downgrade stored records. Older panel readers can open
+the added archive metadata, but cannot show its language label.
+
 ### API keys: free and Pro
 
 The free core authenticates exactly one **full key**: the secret in `API_KEY` (or the
-variable named by `legacyApiKey.env`). It has scopes `send` and `hook:sellf`, every brand
+variable named by `legacyApiKey.env`). It has `send` and `hook:<id>` for sources with `legacyKey: true`, every brand
 and template, and may override `to`. Free `legacyApiKey` options are `enabled`, `env`,
 `attachments` and `signatureSecretEnv` (required `X-Sellf-Signature` on `/v1/hooks/sellf`,
 see [Sellf webhook](#sellf-event-contract)). `scopes`, `brands`, `templates` and
@@ -1052,9 +1148,30 @@ identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
 Sellf uses the generic source engine and requires a Bearer client with `hook:sellf`
 scope. `signatureSecretEnv` names the optional runtime signing secret;
-`sellfSignatureSecretEnv` remains an alias. When configured, the runtime secret and
+the same field applies to every source allowed for the client. When configured, the runtime secret and
 `X-Sellf-Signature: t=<unix>,v1=<hex>` are required (HMAC-SHA256 over `${t}.${rawBody}`,
 300-second tolerance); invalid credentials return `401 unauthorized`.
+
+Each source can set `defaultBrand` to a configured brand; otherwise it uses the first
+brand. The query parameter `?brand=` takes precedence. `legacyKey` defaults to false;
+the built-in Sellf preset opts in. It grants only that source to the full key, while
+Pro clients keep their explicit `hook:<id>` scopes. A signing reference requires a
+non-bearer-only signature scheme for every source available to that key.
+
+Before upgrading an older configuration, run the offline migration on a copy:
+
+```bash
+node scripts/migrate-sellf-config.ts old.json deployment-vars.json > migrated.json
+node scripts/mailstack.ts config check migrated.json
+```
+
+The optional second file is a JSON object containing the previous
+`SELLF_DEFAULT_BRAND` setting. The migrator moves it into `sources.sellf.defaultBrand`,
+converts client `sellfSignatureSecretEnv` to `signatureSecretEnv`, and preserves the
+old full-key source selection using `legacyKey`. Conflicting fields or ambiguous
+permissions stop migration. Runtime no longer reads these old aliases; remove the
+old deployment variable after migration. Install the validated file through the
+usual Node restart or Worker setup process.
 
 Source keys are `source:<id>:<event>:` followed by
 `JSON.stringify([brandId, selectedIdentityOrBodyDigest])`, then scoped to the client

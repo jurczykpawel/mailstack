@@ -18,7 +18,7 @@ for (const [id, scopes, brands, templates, override, attachments] of [
   clients.push({ id, scopes, brands, templates, recipientOverride: override, attachments,
     tokenSha256: createHash('sha256').update(tokens[id]).digest('hex'),
     ...(id === 'source' ? { resendCallback: { url: 'https://source.test.example/callback', secretEnv: 'TEST_CALLBACK_SECRET' } } : {}),
-    ...(id === 'hook' ? { sellfSignatureSecretEnv: 'TEST_SELLF_SECRET' } : {}) });
+    ...(id === 'hook' ? { signatureSecretEnv: 'TEST_SELLF_SECRET' } : {}) });
 }
 tokens.callbackSecret = random(); tokens.webhookSecret = random(); tokens.sellfSecret = random(); tokens.legacy = random();
 put('seed/tokens.json', tokens); put('fixture/credentials.json', tokens);

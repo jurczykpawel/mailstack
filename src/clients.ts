@@ -5,7 +5,7 @@ export type Scope = "send" | "panel" | "webhooks:write" | `hook:${string}`;
 export interface Client {
   id: string; scopes: Scope[]; brands: "*" | string[]; templates: "*" | string[];
   recipientOverride: boolean; attachments: boolean;
-  signatureSecretEnv?: string; sellfSignatureSecretEnv?: string;
+  signatureSecretEnv?: string;
   resendCallback?: { url: string; secretEnv: string };
 }
 /** Keeps a background task alive past the response (Worker `ctx.waitUntil`). */
@@ -37,14 +37,14 @@ export async function tokenMatches(token: string, expected: string): Promise<boo
 }
 export const bearerToken = (req: Request): string | undefined => /^Bearer\s+(.+)$/i.exec(req.headers.get("authorization") ?? "")?.[1].trim();
 export async function authenticate(
-  req: Request, env: object, config: Pick<Config, "legacyApiKey">, keys?: KeyProvider, defer?: Defer,
+  req: Request, env: object, config: Pick<Config, "legacyApiKey"> & Partial<Pick<Config, "sources">>, keys?: KeyProvider, defer?: Defer,
 ): Promise<Client | Denied | null> {
   const token = bearerToken(req);
   if (!token) return null;
   const legacy = config.legacyApiKey;
   const secret = Reflect.get(env, legacy?.env ?? "API_KEY");
   if ((legacy?.enabled ?? true) && typeof secret === "string" && secret && await tokenMatches(token, await tokenSha256(secret))) {
-    return { id: "legacy", scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: true,
+    return { id: "legacy", scopes: ["send", ...Object.entries(config.sources ?? {}).filter(([, source]) => source.legacyKey).map(([id]) => `hook:${id}` as Scope)], brands: "*", templates: "*", recipientOverride: true,
       attachments: legacy?.attachments ?? false, signatureSecretEnv: legacy?.signatureSecretEnv };
   }
   const result = keys ? await keys.authenticate(token, env, defer) : null;

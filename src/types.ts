@@ -1,3 +1,4 @@
+import type { Recipe } from "./templates/recipe.ts";
 import type { Notifier, Sender, Store } from './core/ports';
 import type { Config } from './core/config/schema';
 import type { KeyEnvironment } from './core/keyring';
@@ -19,8 +20,6 @@ export interface Env extends KeyEnvironment {
   /** Cloudflare Access team host and application AUD; requests on INTERNAL_HOST need a valid Access JWT. */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
-  /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
-  SELLF_DEFAULT_BRAND?: string;
   // secrets (set via `wrangler secret put`)
   SES_ACCESS_KEY_ID: string;
   SES_SECRET_ACCESS_KEY: string;
@@ -52,6 +51,7 @@ export interface BrandTheme {
 
 /** A single tenant: where mail goes, who may submit, and how it looks. */
 export interface Brand {
+  mailTemplates?: import("./templates/config-schema.ts").BrandMailTemplates;
   id: string;
   name: string;
   /** Verified SES sender, e.g. "Foo <info@foo.example>". */
@@ -141,8 +141,8 @@ export interface TemplateDef {
   id: string;
   /** Whether public (browser) requests may select this type. Only 'contact' is true. */
   publicAllowed?: boolean;
-  subject(brand: Brand, data: TemplateData): string;
-  render(brand: Brand, data: TemplateData): RenderedBody;
+  subject(brand: Brand, data: TemplateData, recipe?: Recipe): string;
+  render(brand: Brand, data: TemplateData, recipe?: Recipe): RenderedBody;
 }
 
 /** Result of a send attempt. */
@@ -179,6 +179,7 @@ export interface SendParams {
 
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
+  templates?: import("./templates/config.ts").TemplatePlans;
   /** Scoped keys from an extension (Mailstack Pro); without it only the full key authenticates. */
   keys?: import("./clients").KeyProvider;
   resendSource?: (env: Env, clientId: string, messageId: string, key: string, payload: import('./core/resend-contract').ResendPayload,

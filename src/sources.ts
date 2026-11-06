@@ -1,7 +1,13 @@
 import { z } from 'zod';
-import { config, getBrand } from './core/config';
+import { read, scalar as text, sourceField, mapSourceFields } from './source-fields.ts';
+import { WorkBudget } from './templates/output.ts';
+export { sourceField } from './source-fields.ts';
+import { normalizeLocale, resolvePresentation } from './templates/locale.ts';
+import { selectKind } from './templates/prepare.ts';
+import { own } from './templates/config.ts';
+import { config, compiledTemplates, getBrand } from './core/config';
 import { SOURCE_LIMITS, requiredSourceFields } from './core/config/sources';
-import type { Source, SourceField } from './core/config/sources';
+import type { Source } from './core/config/sources';
 import { boundedBytes } from './core/http';
 import { authenticate, licenseRequired, permits, tokenSha256 } from './clients';
 import { getTemplate, missingRequiredFields } from './templates/index';
@@ -9,40 +15,6 @@ import { renderAndSend } from './send';
 import { deliveryResponse } from './core/logging/delivery';
 import type { Env, SendDeps, TemplateData } from './types';
 
-function read(value: unknown, path: string): unknown {
-  for (const part of path.split('.')) {
-    if (!value || typeof value !== 'object' || !Object.hasOwn(value, part)) return undefined;
-    value = Reflect.get(value, part);
-  }
-  return value;
-}
-function text(value: unknown): string {
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
-}
-export function sourceField(body: unknown, field: SourceField): string {
-  if (typeof field === 'string') return text(read(body, field));
-  if ('first' in field) return field.first.map(path => text(read(body, path))).find(value => value.trim()) ?? '';
-  if ('format' in field) return field.format.replace(/\{([^{}]+)\}/g, (_, path: string) => text(read(body, path)));
-  if ('join' in field) return field.join.map(path => text(read(body, path))).filter(Boolean).join(' ');
-  const value = read(body, field.path);
-  switch (field.as) {
-    case 'money-minor': {
-      if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '';
-      return (value / 100).toFixed(2);
-    }
-    case 'upper': return text(value).toUpperCase();
-    case 'date-pl': {
-      const date = typeof value === 'string' && value.trim() ? new Date(value) : new Date(NaN);
-      return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('pl-PL');
-    }
-    case 'map': {
-      if (!['string', 'boolean', 'number'].includes(typeof value) ||
-        (typeof value === 'number' && !Number.isFinite(value))) return '';
-      const key = `${typeof value}:${String(value)}`;
-      return Object.hasOwn(field.map, key) ? field.map[key] : '';
-    }
-  }
-}
 function bounded(value: unknown, depth = 0): boolean {
   if (depth > SOURCE_LIMITS.depth) return false;
   return !value || typeof value !== 'object' || Object.values(value).every(item => bounded(item, depth + 1));
@@ -73,7 +45,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   const client = await authenticate(req, env, config, deps.keys, deps.waitUntil);
   if (!client) return json({ success: false, message: 'unauthorized' }, 401);
   if ('denied' in client) return licenseRequired();
-  const brandId = new URL(req.url).searchParams.get('brand') || (id === 'sellf' ? env.SELLF_DEFAULT_BRAND : undefined) || Object.keys(config.brands)[0];
+  const brandId = new URL(req.url).searchParams.get('brand') || source.defaultBrand || Object.keys(config.brands)[0];
   const forbidden = () => json({ success: false, message: 'forbidden', code: 'scope' }, 403);
   if (!permits(client, `hook:${id}`, brandId)) return forbidden();
   const brand = getBrand(brandId);
@@ -84,7 +56,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
     if (!(error instanceof RangeError)) throw error;
     return json({ success: false, message: 'payload too large' }, 413);
   }
-  const secretEnv = client.signatureSecretEnv ?? (id === 'sellf' ? client.sellfSignatureSecretEnv : undefined);
+  const secretEnv = client.signatureSecretEnv;
   if (secretEnv && !await signatureValid(req, bytes, source.signature, Reflect.get(env, secretEnv), deps.now()))
     return json({ success: false, message: 'unauthorized' }, 401);
   let body: unknown, raw: string;
@@ -101,20 +73,35 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (!permits(client, `hook:${id}`, brandId, action.template)) return forbidden();
   const template = getTemplate(action.template);
   if (!template) return invalid(['template']);
-  const mapped: TemplateData = Object.fromEntries(Object.entries(action.fields).map(([key, field]) => [key, sourceField(body, field)]));
+  const budget = new WorkBudget(1024 * 1024);
+  let mapped: TemplateData, base: TemplateData, ref = '', identity = '';
+  const locale = brand.mailTemplates?.languages && source.locale ? normalizeLocale(read(body, source.locale)) : null;
+  try {
+    base = mapSourceFields(body, action.fields, budget); mapped = base;
+    if (brand.mailTemplates?.languages) {
+      const selected = resolvePresentation(deps.templates ?? compiledTemplates, brand, template.id, selectKind(brand, template.id, base), locale).locale;
+      const overlay = selected ? own(action.fieldsByLocale, selected) : undefined;
+      if (overlay) mapped = { ...base, ...mapSourceFields(body, overlay, budget) };
+    }
+  }
+  catch (error) { if (!(error instanceof RangeError)) throw error; return invalid([error.message]); }
+  for (const [key, selection, limit] of [['ref', action.ref, 128], ['idempotencyKey', action.idempotencyKey, SOURCE_LIMITS.valueChars]] as const) {
+    if (!selection) continue;
+    try { const value = sourceField(body, selection, budget, limit, true); if (key === 'ref') ref = value; else identity = value; }
+    catch (error) { if (!(error instanceof RangeError)) throw error; return invalid([key]); }
+  }
   const to = text(read(body, action.to)).trim();
   const fields = [...missingRequiredFields(template, mapped), ...requiredSourceFields(action).filter(key => !mapped[key]?.trim())];
   if (!z.email().safeParse(to).success) fields.push(action.to);
-  for (const [key, value] of Object.entries(mapped)) if (value.length > SOURCE_LIMITS.valueChars) fields.push(key);
-  const ref = action.ref ? sourceField(body, action.ref).trim() : '';
-  if (ref.length > 128) fields.push('ref');
   if (fields.length) return invalid([...new Set(fields)]);
+  if (mapped.subject && /[\u0000-\u001f\u007f-\u009f]/.test(mapped.subject)) return invalid(['subject']);
   const urls = brand.licenseActivationUrls;
   if (template.id === 'license' && urls && Object.hasOwn(urls, mapped.productId)) mapped.activationUrl = urls[mapped.productId];
-  const identity = action.idempotencyKey ? sourceField(body, action.idempotencyKey).trim() : '';
   const idempotencyKey = `source:${id}:${event}:${JSON.stringify([brandId, identity || (await tokenSha256(raw)).slice(0, 32)])}`;
   const result = await renderAndSend(deps, env, brand, template, mapped, {
-    to: [to], replyTo: brand.to[0], clientId: client.id, ref: ref || undefined, idempotencyKey,
+    to: [to], replyTo: brand.to[0], clientId: client.id, ref: ref || undefined, idempotencyKey, locale, legacyData: () => base,
   });
+  if (!result.ok && ['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(result.code ?? ''))
+    return invalid([result.code === 'invalid_subject' ? 'subject' : result.code === 'template_empty_heading' ? 'heading' : result.code!]);
   return json(deliveryResponse(result, true), result.status);
 }

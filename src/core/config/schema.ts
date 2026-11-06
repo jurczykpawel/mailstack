@@ -3,6 +3,8 @@ import { z } from "zod";
 import { sourceSchema, sourceId, requiredSourceFields } from "./sources.ts";
 import { TEMPLATES } from "../../templates/index.ts";
 import { PRO_KEYS } from "../../clients.ts";
+import { mailTemplatesSchema, brandMailTemplatesSchema } from "../../templates/config-schema.ts";
+import { compileTemplatePlans } from "../../templates/config.ts";
 
 const strings = z.array(z.string());
 const days = z.number().int().positive();
@@ -13,6 +15,7 @@ const policy = z.strictObject({
   show: strings.optional(), includeSecrets: z.boolean(),
 });
 const brand = z.strictObject({
+  mailTemplates: brandMailTemplatesSchema.optional(),
   id: z.string(), name: z.string(), from: z.string(), to: strings, allowedOrigins: strings,
   subjectPrefix: z.string(), autoReply: z.boolean().optional(), autoReplyTemplate: z.string().optional(),
   turnstileAction: z.string().optional(),
@@ -38,9 +41,10 @@ const secretEnv = z.string().regex(/^[A-Z_][A-Z0-9_]{0,127}$/i);
 const legacySchema = z.strictObject({
   enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"), attachments: z.boolean().default(false),
   signatureSecretEnv: secretEnv.optional(),
-  scopes: full(["send", "hook:sellf"]), brands: full("*"), templates: full("*"), recipientOverride: full(true),
+  brands: full("*"), templates: full("*"), recipientOverride: full(true),
 });
 const shape = z.strictObject({
+  mailTemplates: mailTemplatesSchema.optional(),
   extensions: z.array(z.strictObject({
     module: z.string().regex(/^(?:\/[^\s?#]+|(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*)$/),
     options: z.record(z.string(), z.unknown()).optional(),
@@ -85,6 +89,10 @@ function schemaWithTemplates(templates: TemplatePolicies) {
   return shape.superRefine((config, ctx) => {
     const fail = (path: string[], message: string) => ctx.addIssue({ code: "custom", path, message });
     for (const [id, source] of Object.entries(config.sources ?? {})) {
+      if (source.defaultBrand && !Object.hasOwn(config.brands, source.defaultBrand))
+        fail(["sources", id, "defaultBrand"], "unknown brand");
+      if (source.legacyKey && config.legacyApiKey?.signatureSecretEnv && source.signature.scheme === "bearer-only")
+        fail(["legacyApiKey", "signatureSecretEnv"], "requires a signing scheme");
       for (const [event, action] of Object.entries(source.events)) {
         if (action.action !== "send") continue;
         const path = ["sources", id, "events", event];
@@ -97,8 +105,6 @@ function schemaWithTemplates(templates: TemplatePolicies) {
         }
       }
     }
-    if (config.legacyApiKey?.signatureSecretEnv && config.sources.sellf?.signature.scheme === "bearer-only")
-      fail(["legacyApiKey", "signatureSecretEnv"], "requires a signing scheme");
     for (const [id, entry] of Object.entries(config.brands)) {
       if (id !== entry.id) fail(["brands", id, "id"], "must match registry key");
     }
@@ -115,6 +121,7 @@ function schemaWithTemplates(templates: TemplatePolicies) {
         fail(path("resend"), "replay requires masked or full");
       if (p.includeSecrets && p.level !== "full") fail(path("includeSecrets"), "requires full");
     }
+    compileTemplatePlans(config, (path, message) => ctx.addIssue({ code: "custom", path, message }));
   });
 }
 export const configSchema = schemaWithTemplates(TEMPLATES);

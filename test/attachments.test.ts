@@ -14,7 +14,7 @@ const body = { brand: 'acme', template: 'notice', heading: 'Hello', attachments:
 const legacy = config.legacyApiKey;
 let deps: SendDeps;
 beforeEach(() => {
-  config.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
+  config.legacyApiKey = { enabled: true, env: 'API_KEY', brands: '*', templates: '*', recipientOverride: true, attachments: true };
   deps = { keys: testKeys(config), logging: structuredClone(config.logging), sendEmail: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
     verifyTurnstile: vi.fn().mockResolvedValue(true), verifyAltcha: vi.fn(), now: () => new Date() };
   deps.logging!.defaults.level = 'none';

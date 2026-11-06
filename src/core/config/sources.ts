@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { locales } from '../../templates/config-schema.ts';
+import { tokenize } from '../../templates/tokens.ts';
 
 export const SOURCE_LIMITS = { bodyBytes: 64 * 1024, depth: 20, fields: 40, valueChars: 5000 } as const;
 const safeKey = z.string().min(1).max(128).refine(value => !['__proto__', 'constructor', 'prototype'].includes(value));
@@ -10,8 +12,7 @@ const first = z.strictObject({ first: z.array(path).min(1).max(SOURCE_LIMITS.fie
 const join = z.strictObject({ join: z.array(path).min(1).max(SOURCE_LIMITS.fields) });
 const selection = z.union([path, first, join]);
 const format = z.string().max(SOURCE_LIMITS.valueChars).refine(value => {
-  const placeholders = [...value.matchAll(/\{([^{}]+)\}/g)];
-  return !/[{}]/.test(value.replace(/\{[^{}]+\}/g, "")) && placeholders.every(match => path.safeParse(match[1]).success);
+  return tokenize(value).every(token => typeof token === 'string' ? !/[{}]/.test(token) : path.safeParse(token.field).success);
 });
 const field = z.union([
   first, z.strictObject({ format }),
@@ -21,15 +22,20 @@ const field = z.union([
     .refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields) }),
   join,
 ]);
+export const SOURCE_COPY_FIELDS: Record<string, string[]> = { notice: ['heading', 'paragraphs', 'ctaLabel'], welcome: ['intro', 'body', 'ctaLabel'] };
+const fields = z.record(safeKey, field).refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields);
+const paths = (value: z.infer<typeof field>): string[] => typeof value === 'string' ? [value] : 'format' in value
+  ? tokenize(value.format).flatMap(token => typeof token === 'string' ? [] : [token.field]) : 'path' in value ? [value.path] : 'first' in value ? value.first : value.join;
 const action = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('send'), template: safeKey, to: path,
-    fields: z.record(safeKey, field).refine(value => Object.keys(value).length <= SOURCE_LIMITS.fields),
+    fields, fieldsByLocale: locales(fields).refine(value => Object.keys(value).length <= 8).optional(),
     ref: selection.optional(), idempotencyKey: selection.optional(),
     requiredFields: z.array(safeKey).max(SOURCE_LIMITS.fields).optional() }),
   z.strictObject({ action: z.literal('ignore') }),
   z.strictObject({ action: z.literal('reject') }),
 ]);
 export const sourceSchema = z.strictObject({
+  locale: path.optional(), defaultBrand: z.string().min(1).optional(), legacyKey: z.boolean().default(false),
   signature: z.discriminatedUnion('scheme', [
     z.strictObject({ scheme: z.literal('bearer-only') }),
     z.strictObject({ scheme: z.literal('t-v1'), header: z.string().regex(/^[A-Za-z0-9-]{1,128}$/),
@@ -38,6 +44,17 @@ export const sourceSchema = z.strictObject({
   ]),
   envelope: z.strictObject({ event: path, timestamp: path, data: path }),
   events: z.record(safeKey, action).refine(value => Object.keys(value).length <= 100),
+}).superRefine((source, ctx) => {
+  for (const [event, action] of Object.entries(source.events)) if (action.action === 'send') {
+    const copy = Object.keys(action.fields).filter(key => SOURCE_COPY_FIELDS[action.template]?.includes(key));
+    for (const [locale, overlay] of Object.entries(action.fieldsByLocale ?? {})) {
+      for (const key of new Set([...copy, ...Object.keys(overlay)])) {
+        const base = action.fields[key], value = overlay[key];
+        if (!copy.includes(key) || !base || !value || paths(value).some(path => !paths(base).includes(path)))
+          ctx.addIssue({ code: 'custom', path: ['events', event, 'fieldsByLocale', locale, key], message: 'copy field coverage and same-field paths required' });
+      }
+    }
+  }
 });
 export type Source = z.infer<typeof sourceSchema>;
 export type SourceField = z.infer<typeof field>;

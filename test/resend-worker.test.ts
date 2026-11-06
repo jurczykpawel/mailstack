@@ -1,3 +1,4 @@
+import { limitedD1 } from "./fixtures/limited-d1.ts";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import { sql } from 'kysely';
@@ -30,6 +31,7 @@ const pro = (capabilities: Extension['capabilities'] = ['resend']): Extension =>
     return Response.json(result, { status: result.status });
   });
 } });
+let counted: ReturnType<typeof limitedD1>;
 let store: KyselyStore, mf: Miniflare, saved: Pick<typeof config, 'clients' | 'extensions' | 'logging'>;
 let id: string, replay: unknown, sendEmail: ReturnType<typeof vi.fn<SendDeps['sendEmail']>>, app: ReturnType<typeof createApp>;
 const envelope = (value: unknown, messageId = id, aud = host, op: 'resend.replay' | 'resend.source' = 'resend.replay') => seal({ replay: value }, op, aud, Date.now(), messageId);
@@ -39,7 +41,7 @@ const jobs = async () => (await sql`select * from resend_jobs`.execute(store.db)
 
 beforeAll(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', compatibilityDate: '2026-06-01', d1Databases: ['DB'] }));
-  store = createD1Store(await mf.getD1Database('DB')); await store.migrate();
+  counted = limitedD1(await mf.getD1Database('DB')); store = createD1Store(counted.db); await store.migrate();
   saved = structuredClone({ clients: config.clients, extensions: config.extensions, logging: config.logging });
   config.clients = [{ id: 'panel', tokenSha256: await tokenSha256(token), scopes: ['panel'], brands: '*', templates: '*', recipientOverride: false, attachments: false },
     { id: 'sender', tokenSha256: 'a'.repeat(64), scopes: ['send'], brands: ['acme'], templates: ['license'], recipientOverride: true, attachments: false, resendCallback: { url: 'https://source.example/resend', secretEnv: 'SOURCE_SECRET' } }];
@@ -104,4 +106,28 @@ it('approves a source resend on D1 with the owner from the Worker keys and retur
   expect(response.status).toBe(202);
   expect(await response.json()).toMatchObject({ ok: true, ref: 'ORDER-1', source: { strategy: 'source', owner: { clientId: 'sender' } } });
   expect(await jobs()).toBe(1); expect(sendEmail).not.toHaveBeenCalled();
+});
+
+it('keeps bound source preparation within its existing D1 reads and one cleanup batch', async () => {
+  config.clients![1].templates = ['license'];
+  const extension = pro();
+  const deps: SendDeps = { store, keys: testKeys(config), logging: config.logging, now: () => new Date(), verifyTurnstile: vi.fn(), verifyAltcha: vi.fn(), sendEmail };
+  const original = await renderAndSend(deps, env, config.brands.acme, getTemplate('license')!, { licenseKey: 'initial-key' }, { to: ['buyer@example.com'], clientId: 'sender', ref: 'ORDER-1' });
+  id = original.id!;
+  app = createApp({ store, keys: testKeys(config), sendEmail, access: async () => true }, undefined, extension);
+  expect((await resend({ envelope: await seal({ ref: 'ORDER-1' }, 'resend.source', host, Date.now(), id) })).status).toBe(202);
+  const { createResendService } = await import('../src/core/resend.ts');
+  const service = createResendService(config, store, env, deps), key = 'worker-' + id;
+  const payload = { to: ['buyer@example.com'], template: 'license', data: { licenseKey: 'new-key' } };
+  sendEmail.mockClear();
+  counted.invocation(50);
+  expect(await service.sendSource('sender', id, key, payload, 'ORDER-2')).toMatchObject({ code: 'resend_mismatch' });
+  const bindingReads = counted.calls(); expect(bindingReads).toBe(5);
+  vi.spyOn(getTemplate('license')!, 'render').mockImplementationOnce(() => { throw new RangeError('template_output_limit'); });
+  counted.invocation(50);
+  expect(await service.sendSource('sender', id, key, payload, 'ORDER-1')).toMatchObject({ code: 'template_output_limit' });
+  expect(counted.calls()).toBe(bindingReads + 2);
+  expect((await sql`select * from guards where key like 'resend:%'`.execute(store.db)).rows).toHaveLength(0);
+  expect(sendEmail).not.toHaveBeenCalled();
+  console.log(JSON.stringify({ sourcePreparationD1: { bindingReads, recipientReads: 1, cleanupBatches: 1, calls: bindingReads + 2 } }));
 });
