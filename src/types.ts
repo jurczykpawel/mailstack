@@ -20,8 +20,6 @@ export interface Env extends KeyEnvironment {
   /** Cloudflare Access team host and application AUD; requests on INTERNAL_HOST need a valid Access JWT. */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
-  /** Default brand id for the Sellf webhook when `?brand=` is omitted (optional). */
-  SELLF_DEFAULT_BRAND?: string;
   // secrets (set via `wrangler secret put`)
   SES_ACCESS_KEY_ID: string;
   SES_SECRET_ACCESS_KEY: string;

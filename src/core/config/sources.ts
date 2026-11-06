@@ -30,6 +30,7 @@ const action = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('reject') }),
 ]);
 export const sourceSchema = z.strictObject({
+  defaultBrand: z.string().min(1).optional(), legacyKey: z.boolean().default(false),
   signature: z.discriminatedUnion('scheme', [
     z.strictObject({ scheme: z.literal('bearer-only') }),
     z.strictObject({ scheme: z.literal('t-v1'), header: z.string().regex(/^[A-Za-z0-9-]{1,128}$/),

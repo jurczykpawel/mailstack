@@ -50,7 +50,7 @@ try {
     }}]});
     mkdirSync(state+'/migrations',{recursive:true});cpSync(root+'/.wrangler/migrations/0001_initial.sql',state+'/migrations/0001_initial.sql');
     const conf={name:'mailstack-test',main:state+'/worker.mjs',compatibility_date:'2026-10-26',compatibility_flags:['nodejs_compat'],workers_dev:true,routes:[],
-      account_id:env.CLOUDFLARE_ACCOUNT_ID,vars:{SES_REGION:'eu-west-1',BUILD_CONFIG_SHA:sha,BUILD_COMMIT:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),SELLF_DEFAULT_BRAND:'acme'},
+      account_id:env.CLOUDFLARE_ACCOUNT_ID,vars:{SES_REGION:'eu-west-1',BUILD_CONFIG_SHA:sha,BUILD_COMMIT:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim()},
       d1_databases:[{binding:'DB',database_name:'mailstack-preview',database_id:database.uuid,migrations_dir:state+'/migrations'}],observability:{enabled:false}};
     put('wrangler.json',conf);
     put('migration.log',wr(['d1','migrations','apply','DB','--remote','--config',state+'/wrangler.json']));

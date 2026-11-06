@@ -42,7 +42,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   const client = await authenticate(req, env, config, deps.keys, deps.waitUntil);
   if (!client) return json({ success: false, message: 'unauthorized' }, 401);
   if ('denied' in client) return licenseRequired();
-  const brandId = new URL(req.url).searchParams.get('brand') || (id === 'sellf' ? env.SELLF_DEFAULT_BRAND : undefined) || Object.keys(config.brands)[0];
+  const brandId = new URL(req.url).searchParams.get('brand') || source.defaultBrand || Object.keys(config.brands)[0];
   const forbidden = () => json({ success: false, message: 'forbidden', code: 'scope' }, 403);
   if (!permits(client, `hook:${id}`, brandId)) return forbidden();
   const brand = getBrand(brandId);
@@ -53,7 +53,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
     if (!(error instanceof RangeError)) throw error;
     return json({ success: false, message: 'payload too large' }, 413);
   }
-  const secretEnv = client.signatureSecretEnv ?? (id === 'sellf' ? client.sellfSignatureSecretEnv : undefined);
+  const secretEnv = client.signatureSecretEnv;
   if (secretEnv && !await signatureValid(req, bytes, source.signature, Reflect.get(env, secretEnv), deps.now()))
     return json({ success: false, message: 'unauthorized' }, 401);
   let body: unknown, raw: string;

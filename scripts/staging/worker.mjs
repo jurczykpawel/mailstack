@@ -231,7 +231,7 @@ export class Internal extends WorkerEntrypoint{fetch(req){return serve(req,this.
   try { await migrateWorker(store, proWorker || undefined, cfg.extensions?.[0]?.options); }
   finally { await store.db.destroy(); }
   if (register) { await (await import(pathToFileURL(`${root}/src/core/offsite.ts`).href)).initTombstoneRegistry({ ...secrets, ...registerVars }); console.log('Erasure register ready'); }
-  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SELLF_DEFAULT_BRAND: 'acme', SES_REGION: 'eu-west-1' };
+  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, INTERNAL_HOST: internalHost, PANEL_AUDIENCE: internalHost, ...access } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SES_REGION: 'eu-west-1' };
   const providerSecrets = {};
   if (delivery === 'ses') {
     const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));

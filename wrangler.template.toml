@@ -23,8 +23,6 @@ command = "node scripts/bundle-config.ts --verify"
 BUILD_CONFIG_SHA = "${BUILD_CONFIG_SHA}"
 SES_REGION = ${SES_REGION}
 SES_CONFIGURATION_SET = ${SES_CONFIGURATION_SET}
-# Brand the Sellf webhook (/v1/hooks/sellf) uses when a request has no ?brand= (default: acme).
-SELLF_DEFAULT_BRAND = "${SELLF_DEFAULT_BRAND}"
 # Host serving /internal/v2/* for the panel (MAILSTACK_INTERNAL_ROUTE) and the panel assertion audience; empty disables the internal API.
 INTERNAL_HOST = ${INTERNAL_HOST}
 # Profile (a): audience of panel assertions arriving through the service binding to the `Internal` entrypoint (MAILSTACK_PANEL_AUDIENCE).

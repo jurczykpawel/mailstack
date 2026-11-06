@@ -129,15 +129,6 @@ it('keeps signatures optional when a signing client has no reference', async () 
   configure({ clients: [entry] });
   expect((await run(payload(), { 'X-Hub-Signature-256': '' })).response.status).toBe(200);
 });
-it('retains the Sellf signature reference alias for the Sellf source', async () => {
-  const entry = { ...client(), scopes: ['hook:sellf'], sellfSignatureSecretEnv: 'SOURCE_SECRET' };
-  Reflect.deleteProperty(entry, 'signatureSecretEnv');
-  configure({ clients: [entry], sources: { sellf: source() } });
-  expect((await run(payload(), {}, 'sellf')).response.status).toBe(200);
-  const { response, sendEmail } = await run(payload(), { 'X-Hub-Signature-256': '' }, 'sellf');
-  expect(response.status).toBe(401); expect(sendEmail).not.toHaveBeenCalled();
-  expect((await run()).response.status).toBe(404);
-});
 it.each(['', 'data..email', 'data[0]', 'data.email()', '__proto__.email', 'data.constructor', 'data.prototype', 'data.email + value'])('refuses non-path selections %s', to => {
   const definition = source(); definition.events.created.to = to;
   expect(() => configure({ sources: { github: definition } })).toThrow('sources.github');

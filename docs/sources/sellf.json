@@ -1,4 +1,5 @@
 {
+  "legacyKey": true,
   "signature": {
     "scheme": "t-v1",
     "header": "X-Sellf-Signature",

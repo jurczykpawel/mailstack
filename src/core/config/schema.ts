@@ -41,7 +41,7 @@ const secretEnv = z.string().regex(/^[A-Z_][A-Z0-9_]{0,127}$/i);
 const legacySchema = z.strictObject({
   enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"), attachments: z.boolean().default(false),
   signatureSecretEnv: secretEnv.optional(),
-  scopes: full(["send", "hook:sellf"]), brands: full("*"), templates: full("*"), recipientOverride: full(true),
+  brands: full("*"), templates: full("*"), recipientOverride: full(true),
 });
 const shape = z.strictObject({
   mailTemplates: mailTemplatesSchema.optional(),
@@ -89,6 +89,10 @@ function schemaWithTemplates(templates: TemplatePolicies) {
   return shape.superRefine((config, ctx) => {
     const fail = (path: string[], message: string) => ctx.addIssue({ code: "custom", path, message });
     for (const [id, source] of Object.entries(config.sources ?? {})) {
+      if (source.defaultBrand && !Object.hasOwn(config.brands, source.defaultBrand))
+        fail(["sources", id, "defaultBrand"], "unknown brand");
+      if (source.legacyKey && config.legacyApiKey?.signatureSecretEnv && source.signature.scheme === "bearer-only")
+        fail(["legacyApiKey", "signatureSecretEnv"], "requires a signing scheme");
       for (const [event, action] of Object.entries(source.events)) {
         if (action.action !== "send") continue;
         const path = ["sources", id, "events", event];
@@ -101,8 +105,6 @@ function schemaWithTemplates(templates: TemplatePolicies) {
         }
       }
     }
-    if (config.legacyApiKey?.signatureSecretEnv && config.sources.sellf?.signature.scheme === "bearer-only")
-      fail(["legacyApiKey", "signatureSecretEnv"], "requires a signing scheme");
     for (const [id, entry] of Object.entries(config.brands)) {
       if (id !== entry.id) fail(["brands", id, "id"], "must match registry key");
     }

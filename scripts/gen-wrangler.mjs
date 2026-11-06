@@ -30,7 +30,6 @@ const workerName = (env.MAILSTACK_WORKER_NAME || "mailstack").trim();
 if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(workerName)) throw new Error("MAILSTACK_WORKER_NAME must be 1-63 lowercase letters, digits or hyphens");
 const sesRegion = (env.SES_REGION || "eu-west-1").trim();
 if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(sesRegion)) throw new Error("SES_REGION must be an AWS region such as eu-west-1");
-const sellfBrand = (env.SELLF_DEFAULT_BRAND || "acme").trim();
 
 const internal = (env.MAILSTACK_INTERNAL_ROUTE || "").trim();
 if (internal && !route) throw new Error("MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ROUTE");
@@ -56,7 +55,6 @@ const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("${SES_REGION}", JSON.stringify(sesRegion))
   .replaceAll("${MAILSTACK_D1_ID}", d1Id)
   .replaceAll("${MAILSTACK_D1_PREVIEW_ID}", d1Preview)
-  .replaceAll("${SELLF_DEFAULT_BRAND}", sellfBrand)
   .replace("${INTERNAL_HOST}", JSON.stringify(internal))
   .replace("${PANEL_AUDIENCE}", JSON.stringify(panelAudience))
   .replace("${ACCESS_TEAM_DOMAIN}", JSON.stringify(team))

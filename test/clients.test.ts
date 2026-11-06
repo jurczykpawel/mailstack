@@ -124,12 +124,12 @@ describe("free core without a key provider", () => {
     } finally { await store.db.destroy(); }
   });
   it.each([
-    ["brands", ["acme"]], ["templates", ["payment"]], ["scopes", ["send"]], ["recipientOverride", false],
+    ["brands", ["acme"]], ["templates", ["payment"]], ["recipientOverride", false],
   ])("refuses a restricted full key: %s", (field, value) => {
     expect(() => parseConfig({ ...original, legacyApiKey: { [field]: value } })).toThrow(`$.legacyApiKey.${field}: additional or restricted API keys require Mailstack Pro`);
   });
   it("accepts restated full permissions and free options", () => {
-    const legacyApiKey = { enabled: true, env: "API_KEY", attachments: true, scopes: ["send", "hook:sellf"], brands: "*", templates: "*", recipientOverride: true };
+    const legacyApiKey = { enabled: true, env: "API_KEY", attachments: true, brands: "*", templates: "*", recipientOverride: true };
     expect(parseConfig({ ...original, legacyApiKey }).legacyApiKey).toMatchObject({ attachments: true, env: "API_KEY" });
   });
   it("verifies Sellf signatures on the full key", async () => {

@@ -538,7 +538,7 @@ The legacy key has attachment permission here solely for the local attachment ex
 ### API keys: free and Pro
 
 The free core authenticates exactly one **full key**: the secret in `API_KEY` (or the
-variable named by `legacyApiKey.env`). It has scopes `send` and `hook:sellf`, every brand
+variable named by `legacyApiKey.env`). It has `send` and `hook:<id>` for sources with `legacyKey: true`, every brand
 and template, and may override `to`. Free `legacyApiKey` options are `enabled`, `env`,
 `attachments` and `signatureSecretEnv` (required `X-Sellf-Signature` on `/v1/hooks/sellf`,
 see [Sellf webhook](#sellf-event-contract)). `scopes`, `brands`, `templates` and
@@ -1052,9 +1052,30 @@ identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
 Sellf uses the generic source engine and requires a Bearer client with `hook:sellf`
 scope. `signatureSecretEnv` names the optional runtime signing secret;
-`sellfSignatureSecretEnv` remains an alias. When configured, the runtime secret and
+the same field applies to every source allowed for the client. When configured, the runtime secret and
 `X-Sellf-Signature: t=<unix>,v1=<hex>` are required (HMAC-SHA256 over `${t}.${rawBody}`,
 300-second tolerance); invalid credentials return `401 unauthorized`.
+
+Each source can set `defaultBrand` to a configured brand; otherwise it uses the first
+brand. The query parameter `?brand=` takes precedence. `legacyKey` defaults to false;
+the built-in Sellf preset opts in. It grants only that source to the full key, while
+Pro clients keep their explicit `hook:<id>` scopes. A signing reference requires a
+non-bearer-only signature scheme for every source available to that key.
+
+Before upgrading an older configuration, run the offline migration on a copy:
+
+```bash
+node scripts/migrate-sellf-config.ts old.json deployment-vars.json > migrated.json
+node scripts/mailstack.ts config check migrated.json
+```
+
+The optional second file is a JSON object containing the previous
+`SELLF_DEFAULT_BRAND` setting. The migrator moves it into `sources.sellf.defaultBrand`,
+converts client `sellfSignatureSecretEnv` to `signatureSecretEnv`, and preserves the
+old full-key source selection using `legacyKey`. Conflicting fields or ambiguous
+permissions stop migration. Runtime no longer reads these old aliases; remove the
+old deployment variable after migration. Install the validated file through the
+usual Node restart or Worker setup process.
 
 Source keys are `source:<id>:<event>:` followed by
 `JSON.stringify([brandId, selectedIdentityOrBodyDigest])`, then scoped to the client

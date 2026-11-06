@@ -135,7 +135,7 @@ it('returns the same Sellf message id on duplicate delivery', async () => {
 
 it('requires a configured Sellf signature in addition to the bearer', async () => {
   const token = 'msk_hook-client_' + 'a'.repeat(43);
-  const client = { id: 'hook-client', tokenSha256: await tokenSha256(token), scopes: ['hook:sellf' as const], brands: '*' as const, templates: '*' as const, recipientOverride: false, attachments: false, sellfSignatureSecretEnv: 'SELLF_SECRET' };
+  const client = { id: 'hook-client', tokenSha256: await tokenSha256(token), scopes: ['hook:sellf' as const], brands: '*' as const, templates: '*' as const, recipientOverride: false, attachments: false, signatureSecretEnv: 'SELLF_SECRET' };
   const previous = config.clients; config.clients = [client];
   const raw = JSON.stringify(hookBody);
   const t = String(now.getTime() / 1000);
@@ -371,7 +371,7 @@ it.each([true, false])('handles a slow alert with waitUntil=%s', async backgroun
 
 it('records attachment summaries and identity without archiving files', async () => {
   const previous = config.legacyApiKey;
-  config.legacyApiKey = { enabled: true, env: 'API_KEY', scopes: ['send'], brands: '*', templates: '*', recipientOverride: true, attachments: true };
+  config.legacyApiKey = { enabled: true, env: 'API_KEY', brands: '*', templates: '*', recipientOverride: true, attachments: true };
   deps.logging!.defaults.level = 'full'; deps.logging!.defaults.resend = 'replay';
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   const file = { filename: 'attachment-sentinel.txt', contentType: 'text/plain', contentBase64: Buffer.from('attachment content sentinel').toString('base64') };
