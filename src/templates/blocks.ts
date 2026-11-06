@@ -5,7 +5,7 @@ import type { TemplatePlans } from "./config.ts";
 import { own } from "./config.ts";
 import { tokenize } from "./tokens.ts";
 import { Output, length, parts, type Content, type Emit } from "./output.ts";
-import { emitParagraph, codeBox, ctaButton, humanizeLabel, summaryTable, messageBlock, metadataBlock, renderLayout } from "./layout.ts";
+import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout } from "./layout.ts";
 
 export function expandText(text: Presentation["subject"], brand: Brand, data: TemplateData, plans: TemplatePlans): readonly string[] {
   const field = (key: string) => key.startsWith("brand.") ? String(own(brand as unknown as Record<string, string>, key.slice(6)) ?? "") : (own(data, key) ?? "").trim();
@@ -20,7 +20,7 @@ export function expandText(text: Presentation["subject"], brand: Brand, data: Te
 export type Pair = { html: Emit; text: Emit };
 export function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData): Pair {
   const blocks: Pair[] = [];
-  const label = (key: string) => own(patch.labels, key) ?? humanizeLabel(key);
+  const label = (key: string) => labelFor(patch.labels, key);
   for (const block of patch.body?.blocks ?? []) {
     const value = "field" in block ? own(data, block.field) ?? "" : "";
     if (block.kind === "paragraph") {

@@ -210,3 +210,9 @@ it("requires complete reachable confirmation outputs for an alternate template",
   Object.assign(value.brands.acme.mailTemplates, { templates: { refund: { previewText: "Received", body: { blocks: [{ ...textBlock, text: "Received" }] } } } });
   expect(() => parseConfig(value)).not.toThrow();
 });
+
+it('retains an explicit declaration of an otherwise optional field', () => {
+  const draft = input({ templates: { notice: { secretFields: ['ctaUrl'] } } });
+  const logging = { ...draft.logging, brands: { acme: { templates: { notice: { level: 'masked', resend: 'replay' } } } } };
+  expect(() => parseConfig({ ...draft, logging })).toThrow('template requires source or off');
+});

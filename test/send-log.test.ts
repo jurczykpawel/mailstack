@@ -712,3 +712,20 @@ it('stores the normalized preference and distinguishes it from the selected lang
   const archive = await store.db.selectFrom('contents').selectAll().where('message_id', '=', first.id!).executeTakeFirstOrThrow();
   expect(await open(archive.sealed, { brand: 'acme', messageId: first.id!, purpose: 'content' }, [privateKey])).toMatchObject({ metadata: { render: { locale: 'en' } } });
 });
+
+it('keeps the old locale content field when reading a prior request format', async () => {
+  const { createMac } = await import('../src/core/crypto/index.ts');
+  const { parseConfig } = await import('../src/core/config/schema.ts');
+  const { templatePlans } = await import('../src/templates/config.ts');
+  const { renderAndSend } = await import('../src/send.ts');
+  const { getTemplate } = await import('../src/templates/index.ts');
+  await send(); const row = (await rows())[0];
+  const data = { heading: body.heading, paragraphs: body.paragraphs };
+  const legacyData = { ...data, locale: 'en' };
+  const legacy = { brand: 'acme', template: 'notice', recipients: [{ role: 'to', address: body.to }], data: legacyData, subject: body.heading, replyTo: config.brands.acme.to[0], ref: body.ref, markup: null };
+  await store.db.updateTable('messages').set({ request_mac: JSON.stringify(await createMac(legacy, JSON.parse(env.INDEX_KEYS!))) }).where('id', '=', row.id).execute();
+  const cfg = parseConfig({ ...structuredClone(config), mailTemplates: { version: 1, templates: { notice: { locales: { en: { subject: 'English subject' } } } } }, brands: { acme: { ...config.brands.acme, mailTemplates: { languages: { default: 'pl', allowed: ['pl', 'en'] } } } } });
+  deps.templates = templatePlans(cfg);
+  expect(await renderAndSend(deps, env, cfg.brands.acme, getTemplate('notice')!, data, { to: [body.to], replyTo: config.brands.acme.to[0], ref: body.ref, clientId: 'legacy', idempotencyKey: 'request-1', locale: 'en', legacyData: () => legacyData })).toMatchObject({ ok: true, id: row.id, idempotent: true });
+  expect(deps.sendEmail).toHaveBeenCalledTimes(1);
+});

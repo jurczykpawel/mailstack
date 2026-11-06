@@ -19,5 +19,5 @@ export function containsSecret(value: string, candidates: string[], budget: Work
   return false;
 }
 export function effectiveTemplate(template: TemplateDef, secrets: readonly string[] = []): TemplateDef {
-  return { ...template, secretFields: [...new Set([...template.secretFields ?? [], ...secrets.filter(field => !template.optionalSecretFields?.includes(field))])] };
+  return { ...template, secretFields: [...new Set([...template.secretFields ?? [], ...secrets])] };
 }

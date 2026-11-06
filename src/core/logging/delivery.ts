@@ -12,6 +12,7 @@ import { idempotencyHash, intentRequest, messageId, prepareRecord, recordIntent 
 
 export interface PreparedDelivery {
   params: SendParams; template: TemplateDef; data: TemplateData;
+  prepared?: ReturnType<typeof prepareRecord>;
   record: Pick<import("./writer").RecordInput, "render" | "renderMetadata" | "budget">;
 }
 export interface DeliveryContext {
@@ -40,7 +41,7 @@ export function deliveryResponse(result: SendResult, trusted: boolean): Record<s
 
 export async function deliver(
   deps: SendDeps, env: Env, brand: Brand, template: TemplateDef, data: TemplateData,
-  envelope: Omit<SendParams, "subject" | "html" | "text">, context: DeliveryContext, prepare: () => PreparedDelivery,
+  envelope: Omit<SendParams, "subject" | "html" | "text">, context: DeliveryContext, prepare: (policy: import("../config/schema").Policy) => PreparedDelivery,
 ): Promise<SendResult> {
   const logging = deps.logging ?? config.logging;
   const { policy } = await resolvePolicy(logging, brand.id, template.id, template);
@@ -83,9 +84,9 @@ export async function deliver(
   }
   let params: SendParams, prepared: ReturnType<typeof prepareRecord>;
   try {
-    const result = prepare(); params = result.params;
+    const result = prepare(policy); params = result.params;
     Object.assign(input, result.record, { template: result.template, data: result.data, subject: params.subject });
-    prepared = prepareRecord(input, policy, logging.patterns);
+    prepared = result.prepared ?? prepareRecord(input, policy, logging.patterns);
   } catch (error) {
     const code = error instanceof Error ? error.message : '';
     if (!['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(code)) throw error;

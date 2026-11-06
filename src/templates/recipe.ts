@@ -22,7 +22,7 @@ export class Recipe {
     return content.join('');
   }
   label(key: string, fallback = layout.humanizeLabel(key)): string {
-    return own(this.patch.labels, key) ?? own(this.patch.labels, key.toLowerCase()) ?? fallback;
+    return layout.labelFor(this.patch.labels, key, fallback);
   }
   cta(key: string, fallback: string, supplied?: string): string {
     return supplied?.trim() || own(this.patch.ctaLabels, key) || (supplied === undefined || !supplied ? fallback : 'Otwórz');

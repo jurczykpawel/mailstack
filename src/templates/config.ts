@@ -51,6 +51,7 @@ export function definition(plans: TemplatePlans, brand: string, template: string
 }
 function checkPatch(id: TemplateId, patch: TemplatePatch, fields: NonNullable<TemplatePatch["fields"]>, secrets: string[], eligible: boolean, confirmation: boolean, path: Path, fail: Fail) {
   const manifest = MANIFEST[id];
+  secrets = [...secrets, ...TEMPLATES[id].optionalSecretFields ?? []];
   const checkRefs = (values: string[], at: Path, header = false) => {
     if (values.some(key => !CONTEXT_FIELDS.includes(key) && (!Object.hasOwn(fields, key) || !safeKey(key)) || header && secrets.includes(key))) fail(at, "invalid field reference");
     if (confirmation && values.some(key => ![...CONTEXT_FIELDS, "name", "summary"].includes(key))) fail(at, "confirmation field unavailable");
@@ -113,7 +114,7 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
   let count = 0;
   const baseManifest = (id: TemplateId, parts: Layer[]) => {
     const fields = { ...MANIFEST[id].fields };
-    const secrets = [...TEMPLATES[id].secretFields ?? [], ...TEMPLATES[id].optionalSecretFields ?? []];
+    const secrets = [...TEMPLATES[id].secretFields ?? []];
     for (const { patch, path } of parts) {
       for (const [key, value] of Object.entries(patch.fields ?? {})) {
         if (Object.hasOwn(fields, key) && fields[key].kind !== value.kind) fail([...path, "fields", key], "field kind differs");
@@ -198,7 +199,7 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
           }
           for (const key of ["subject", "heading", "previewText"] as const) if (effective[key] === undefined && manifest.secretFields.some(field => HEADER_FIELDS[id][key].includes(field))) fail([...at, key], "secret header dependency requires override");
           const policy = { ...config.logging.defaults, ...config.logging.brands[brandId]?.defaults, ...config.logging.brands[brandId]?.templates?.[id] };
-          if (policy.resend === "replay" && [...TEMPLATES[id].secretFields ?? [], ...effective.secretFields?.filter(key => !TEMPLATES[id].optionalSecretFields?.includes(key)) ?? []].length) fail(at, "template requires source or off");
+          if (policy.resend === "replay" && effective.secretFields?.length) fail(at, "template requires source or off");
           if ((policy.level === "masked" || policy.level === "full") && selected.some(layer => Object.keys(layer.patch).some(key => !["fields", "secretFields", "locales"].includes(key))) && config.logging.patterns.some(pattern => "regex" in pattern)) fail(["logging", "patterns"], "active presentation requires literal patterns");
           if (available) { if (++count > 1024) fail(["mailTemplates"], "combination limit"); routes[locale] = [fragment(manifest), ...selected.map(layer => fragment(layer.patch))]; }
         }

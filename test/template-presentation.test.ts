@@ -113,3 +113,8 @@ it('keeps the chosen form and language in a masked projection', async () => {
   if (!archive || archive.level === 'meta') throw Error('missing content');
   expect(archive.html).toContain('<title>Question EN</title>'); expect(archive.html).toContain('lang="en"'); expect(archive.html).not.toContain('Other EN');
 });
+
+it('applies exact and folded labels to configured field tables', () => {
+  const result = render(configured({ contact: { labels: { name: 'Name', NAME: 'Exact name', 'Imię i nazwisko': 'Full name' }, body: { blocks: [{ id: 'fields', kind: 'fieldTable', allFields: true }] } } }), 'contact', { NAME: 'Jane', Name: 'John', 'IMIĘ I NAZWISKO': 'Doe' });
+  expect(result.text).toContain('Exact name: Jane'); expect(result.text).toContain('Name: John'); expect(result.text).toContain('Full name: Doe');
+});

@@ -34,6 +34,12 @@ export function humanizeLabel(key: string): string {
     .join(" ");
 }
 
+export function labelFor(labels: Record<string, string> | undefined, key: string, fallback = humanizeLabel(key)): string {
+  if (labels && Object.hasOwn(labels, key)) return labels[key];
+  const lower = key.toLowerCase();
+  return Object.entries(labels ?? {}).find(([name]) => name.toLowerCase() === lower)?.[1] ?? fallback;
+}
+
 const FONT_STACK =
   "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 

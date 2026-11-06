@@ -23,7 +23,7 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
   const localeInput = brand.mailTemplates?.languages ? normalizeLocale(options.locale) : null;
   const { definition, locale } = options.selected ?? resolvePresentation(options.plans, brand, template.id, formKind, localeInput);
   const data = options.confirmation ? Object.fromEntries(Object.entries(original).map(([key, value]) =>
-    [key, Array.from(value.trim()).slice(0, key === 'name' ? 100 : 200).join('')])) : original;
+    [key, Array.from(value.trim()).slice(0, key === 'name' ? 100 : 200).join('')])) : { ...original };
   template = effectiveTemplate(template, definition.secretFields);
   const budget = options.budget ?? new WorkBudget();
   const candidates = secretCandidates(template, data, budget);

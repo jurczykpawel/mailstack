@@ -1,3 +1,5 @@
+import { freezePlans } from "./templates/config.ts";
+import { prepareRecord } from "./core/logging/writer.ts";
 import { selectKind } from "./templates/prepare.ts";
 import { resolvePresentation } from "./templates/locale.ts";
 import { Recipe } from "./templates/recipe.ts";
@@ -439,6 +441,7 @@ function resolveReplyTo(
 }
 
 export interface RenderAndSendParams extends DeliveryContext {
+  prepared?: PreparedDelivery;
   locale?: unknown;
   confirmation?: boolean;
   attachments?: Attachment[];
@@ -472,17 +475,17 @@ export async function renderAndSend(
     ...params, localeInput, explicitSubject: params.subject,
     legacySubject: legacyData => {
       if (params.subject) return params.subject;
-      const { definition } = resolvePresentation(plans, brand, template.id, selectKind(brand, template.id, legacyData), params.locale);
+      const { definition } = resolvePresentation(plans, brand, template.id, selectKind(brand, template.id, legacyData), null);
       if (definition.subject === undefined) return template.subject(brand, legacyData, new Recipe(definition, brand, legacyData, plans));
       const content = expandText(definition.subject, brand, legacyData, plans); new Output(512 * 1024, false).raw(content); return content.join('');
     },
-  }, () => prepareSend(deps, brand, template, data, params));
+  }, policy => params.prepared ?? prepareSend(deps, brand, template, data, params, policy));
 }
 
-export function prepareSend(deps: SendDeps, brand: Brand, template: TemplateDef, data: TemplateData, params: RenderAndSendParams): PreparedDelivery {
+export function prepareSend(deps: SendDeps, brand: Brand, template: TemplateDef, data: TemplateData, params: RenderAndSendParams, policy: import("./core/config/schema.ts").Policy): PreparedDelivery {
   const plans = deps.templates ?? compiledTemplates;
   const prepared = prepareEmail(brand, template, data, { ...params, plans });
-  return {
+  const delivery: PreparedDelivery = {
     params: { from: brand.from, attachments: params.attachments, to: params.to, replyTo: params.replyTo, subject: prepared.subject, html: prepared.html, text: prepared.text },
     template: prepared.template, data: prepared.data,
     record: { budget: prepared.budget,
@@ -490,4 +493,10 @@ export function prepareSend(deps: SendDeps, brand: Brand, template: TemplateDef,
       render: projected => prepareEmail(brand, template, projected, { ...params, plans, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget }),
     },
   };
+  delivery.prepared = prepareRecord({ ...delivery.record, clientId: params.clientId ?? 'public', brand, template: delivery.template, data: delivery.data,
+    recipients: params.to.map(address => ({ role: 'to', address })), subject: prepared.subject, explicitSubject: params.subject,
+    localeInput: prepared.localeInput, replyTo: params.replyTo, markup: params.explicitJsonLd }, policy, (deps.logging ?? config.logging).patterns);
+  delivery.params.to = freezePlans([...delivery.params.to]);
+  Object.freeze(delivery.params); freezePlans(delivery.prepared);
+  return Object.freeze(delivery);
 }
