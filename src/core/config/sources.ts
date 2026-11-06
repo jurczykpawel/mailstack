@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { tokenize } from '../../templates/tokens.ts';
 
 export const SOURCE_LIMITS = { bodyBytes: 64 * 1024, depth: 20, fields: 40, valueChars: 5000 } as const;
 const safeKey = z.string().min(1).max(128).refine(value => !['__proto__', 'constructor', 'prototype'].includes(value));
@@ -10,8 +11,7 @@ const first = z.strictObject({ first: z.array(path).min(1).max(SOURCE_LIMITS.fie
 const join = z.strictObject({ join: z.array(path).min(1).max(SOURCE_LIMITS.fields) });
 const selection = z.union([path, first, join]);
 const format = z.string().max(SOURCE_LIMITS.valueChars).refine(value => {
-  const placeholders = [...value.matchAll(/\{([^{}]+)\}/g)];
-  return !/[{}]/.test(value.replace(/\{[^{}]+\}/g, "")) && placeholders.every(match => path.safeParse(match[1]).success);
+  return tokenize(value).every(token => typeof token === 'string' ? !/[{}]/.test(token) : path.safeParse(token.field).success);
 });
 const field = z.union([
   first, z.strictObject({ format }),

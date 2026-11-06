@@ -1,6 +1,6 @@
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
 import { selfwareContact, selfwareContactSubject } from "./selfware.ts";
-import { escapeHtml, humanizeLabel, summaryTable } from "../layout.ts";
+import { humanizeLabel, summaryTable, messageBlock, metadataBlock } from "../layout.ts";
 
 /**
  * Meta keys injected by the handler (request-time context, not user content).
@@ -46,22 +46,12 @@ export const contactTemplate: TemplateDef = {
     const table = summaryTable(rows);
 
     const message = (data.message || "").trim();
-    const messageHtml = message
-      ? `
-                <p style="margin:18px 0 6px 0;font-size:13px;color:#666;font-weight:600;">${escapeHtml(
-                  humanizeLabel("message"),
-                )}</p>
-                <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
-                  message,
-                )}</div>`
-      : "";
-
-    const metaHtml = `
-                <p style="margin:18px 0 0 0;font-size:11px;color:#b0b0b0;line-height:1.6;">
-                  Otrzymano: ${escapeHtml(metaValue(data, META_KEYS.receivedAt))}<br>
-                  Źródło: ${escapeHtml(metaValue(data, META_KEYS.origin))}<br>
-                  IP: ${escapeHtml(metaValue(data, META_KEYS.ip))}
-                </p>`;
+    const messageHtml = message ? messageBlock(message, humanizeLabel("message")) : "";
+    const metaHtml = metadataBlock([
+      { label: "Otrzymano", value: metaValue(data, META_KEYS.receivedAt) },
+      { label: "Źródło", value: metaValue(data, META_KEYS.origin) },
+      { label: "IP", value: metaValue(data, META_KEYS.ip) },
+    ]);
 
     const bodyHtml = `${table}${messageHtml}${metaHtml}`;
 

@@ -368,3 +368,52 @@ it.each(['true', '1', 'null:', 'object:value', 'boolean:1'])('requires typed sca
   expect(() => sourceSchema.parse({ ...source(), events: { created: { ...source().events.created,
     fields: { value: { path: 'data.value', as: 'map', map: { [key]: 'mapped' } } } } } })).toThrow();
 });
+it("bounds each mapped field before reading the next field", async () => {
+  const { mapSourceFields } = await import('../src/source-fields.ts');
+  const next=vi.fn(()=>"next");
+  const body={data:{x:"a".repeat(5000),get next(){return next()}}};
+  expect(()=>mapSourceFields(body,{heading:{format:"{data.x}".repeat(500)},paragraphs:"data.next"})).toThrow("heading");
+  expect(next).not.toHaveBeenCalled();
+});
+it.each([-1,0,1])('bounds direct, format, join and expanded upper values %+i', offset=>{
+  const value="a".repeat(5000+offset);
+  for(const field of ['value',{format:'{value}'},{join:['value']}] as const){
+    const call=()=>sourceField({value},field as any);
+    if(offset>0)expect(call).toThrow();else expect(call()).toBe(value);
+  }
+  const call=()=>sourceField({value:"ß".repeat(2500)+(offset>0?"ß":"")},{path:'value',as:'upper'});
+  if(offset>0)expect(call).toThrow();else expect(call()).toHaveLength(5000);
+});
+it('refuses a mapped expansion before delivery or recording with languages on and off', async()=>{
+  for(const languages of [false,true]){
+    const action=source();action.events.created.fields.paragraphs={format:'{issue.title}'.repeat(380)} as any;
+    configure({sources:{github:action},...(languages?{mailTemplates:{version:1},brands:{acme:{...original.brands.acme,mailTemplates:{languages:{default:'pl',allowed:['pl','en']}}}}}:{})});
+    const store=createSqliteStore(':memory:');await store.migrate();
+    try{
+      const data=payload();data.issue.title="x".repeat(5000);
+      const {response,sendEmail}=await run(data,{},'github',{store});
+      expect(response.status).toBe(422);expect(await response.json()).toMatchObject({code:'invalid_event_data',fields:['paragraphs']});expect(sendEmail).not.toHaveBeenCalled();
+      expect((await store.db.selectFrom('messages').selectAll().execute())).toHaveLength(0);
+      expect((await store.db.selectFrom('guards').selectAll().execute())).toHaveLength(0);
+    }finally{await store.db.destroy()}
+  }
+});
+it('shares the input-work limit across fields and selections', async () => {
+  const { WorkBudget } = await import('../src/templates/output.ts');
+  const { mapSourceFields } = await import('../src/source-fields.ts');
+  for (const offset of [-1, 0, 1]) {
+    const budget = new WorkBudget(5000 + offset);
+    const call = () => sourceField({ value: 'é'.repeat(5000) }, 'value', budget);
+    if (offset < 0) expect(call).toThrow(); else expect(call()).toHaveLength(5000);
+  }
+  const next = vi.fn(() => 'next');
+  const body = { x: ' '.repeat(5000), get next() { return next(); } };
+  expect(() => mapSourceFields(body, { first: { first: Array(40).fill('x') }, second: { first: Array(40).fill('x') },
+    third: { first: Array(40).fill('x') }, fourth: 'next' })).toThrow('third');
+  expect(next).not.toHaveBeenCalled();
+  for (const locale of ['pl', 'en']) {
+    const fields = { paragraphs: { join: Array(40).fill('x') }, next: 'next' };
+    expect(() => mapSourceFields({ x: locale.repeat(5000), get next() { return next(); } }, fields)).toThrow('paragraphs');
+  }
+  expect(next).not.toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import { measureJson } from '../../templates/output.ts';
 import { Aes256Gcm, CipherSuite, HkdfSha256 } from '@hpke/core';
 import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
 
@@ -46,6 +47,7 @@ export async function seal(data: unknown, context: SealContext, keys: readonly C
     const { info, aad } = binding(context);
     const key = keys[0];
     if (key.d !== undefined || key.kty !== 'OKP' || key.crv !== 'X25519') throw invalid();
+    measureJson(data, maxBytes);
     const recipientPublicKey = await suite.kem.importKey('jwk', key);
     const json = new Blob([canonicalJson(data)]);
     if (json.size > maxBytes) throw new Error();
