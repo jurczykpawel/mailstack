@@ -1,0 +1,34 @@
+{
+  "event": "license.issued",
+  "timestamp": "2026-11-06T11:23:18.376Z",
+  "data": {
+    "license": {
+      "id": "5d627333-86e6-49e3-abd4-27dc3a7109a0",
+      "order": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com",
+      "tier": null,
+      "domain": null,
+      "issuanceSource": "purchase",
+      "issuedAt": "2026-11-06T11:23:18.363135+00:00",
+      "expiresAt": null,
+      "revokedAt": null,
+      "orderId": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+      "orderNumber": 2393,
+      "revocationReason": null
+    },
+    "revocationReason": null,
+    "product": {
+      "id": "1e4660eb-3672-487b-b34b-7956621e9029",
+      "name": "Language workshop",
+      "slug": "language-1e4660eb-3672-487b-b34b-7956621e9029"
+    },
+    "crlUrl": "https://shop.example/api/licenses/revoked?seller=79986440-8446-42f6-bf5d-4ba2931083e0",
+    "customer": {
+      "locale": "en",
+      "userId": "79986440-8446-42f6-bf5d-4ba2931083e0",
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com"
+    },
+    "licenseKey": "[REDACTED]"
+  },
+  "id": "be17cacb-35dd-45f6-8103-42718d28fe4a"
+}

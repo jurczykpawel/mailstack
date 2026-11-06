@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "templates": {
+    "contact": {
+      "locales": {
+        "en": {
+          "labels": {
+            "name": "Name",
+            "imię i nazwisko": "Name",
+            "email": "Email",
+            "phone": "Phone",
+            "type": "Topic",
+            "topic": "Topic",
+            "person": "Contact person",
+            "gdpr": "Consent",
+            "message": "Message"
+          },
+          "copy": {
+            "messageLabel": "Message",
+            "receivedAtLabel": "Received",
+            "originLabel": "Origin",
+            "ipLabel": "IP"
+          }
+        }
+      }
+    },
+    "received": {
+      "locales": {
+        "en": {
+          "subject": "We received your message",
+          "heading": "We received your message",
+          "copy": {
+            "greetingWithName": "Hello {name},",
+            "greetingWithoutName": "Hello,",
+            "intro": "Thank you for getting in touch. We will reply to the email address you provided.",
+            "refLabel": "Reference number"
+          }
+        }
+      }
+    },
+    "welcome": {
+      "locales": {
+        "en": {
+          "subject": "Welcome to {brand.name}",
+          "copy": {
+            "headingWithName": "Welcome, {name}, to {brand.name}!",
+            "headingWithoutName": "Welcome to {brand.name}!"
+          },
+          "ctaLabels": {
+            "main": "Get started"
+          }
+        }
+      }
+    },
+    "payment": {
+      "locales": {
+        "en": {
+          "copy": {
+            "greetingWithName": "Hello {name},",
+            "greetingWithoutName": "Hello,",
+            "branchHeading": "Payment confirmation",
+            "transferHeading": "Payment received",
+            "intro": "Thank you for your payment. Here is your summary:",
+            "transferIntro": "We have received your bank transfer. Thank you for your payment. Here is your summary:"
+          },
+          "labels": {
+            "amount": "Amount",
+            "item": "Item",
+            "orderId": "Order number",
+            "date": "Date"
+          },
+          "ctaLabels": {
+            "invoice": "Download invoice",
+            "orderMarkup": "View order"
+          }
+        }
+      }
+    },
+    "license": {
+      "locales": {
+        "en": {
+          "copy": {
+            "greetingWithName": "Hello {name},",
+            "greetingWithoutName": "Hello,",
+            "branchHeading": "Your license key",
+            "intro": "Your license is ready. You can find its details below:",
+            "keyLabel": "License key",
+            "preview": "License: {productName}"
+          },
+          "labels": {
+            "productName": "Product",
+            "tier": "Plan",
+            "domain": "Domain"
+          },
+          "ctaLabels": {
+            "activation": "Activate license"
+          }
+        }
+      }
+    },
+    "notice": {
+      "locales": {
+        "en": {
+          "copy": {
+            "fallbackHeading": "{brand.name}",
+            "fallbackSubject": "{brand.name}"
+          },
+          "ctaLabels": {
+            "main": "Learn more"
+          }
+        }
+      }
+    },
+    "refund": {
+      "locales": {
+        "en": {
+          "copy": {
+            "branchHeading": "Refund confirmation",
+            "amount": "We have refunded {amount} {currency} for: {productName}.",
+            "transaction": "Transaction number: {transactionId}.",
+            "payment": "Payment ID: {paymentId}.",
+            "refund": "Refund ID: {refundId}.",
+            "status": "Refund status: completed (succeeded).",
+            "scopeFull": "Refund scope: full.",
+            "scopePartial": "Refund scope: partial.",
+            "total": "Total refunded: {totalRefunded} {currency}.",
+            "date": "Refund date: {refundedAt}.",
+            "reason": "Reason: {reason}."
+          }
+        }
+      }
+    },
+    "bank-transfer": {
+      "locales": {
+        "en": {
+          "copy": {
+            "branchHeading": "Bank transfer details",
+            "intro": "Thank you for your order. To pay, transfer the amount to the account below:",
+            "reminderHeading": "Payment reminder",
+            "reminderIntro": "We are waiting for payment for your order. Please make the bank transfer by the deadline below:"
+          },
+          "labels": {
+            "orderId": "Order number",
+            "holder": "Account holder",
+            "account": "Account number",
+            "bank": "Bank",
+            "title": "Transfer reference",
+            "amount": "Amount",
+            "deadline": "Payment deadline"
+          },
+          "ctaLabels": {
+            "order": "View order"
+          }
+        }
+      }
+    }
+  }
+}

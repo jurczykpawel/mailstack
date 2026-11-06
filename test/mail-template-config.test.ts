@@ -198,7 +198,9 @@ it("validates a complete presentation with dictionaries, fragments and a replace
 it.each([-1, 0, 1])("enforces source UTF-8 byte boundaries %+i", offset => {
   const locales = Object.fromEntries(Array.from({ length: 53 }, (_, i) => [`${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + i % 26)}`, { heading: "x".repeat(i === 52 ? 1 : 5000) }]));
   const value = input({ templates: { payment: { locales } } });
-  const sections = [value.mailTemplates, value.brands.acme.mailTemplates];
+  locales.aa.heading = "x".repeat(4000);
+  const sections: unknown[] = [value.mailTemplates, value.brands.acme.mailTemplates];
+  for (const action of Object.values(example.sources.sellf.events)) if ("fieldsByLocale" in action) sections.push(action.fieldsByLocale);
   const size = new TextEncoder().encode(JSON.stringify(sections)).length;
   locales.ca.heading = "x".repeat(1 + 256 * 1024 - size + offset);
   expect(configSchema.safeParse(value).success).toBe(offset <= 0);

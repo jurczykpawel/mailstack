@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readConfigFile } from "../src/core/config/node.ts";
+import { templatePlans } from "../src/templates/config.ts";
 import { parseConfig } from "../src/core/config/schema.ts";
 
 try {
@@ -17,7 +18,8 @@ try {
     if (action === "check") {
       let value: unknown;
       try { value = JSON.parse(readConfigFile(file)); } catch { throw new Error("$: invalid JSON or unreadable file"); }
-      parseConfig(value);
+      const config = parseConfig(value);
+      for (const warning of templatePlans(config).warnings) console.warn(warning);
       console.log("Configuration OK");
     } else {
       const result = spawnSync(process.execPath, ["--input-type=module", "-e", `

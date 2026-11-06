@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { read, scalar as text, sourceField, mapSourceFields } from './source-fields.ts';
 import { WorkBudget } from './templates/output.ts';
 export { sourceField } from './source-fields.ts';
-import { config, getBrand } from './core/config';
+import { normalizeLocale, resolvePresentation } from './templates/locale.ts';
+import { selectKind } from './templates/prepare.ts';
+import { own } from './templates/config.ts';
+import { config, compiledTemplates, getBrand } from './core/config';
 import { SOURCE_LIMITS, requiredSourceFields } from './core/config/sources';
 import type { Source } from './core/config/sources';
 import { boundedBytes } from './core/http';
@@ -71,8 +74,16 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   const template = getTemplate(action.template);
   if (!template) return invalid(['template']);
   const budget = new WorkBudget(1024 * 1024);
-  let mapped: TemplateData, ref = '', identity = '';
-  try { mapped = mapSourceFields(body, action.fields, budget); }
+  let mapped: TemplateData, base: TemplateData, ref = '', identity = '';
+  const locale = brand.mailTemplates?.languages && source.locale ? normalizeLocale(read(body, source.locale)) : null;
+  try {
+    base = mapSourceFields(body, action.fields, budget); mapped = base;
+    if (brand.mailTemplates?.languages) {
+      const selected = resolvePresentation(deps.templates ?? compiledTemplates, brand, template.id, selectKind(brand, template.id, base), locale).locale;
+      const overlay = selected ? own(action.fieldsByLocale, selected) : undefined;
+      if (overlay) mapped = { ...base, ...mapSourceFields(body, overlay, budget) };
+    }
+  }
   catch (error) { if (!(error instanceof RangeError)) throw error; return invalid([error.message]); }
   for (const [key, selection, limit] of [['ref', action.ref, 128], ['idempotencyKey', action.idempotencyKey, SOURCE_LIMITS.valueChars]] as const) {
     if (!selection) continue;
@@ -88,7 +99,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (template.id === 'license' && urls && Object.hasOwn(urls, mapped.productId)) mapped.activationUrl = urls[mapped.productId];
   const idempotencyKey = `source:${id}:${event}:${JSON.stringify([brandId, identity || (await tokenSha256(raw)).slice(0, 32)])}`;
   const result = await renderAndSend(deps, env, brand, template, mapped, {
-    to: [to], replyTo: brand.to[0], clientId: client.id, ref: ref || undefined, idempotencyKey,
+    to: [to], replyTo: brand.to[0], clientId: client.id, ref: ref || undefined, idempotencyKey, locale, legacyData: () => base,
   });
   if (!result.ok && ['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(result.code ?? ''))
     return invalid([result.code === 'invalid_subject' ? 'subject' : result.code === 'template_empty_heading' ? 'heading' : result.code!]);

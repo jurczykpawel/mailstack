@@ -1,0 +1,29 @@
+{
+  "event": "order.participants_needed",
+  "timestamp": "2026-11-06T11:23:18.331Z",
+  "data": {
+    "amountUnit": "minor",
+    "customer": {
+      "locale": "en",
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com"
+    },
+    "product": {
+      "id": "1e4660eb-3672-487b-b34b-7956621e9029",
+      "name": "Language workshop",
+      "slug": "language-1e4660eb-3672-487b-b34b-7956621e9029"
+    },
+    "order": {
+      "orderId": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+      "orderNumber": 2393,
+      "amount": 2000,
+      "currency": "PLN",
+      "status": "completed"
+    },
+    "orderDetails": null,
+    "reminder": {
+      "stage": 1,
+      "participantsUrl": "[REDACTED]"
+    }
+  },
+  "id": "0ebbae6a-ed3e-458a-94c3-bb7bc2f5643c"
+}

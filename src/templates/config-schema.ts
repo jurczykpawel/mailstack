@@ -14,7 +14,7 @@ const language = z.string().transform((v, ctx) => {
   return tag;
 });
 const map = <T extends z.ZodType>(key: z.ZodString, value: T) => z.record(key, value);
-const locales = <T extends z.ZodType>(value: T) => map(z.string(), value).transform((v, ctx) => {
+export const locales = <T extends z.ZodType>(value: T) => map(z.string(), value).transform((v, ctx) => {
   const result: Record<string, z.output<T>> = {};
   for (const [key, patch] of Object.entries(v)) {
     const tag = normalizeLocale(key);

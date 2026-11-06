@@ -131,6 +131,16 @@
           "data.payment.sessionId",
           "data.payment.paymentIntentId"
         ]
+      },
+      "fieldsByLocale": {
+        "en": {
+          "heading": {
+            "format": "You are on the waiting list"
+          },
+          "paragraphs": {
+            "format": "Thank you for signing up for: {data.product.name}.\n\nWe will let you know when the product is available."
+          }
+        }
       }
     },
     "lead.captured": {
@@ -160,6 +170,13 @@
           "data.payment.sessionId",
           "data.payment.paymentIntentId"
         ]
+      },
+      "fieldsByLocale": {
+        "en": {
+          "intro": {
+            "format": "Your access to {data.product.name} is ready."
+          }
+        }
       }
     },
     "access.expired": {
@@ -189,6 +206,16 @@
           "data.payment.sessionId",
           "data.payment.paymentIntentId"
         ]
+      },
+      "fieldsByLocale": {
+        "en": {
+          "heading": {
+            "format": "Access expired"
+          },
+          "paragraphs": {
+            "format": "Your access to {data.product.name} has expired.\n\nTo renew it, reply to this email."
+          }
+        }
       }
     },
     "subscription.created": {
@@ -292,7 +319,20 @@
         "cancelReason"
       ],
       "ref": "data.order.orderId",
-      "idempotencyKey": "data.order.orderId"
+      "idempotencyKey": "data.order.orderId",
+      "fieldsByLocale": {
+        "en": {
+          "heading": {
+            "format": "Order cancelled"
+          },
+          "paragraphs": {
+            "format": "Order {data.order.orderNumber} has been cancelled.\n\nReason: {data.order.cancelReason}.\n\n{data.order.cancelReasonText}"
+          },
+          "ctaLabel": {
+            "format": "View order"
+          }
+        }
+      }
     },
     "order.participants_needed": {
       "action": "send",
@@ -328,6 +368,24 @@
           "data.order.orderId",
           "data.reminder.stage"
         ]
+      },
+      "fieldsByLocale": {
+        "en": {
+          "heading": {
+            "format": "Add participants: {data.product.name}"
+          },
+          "paragraphs": {
+            "path": "data.reminder.stage",
+            "as": "map",
+            "map": {
+              "number:1": "The participant list is still empty after 24 hours.",
+              "number:2": "The event takes place in 2 days. The participant list is still empty."
+            }
+          },
+          "ctaLabel": {
+            "format": "Add participants"
+          }
+        }
       }
     },
     "access.granted": {
@@ -355,7 +413,17 @@
         "productName"
       ],
       "ref": "data.access.id",
-      "idempotencyKey": "data.access.id"
+      "idempotencyKey": "data.access.id",
+      "fieldsByLocale": {
+        "en": {
+          "intro": {
+            "format": "Your access to {data.product.name} is ready."
+          },
+          "body": {
+            "format": "Sign in to your store account to open the product."
+          }
+        }
+      }
     },
     "license.issued": {
       "action": "send",
@@ -388,5 +456,6 @@
       },
       "idempotencyKey": "data.license.id"
     }
-  }
+  },
+  "locale": "data.customer.locale"
 }

@@ -1,3 +1,4 @@
+import { SOURCE_COPY_FIELDS } from '../core/config/sources.ts';
 import { tokenize, type Token } from "./tokens.ts";
 import type { Config } from "../core/config/schema.ts";
 import { TEMPLATES } from "./index.ts";
@@ -107,7 +108,9 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
     }
     return index;
   };
-  const section = [global, ...Object.values(config.brands).map(brand => brand.mailTemplates)];
+  const section: unknown[] = [global, ...Object.values(config.brands).map(brand => brand.mailTemplates)];
+  for (const source of Object.values(config.sources ?? {})) for (const action of Object.values(source.events))
+    if (action.action === 'send' && action.fieldsByLocale) section.push(action.fieldsByLocale);
   if (bytes(section) > 256 * 1024) fail(["mailTemplates"], "configuration byte limit");
   const configured = Object.values(config.brands).filter(brand => global || brand.mailTemplates);
   if (configured.length > 64) fail(["mailTemplates"], "brand limit");
@@ -205,6 +208,14 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
         }
       }
     }
+  }
+  for (const [id, source] of Object.entries(config.sources ?? {})) for (const [event, action] of Object.entries(source.events)) {
+    if (action.action !== 'send' || !Object.keys(action.fields).some(key => SOURCE_COPY_FIELDS[action.template]?.includes(key))) continue;
+    const reachable = new Set(Object.values(plans.routes).flatMap(brand => Object.values(brand[action.template] ?? {}).flatMap(routes => Object.keys(routes))));
+    for (const locale of Object.keys(action.fieldsByLocale ?? {})) if (!reachable.has(locale))
+      plans.warnings.push(`$.sources.${id}.events.${event}.fieldsByLocale.${locale}: no available template locale`);
+    for (const locale of reachable) if (locale && !own(action.fieldsByLocale, locale))
+      plans.warnings.push(`$.sources.${id}.events.${event}.fields: base copy used for ${locale}`);
   }
   if (bytes(plans) > 8 * 1024 * 1024) fail(["mailTemplates"], "plan byte limit");
   cache.set(config, freezePlans(plans));

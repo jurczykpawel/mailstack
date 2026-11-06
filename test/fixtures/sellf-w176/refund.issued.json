@@ -1,0 +1,42 @@
+{
+  "id": "c5c6599c-52ac-4944-b0e2-7339d381eef3",
+  "data": {
+    "refund": {
+      "amount": 1100,
+      "reason": null,
+      "source": "admin",
+      "status": "succeeded",
+      "currency": "PLN",
+      "refundedAt": "2026-11-06T11:23:18.380Z",
+      "isFullRefund": false,
+      "statusVersion": 1,
+      "totalRefunded": 1100,
+      "stripeRefundId": "re_recorded1_7c2df4a62c0149feb49cd2eab3688506"
+    },
+    "payment": {
+      "id": "7c2df4a6-2c01-49fe-b49c-d2eab3688506",
+      "amount": 2000,
+      "currency": "PLN",
+      "sessionId": null,
+      "orderNumber": 2393,
+      "statusAfter": "refunded",
+      "statusBefore": "completed",
+      "paymentIntentId": null
+    },
+    "product": {
+      "id": "1e4660eb-3672-487b-b34b-7956621e9029",
+      "icon": null,
+      "name": "Language workshop",
+      "slug": "language-1e4660eb-3672-487b-b34b-7956621e9029",
+      "price": 20,
+      "currency": "PLN"
+    },
+    "customer": {
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com",
+      "locale": "en",
+      "userId": "79986440-8446-42f6-bf5d-4ba2931083e0"
+    }
+  },
+  "event": "refund.issued",
+  "timestamp": "2026-11-06T11:23:18.389Z"
+}
