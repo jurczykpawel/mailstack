@@ -95,7 +95,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`log writer: ${driver}`
     for (const [role, address] of [['recipient', 'jane@example.com'], ['reply_to', input.replyTo], ['submitter', input.data.email]]) {
       expect(subjects).toContainEqual({ message_id: result.id, role, idx_kid: 'i1', addr_idx: (await blindIndex(address, oldKey)).index });
     }
-    expect(await verifyMac({ brand: 'acme', template: 'contact', recipients: input.recipients, data: input.data, subject: input.subject, replyTo: input.replyTo, ref: input.ref, markup: null }, JSON.parse(message.request_mac!), [oldKey])).toBe(true);
+    expect(await verifyMac({ identityVersion: 2, localeInput: null, brand: 'acme', template: 'contact', recipients: input.recipients, data: input.data, subject: null, replyTo: input.replyTo, ref: input.ref, markup: null }, JSON.parse(message.request_mac!), [oldKey])).toBe(true);
     expect(message.idem_key_hash).toBe(encode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(['acme-app', 'request-1'])))));
     expect(await store.findByIdempotency('acme-app', message.idem_key_hash!)).toEqual(message);
     expect(await store.findByIdempotency('other', message.idem_key_hash!)).toBeUndefined();
@@ -130,7 +130,7 @@ for (const driver of ['sqlite', 'd1'] as const) describe(`log writer: ${driver}`
     expect(JSON.stringify(projection).includes(input.data.message)).toBe(level === 'full');
     const replay = await store.db.selectFrom('replays').selectAll().where('message_id', '=', result.id!).executeTakeFirstOrThrow();
     const payload = await open(replay.sealed, { ...context, purpose: 'replay' }, [privateKey]);
-    expect(payload).toEqual({ to: ['jane@example.com'], replyTo: input.replyTo, subjectOverride: input.subject, template: 'contact', data: input.data });
+    expect(payload).toEqual({ to: ['jane@example.com'], replyTo: input.replyTo, template: 'contact', data: input.data });
     expect(await verifyMac(payload, JSON.parse(message.replay_mac!), [oldKey])).toBe(true);
     expect(replay.expires_at).toBe(content.expires_at);
   });

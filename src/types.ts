@@ -181,6 +181,7 @@ export interface SendParams {
 
 /** Injectable side effects, so the handler stays pure and testable. */
 export interface SendDeps {
+  templates?: import("./templates/config.ts").TemplatePlans;
   /** Scoped keys from an extension (Mailstack Pro); without it only the full key authenticates. */
   keys?: import("./clients").KeyProvider;
   resendSource?: (env: Env, clientId: string, messageId: string, key: string, payload: import('./core/resend-contract').ResendPayload,

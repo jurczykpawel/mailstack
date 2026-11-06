@@ -1,3 +1,8 @@
+import { selectKind } from "./templates/prepare.ts";
+import { resolvePresentation } from "./templates/locale.ts";
+import { Recipe } from "./templates/recipe.ts";
+import { expandText } from "./templates/blocks.ts";
+import { Output } from "./templates/output.ts";
 import { prepareEmail } from "./templates/prepare.ts";
 import { normalizeLocale } from "./templates/locale.ts";
 import { validateAttachments } from "./attachments";
@@ -13,7 +18,7 @@ import type {
   TemplateDef,
 } from "./types";
 import { deliver, deliveryResponse } from "./core/logging/delivery";
-import type { DeliveryContext } from "./core/logging/delivery";
+import type { DeliveryContext, PreparedDelivery } from "./core/logging/delivery";
 import { config, compiledTemplates, findBrandByOrigin, getBrand } from "./core/config";
 import { authenticate, licenseRequired, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
@@ -329,6 +334,7 @@ export async function handleSend(
     replyTo,
     subject: subjectOverride,
     locale: body.locale,
+    legacyData: () => extractData(body, false),
     explicitJsonLd,
     clientId: client?.id ?? "public",
     ref: trusted ? body.ref as string | undefined : undefined,
@@ -460,25 +466,28 @@ export async function renderAndSend(
   data: TemplateData,
   params: RenderAndSendParams,
 ): Promise<SendResult> {
-  let prepared;
-  try { prepared = prepareEmail(brand, template, data, { ...params, plans: compiledTemplates }); }
-  catch (error) {
-    const code = error instanceof Error ? error.message : '';
-    if (!['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(code)) throw error;
-    return { ok: false, status: code === 'invalid_subject' ? 400 : 422, code, message: code.replaceAll('_', ' ') };
-  }
-  const { subject, html, text } = prepared;
-  return deliver(deps, env, brand, prepared.template, prepared.data, {
-    from: brand.from,
-    ...(params.attachments ? { attachments: params.attachments } : {}),
-    to: params.to,
-    replyTo: params.replyTo,
-    subject,
-    html,
-    text,
-  }, { ...params, record: {
-    budget: prepared.budget,
-    renderMetadata: { ...(prepared.formKind ? { formKind: prepared.formKind } : {}), ...(prepared.locale ? { locale: prepared.locale } : {}) },
-    render: projected => prepareEmail(brand, template, projected, { ...params, plans: compiledTemplates, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget }),
-  } });
+  const plans = deps.templates ?? compiledTemplates;
+  const localeInput = brand.mailTemplates?.languages ? normalizeLocale(params.locale) : null;
+  return deliver(deps, env, brand, template, data, { from: brand.from, attachments: params.attachments, to: params.to, replyTo: params.replyTo }, {
+    ...params, localeInput, explicitSubject: params.subject,
+    legacySubject: legacyData => {
+      if (params.subject) return params.subject;
+      const { definition } = resolvePresentation(plans, brand, template.id, selectKind(brand, template.id, legacyData), params.locale);
+      if (definition.subject === undefined) return template.subject(brand, legacyData, new Recipe(definition, brand, legacyData, plans));
+      const content = expandText(definition.subject, brand, legacyData, plans); new Output(512 * 1024, false).raw(content); return content.join('');
+    },
+  }, () => prepareSend(deps, brand, template, data, params));
+}
+
+export function prepareSend(deps: SendDeps, brand: Brand, template: TemplateDef, data: TemplateData, params: RenderAndSendParams): PreparedDelivery {
+  const plans = deps.templates ?? compiledTemplates;
+  const prepared = prepareEmail(brand, template, data, { ...params, plans });
+  return {
+    params: { from: brand.from, attachments: params.attachments, to: params.to, replyTo: params.replyTo, subject: prepared.subject, html: prepared.html, text: prepared.text },
+    template: prepared.template, data: prepared.data,
+    record: { budget: prepared.budget,
+      renderMetadata: { ...(prepared.formKind ? { formKind: prepared.formKind } : {}), ...(prepared.locale ? { locale: prepared.locale } : {}) },
+      render: projected => prepareEmail(brand, template, projected, { ...params, plans, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget }),
+    },
+  };
 }

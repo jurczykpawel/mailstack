@@ -10,7 +10,13 @@ import type { DomainEvent } from '../extensions';
 import { resolvePolicy } from './policy';
 import { idempotencyHash, intentRequest, messageId, prepareRecord, recordIntent } from './writer';
 
+export interface PreparedDelivery {
+  params: SendParams; template: TemplateDef; data: TemplateData;
+  record: Pick<import("./writer").RecordInput, "render" | "renderMetadata" | "budget">;
+}
 export interface DeliveryContext {
+  explicitSubject?: string; localeInput?: string | null;
+  legacyData?: () => TemplateData; legacySubject?: (data: TemplateData) => string;
   record?: Pick<import("./writer").RecordInput, "render" | "renderMetadata" | "budget">;
   clientId?: string;
   resendOf?: string;
@@ -34,47 +40,63 @@ export function deliveryResponse(result: SendResult, trusted: boolean): Record<s
 
 export async function deliver(
   deps: SendDeps, env: Env, brand: Brand, template: TemplateDef, data: TemplateData,
-  params: SendParams, context: DeliveryContext,
+  envelope: Omit<SendParams, "subject" | "html" | "text">, context: DeliveryContext, prepare: () => PreparedDelivery,
 ): Promise<SendResult> {
   const logging = deps.logging ?? config.logging;
   const { policy } = await resolvePolicy(logging, brand.id, template.id, template);
   const clientId = context.clientId ?? 'public';
-  const input = {
-    ...(params.attachments?.length ? { attachments: await attachmentSummary(params.attachments) } : {}),
-    ...context.record, resendOf: context.resendOf, resendRoot: context.resendRoot, clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
-    subject: params.subject, replyTo: params.replyTo, ref: context.ref,
+  const input: import("./writer").RecordInput = {
+    ...(envelope.attachments?.length ? { attachments: await attachmentSummary(envelope.attachments) } : {}),
+    ...context.record, resendOf: context.resendOf, resendRoot: context.resendRoot, clientId, brand, template, data, recipients: envelope.to.map(address => ({ role: 'to' as const, address })),
+    explicitSubject: context.explicitSubject, localeInput: context.localeInput, replyTo: envelope.replyTo, ref: context.ref,
     idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: deps.provider ?? 'ses',
   };
-  let prepared;
-  try { prepared = prepareRecord(input, policy, logging.patterns); }
-  catch (error) { if (error instanceof Error && ['template_output_limit', 'replay_payload_limit'].includes(error.message)) return failure(422, error.message); throw error; }
   const request = intentRequest(input);
   let id: string | undefined;
   let keyHash: string | undefined;
   let guardKey: string | undefined;
+  let retry: MessageRow | undefined;
   const previous = async (): Promise<SendResult | 'retry' | undefined> => {
     if (!keyHash || !deps.store) return;
-    const row: MessageRow | undefined = await deps.store.findByIdempotency(clientId, keyHash);
+    const row: MessageRow | undefined = await deps.store.findByIdempotency(clientId, keyHash!);
     if (!row || row.created_at <= deps.now().getTime() - 86400000) return;
     let matches = false;
-    try { matches = !!row.request_mac && await verifyMac(request, JSON.parse(row.request_mac), parseKeyring(env).indexKeys); } catch {}
+    try {
+      const tag = JSON.parse(row.request_mac!);
+      const legacyData = !Object.hasOwn(tag, 'version') ? context.legacyData?.() ?? data : undefined;
+      const payload = tag.version === 2 ? request : legacyData ? intentRequest({ ...input, data: legacyData, subject: context.legacySubject?.(legacyData) }, true) : undefined;
+      matches = payload !== undefined && await verifyMac(payload, tag, parseKeyring(env).indexKeys);
+    } catch {}
     if (!matches) return { ...failure(409, 'idempotency_conflict'), id: row.id };
     if (row.status === 'send_failed') {
-      await deps.store.clearIdempotency(row.id, keyHash);
+      retry = row;
       return 'retry';
     }
     if (row.status === 'sending') return { ...failure(409, 'in_progress'), id: row.id };
     if (row.status === 'unknown') return { ...failure(409, 'outcome_unknown'), id: row.id };
     return { ok: true, status: 200, id: row.id, idempotent: true };
   };
+  if (context.idempotencyKey !== undefined) {
+    keyHash = await idempotencyHash(clientId, context.idempotencyKey);
+    try { const existing = await previous(); if (existing && existing !== 'retry') return existing; }
+    catch { if (policy.level !== 'none' && policy.requireLog) return failure(503, 'log_unavailable'); }
+  }
+  let params: SendParams, prepared: ReturnType<typeof prepareRecord>;
+  try {
+    const result = prepare(); params = result.params;
+    Object.assign(input, result.record, { template: result.template, data: result.data, subject: params.subject });
+    prepared = prepareRecord(input, policy, logging.patterns);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (!['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(code)) throw error;
+    return failure(code === 'invalid_subject' ? 400 : 422, code);
+  }
   while (true) {
     try {
       if (context.idempotencyKey !== undefined) {
-        keyHash = await idempotencyHash(clientId, context.idempotencyKey);
-        const existing = await previous();
-        if (existing && existing !== 'retry') return existing;
+        if (retry) { await deps.store!.clearIdempotency(retry.id, keyHash!); retry = undefined; }
         if (deps.store) {
-          if (!await deps.store.claimIdempotency(clientId, keyHash, deps.now().getTime(), policy.level !== 'none')) {
+          if (!await deps.store.claimIdempotency(clientId, keyHash!, deps.now().getTime(), policy.level !== 'none')) {
             const pending: SendResult = policy.level === 'none'
               ? { ok: true, status: 200, idempotent: true } : failure(409, 'in_progress');
             let winner;

@@ -22,6 +22,7 @@ export interface RecordDeps {
   store?: MessageStore; logging: Config['logging']; env: KeyEnvironment; now: () => Date;
 }
 export interface RecordInput {
+  explicitSubject?: string; localeInput?: string | null;
   render?: ProjectionInput["render"]; renderMetadata?: ArchiveMetadata["render"]; budget?: WorkBudget;
   prepared?: { archive: ArchiveProjection | null; replay?: unknown };
   attachments?: Awaited<ReturnType<typeof attachmentSummary>>;
@@ -31,13 +32,14 @@ export interface RecordInput {
   provider?: string; providerAccount?: string; resendOf?: string; resendRoot?: string;
 }
 
-export function intentRequest(input: RecordInput): unknown {
+export function intentRequest(input: RecordInput, legacy = false): unknown {
   return {
+    ...(!legacy ? { identityVersion: 2, localeInput: input.localeInput ?? null } : {}),
     ...(input.attachments ? { attachments: input.attachments.identity } : {}),
     brand: input.brand.id, template: input.template.id, recipients: input.recipients,
     data: Object.fromEntries(Object.entries(input.data).filter(([key]) =>
       input.template.id !== 'contact' || !Object.values<string>(META_KEYS).includes(key))),
-    subject: input.subject ?? input.template.subject(input.brand, input.data),
+    subject: legacy ? input.subject ?? input.template.subject(input.brand, input.data) : input.explicitSubject ?? null,
     replyTo: input.replyTo ?? null, ref: input.ref ?? null, markup: input.markup ?? null,
   };
 }
@@ -68,7 +70,8 @@ export function prepareRecord(input: RecordInput, policy: Config['logging']['def
     ...(input.recipients.some(r => r.role === 'cc') ? { cc: input.recipients.filter(r => r.role === 'cc').map(r => r.address) } : {}),
     ...(input.recipients.some(r => r.role === 'bcc') ? { bcc: input.recipients.filter(r => r.role === 'bcc').map(r => r.address) } : {}),
     ...(input.replyTo !== undefined ? { replyTo: input.replyTo } : {}),
-    ...(input.subject !== undefined ? { subjectOverride: input.subject } : {}),
+    ...(input.explicitSubject !== undefined ? { subjectOverride: input.explicitSubject } : {}),
+    ...(input.localeInput ? { locale: input.localeInput } : {}),
     template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
   const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
     budget: input.budget, render: input.render, metadata: { clientId: input.clientId, status: 'sending', createdAt: new Date(0).toISOString(),
@@ -122,7 +125,7 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
         ref_idx: input.ref === undefined ? null : (await refIndex(input.ref, active)).index,
         ref_sealed: input.ref === undefined ? null : await encrypt(input.ref, 'ref'),
         idem_key_hash: idemHash,
-        request_mac: canonicalJson(await createMac(intentRequest(input), indexKeys)),
+        request_mac: canonicalJson({ version: 2, ...await createMac(intentRequest(input), indexKeys) }),
         replay_mac: canReplay ? canonicalJson(await createMac(replay, indexKeys)) : null,
         resend_of: input.resendOf ?? null, resend_root: input.resendRoot ?? null, attachments_meta: input.attachments ? JSON.stringify(input.attachments.meta) : null,
         meta_expires_at: at + policy.metaDays * 86400000, content_expires_at: hasContent ? expires : null,
