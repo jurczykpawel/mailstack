@@ -1,3 +1,5 @@
+import { containsSecret, secretCandidates } from "../../templates/privacy.ts";
+import { WorkBudget } from "../../templates/output.ts";
 import type { Config, Policy } from "../config/schema.ts";
 import type { Brand, TemplateData, TemplateDef } from "../../types.ts";
 import { escapeHtml, renderLayout } from "../../templates/layout.ts";
@@ -8,6 +10,7 @@ export interface ArchiveMetadata {
   createdAt?: string;
   sentAt?: string;
   providerId?: string;
+  render?: { formKind?: string; locale?: string };
   attachments?: { count: number; types: string[]; sizes: number[] };
 }
 export interface ProjectionInput {
@@ -18,13 +21,16 @@ export interface ProjectionInput {
   data: TemplateData;
   subject?: string;
   metadata?: ArchiveMetadata;
+  budget?: WorkBudget;
+  render?: (data: TemplateData) => { html: string; text: string; subject: string };
 }
 type Metadata = ArchiveMetadata & { brand: string; template: string };
 export type ArchiveProjection = { level: "meta"; metadata: Metadata }
   | { level: "masked" | "full"; metadata: Metadata; subject: string; html: string; text: string };
 
-function maskPatterns(value: string, patterns: ProjectionInput["patterns"]): string {
+function maskPatterns(value: string, patterns: ProjectionInput["patterns"], budget: WorkBudget): string {
   for (const pattern of patterns) {
+    budget.spend(value.length);
     if ("regex" in pattern) {
       value = value.replace(new RegExp(pattern.regex, "g"), "[ukryte]");
     } else {
@@ -44,21 +50,22 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   if (policy.level === "none") return null;
   const metadata = { ...structuredClone(input.metadata), brand: brand.id, template: template.id };
   if (policy.level === "meta") return { level: "meta", metadata };
+  const budget = input.budget ?? new WorkBudget();
   const includeSecrets = policy.level === "full" && policy.includeSecrets;
   const secretFields = new Set([...template.secretFields ?? [], ...template.optionalSecretFields ?? []]);
   const show = new Set(policy.show ?? template.maskedFields ?? []);
-  const secretValues = [...secretFields].flatMap(field => data[field]
-    ? [...new Set([data[field], escapeHtml(data[field])])] : []);
+  const secretValues = secretCandidates(template, data, budget);
   const partial = (value: string): string => {
+    if (!value.trim()) return "";
+    budget.spend(value.length * 2);
     const candidate = "••••" + (Array.from(value).length > 4 ? Array.from(value).slice(-4).join("") : "");
-    return [candidate, "••••", ""].find(masked => !secretValues.some(secret =>
-      masked.includes(secret) || escapeHtml(masked).includes(secret)))!;
+    return [candidate, "••••", ""].find(masked => !containsSecret(masked, secretValues, budget) && !containsSecret(escapeHtml(masked), secretValues, budget))!;
   };
   const fields = policy.level === "masked" ? Object.entries(data)
     : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
   const replacements = fields
     .filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
-    .flatMap(([field, value]) => [...new Set([value, escapeHtml(value)])].map((representation) => ({
+    .flatMap(([field, value]) => (secretFields.has(field) ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : [...new Set([value, escapeHtml(value)])]).map((representation) => ({
       representation, replacement: secretFields.has(field) ? partial(value) : "[ukryte]",
       secret: secretFields.has(field), short: !secretFields.has(field) && policy.level === "masked" && Array.from(value).length < 3,
     })));
@@ -67,28 +74,38 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
   const mask = (value: string, html = false, values = replacements): string => {
     if (includeSecrets) return value;
     for (const { representation, replacement, short } of values) {
+      budget.spend(value.length);
       const masked = html ? escapeHtml(replacement) : replacement;
       if (short) {
         const literal = representation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         value = value.replace(new RegExp(`(?<![\\p{L}\\p{N}])${literal}(?![\\p{L}\\p{N}])`, "gu"), () => masked);
       } else value = value.split(representation).join(masked);
     }
-    return maskPatterns(value, patterns);
+    return maskPatterns(value, patterns, budget);
   };
   const projected = Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
     !includeSecrets && secretFields.has(key) ? partial(value)
       : policy.level === "masked" && !show.has(key) ? "[ukryte]" : mask(value, false, secretReplacements),
   ]));
-  const body = template.render(brand, projected);
-  const rendered = renderLayout(brand, {
-    heading: body.heading, bodyHtml: body.bodyHtml, bodyText: body.bodyText, previewText: body.previewText,
-  });
-  const subject = input.subject ?? template.subject(brand, projected);
+  const render = () => {
+    if (input.render) return input.render(projected);
+    const body = template.render(brand, projected);
+    return { ...renderLayout(brand, body), subject: template.subject(brand, projected) };
+  };
+  const rendered = render();
+  const subject = input.subject ?? rendered.subject;
+  const post = (value: string, html = false, all = false) => {
+    if (includeSecrets) return value;
+    if (html) {
+      budget.spend(value.length);
+      for (const tag of value.matchAll(/<[^>]*>/g)) if (containsSecret(tag[0].replace(/"[^"]*"|'[^']*'/g, ""), secretValues, budget)) return '';
+    }
+    const result = mask(value, html, all ? replacements : secretReplacements);
+    return containsSecret(result, secretValues, budget) ? '' : result;
+  };
   return {
     level: policy.level, metadata,
-    subject: mask(policy.level === "masked" ? subject.replace(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+/gi, "[ukryte]") : subject),
-    html: (policy.level === "masked" ? maskPatterns(rendered.html, patterns) : mask(rendered.html, true))
-      .replace(/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script\s*>/gi, ""),
-    text: policy.level === "masked" ? maskPatterns(rendered.text, patterns) : mask(rendered.text),
+    subject: post(policy.level === "masked" ? subject.replace(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+/gi, "[ukryte]") : subject, false, true),
+    html: post(rendered.html, true), text: post(rendered.text),
   };
 }

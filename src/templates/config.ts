@@ -13,8 +13,9 @@ export interface TemplatePlans {
   warnings: string[];
 }
 const HEADER_SLOTS: Partial<Record<TemplateId, Record<string, string[]>>> = {
+  received: { previewText: ["intro"] },
   welcome: { heading: ["headingWithName", "headingWithoutName"] },
-  payment: { subject: ["branchHeading", "transferHeading"], heading: ["branchHeading", "transferHeading"], previewText: ["branchHeading", "transferHeading"] },
+  payment: { subject: ["branchHeading", "transferHeading"], heading: ["branchHeading", "transferHeading"], previewText: ["branchHeading", "transferHeading", "intro", "transferIntro"] },
   license: { subject: ["branchHeading"], heading: ["branchHeading"], previewText: ["preview"] },
   notice: { subject: ["fallbackSubject", "fallbackHeading"], heading: ["fallbackHeading"], previewText: ["fallbackHeading"] },
   refund: { subject: ["branchHeading"], heading: ["branchHeading"], previewText: ["branchHeading"] },

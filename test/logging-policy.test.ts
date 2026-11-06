@@ -192,3 +192,15 @@ it.each(["masked", "full"] as const)("projects long license code boxes at level 
   expect(JSON.stringify(archive)).not.toContain(licenseKey);
   expect(archive.text).toContain("Klucz licencji: ••••1234");
 });
+
+it.each(['masked', 'full'] as const)('projects normalized field copies at level %s', level => {
+  for (const token of ['  VALUE-123456  ', 'a', 'ab', 'abc', 'abcd', '   ', 'A&<>"\'\nB']) {
+    const template = { ...getTemplate('notice')!, secretFields: ['token'] };
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level, show: ['paragraphs', 'name', 'token'] }, patterns: [], brand, template,
+      data: { token, name: token.trim(), paragraphs: `**${token.trim()}**\n\n- ${token.trim()}\n\n\`\`\`\n${token.trim()}\n\`\`\`` }, subject: 'Safe' }));
+    if (token.trim()) for (const text of [archive.subject, archive.html, archive.text]) {
+      expect(text).not.toContain(token.trim());
+      expect(text).not.toContain(escapeHtml(token.trim()));
+    }
+  }
+});

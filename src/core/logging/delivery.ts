@@ -8,9 +8,10 @@ import type { MessageRow } from '../store/messages';
 import type { EventIntent } from '../store/events';
 import type { DomainEvent } from '../extensions';
 import { resolvePolicy } from './policy';
-import { idempotencyHash, intentRequest, messageId, recordIntent } from './writer';
+import { idempotencyHash, intentRequest, messageId, prepareRecord, recordIntent } from './writer';
 
 export interface DeliveryContext {
+  record?: Pick<import("./writer").RecordInput, "render" | "renderMetadata" | "budget">;
   clientId?: string;
   resendOf?: string;
   resendRoot?: string;
@@ -36,14 +37,17 @@ export async function deliver(
   params: SendParams, context: DeliveryContext,
 ): Promise<SendResult> {
   const logging = deps.logging ?? config.logging;
-  const { policy } = await resolvePolicy(logging, brand.id, template.id);
+  const { policy } = await resolvePolicy(logging, brand.id, template.id, template);
   const clientId = context.clientId ?? 'public';
   const input = {
     ...(params.attachments?.length ? { attachments: await attachmentSummary(params.attachments) } : {}),
-    resendOf: context.resendOf, resendRoot: context.resendRoot, clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
+    ...context.record, resendOf: context.resendOf, resendRoot: context.resendRoot, clientId, brand, template, data, recipients: params.to.map(address => ({ role: 'to' as const, address })),
     subject: params.subject, replyTo: params.replyTo, ref: context.ref,
     idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: deps.provider ?? 'ses',
   };
+  let prepared;
+  try { prepared = prepareRecord(input, policy, logging.patterns); }
+  catch (error) { if (error instanceof Error && ['template_output_limit', 'replay_payload_limit'].includes(error.message)) return failure(422, error.message); throw error; }
   const request = intentRequest(input);
   let id: string | undefined;
   let keyHash: string | undefined;
@@ -92,7 +96,7 @@ export async function deliver(
         }
       }
       if (policy.level === 'none') break;
-      ({ id } = await recordIntent({ store: deps.store, logging, env, now: deps.now }, input));
+      ({ id } = await recordIntent({ store: deps.store, logging, env, now: deps.now }, { ...input, prepared }));
       break;
     } catch {
       try {

@@ -1,3 +1,7 @@
+import { measureJson } from "../../templates/output.ts";
+import type { WorkBudget } from "../../templates/output.ts";
+import { MAX_OPENED } from "../transit.ts";
+import type { ArchiveProjection, ProjectionInput, ArchiveMetadata } from "./projection.ts";
 import type { attachmentSummary } from '../../attachments';
 import type { Config } from '../config/schema';
 import { blindIndex, canonicalJson, createMac, refIndex, seal } from '../crypto';
@@ -18,6 +22,8 @@ export interface RecordDeps {
   store?: MessageStore; logging: Config['logging']; env: KeyEnvironment; now: () => Date;
 }
 export interface RecordInput {
+  render?: ProjectionInput["render"]; renderMetadata?: ArchiveMetadata["render"]; budget?: WorkBudget;
+  prepared?: { archive: ArchiveProjection | null; replay?: unknown };
   attachments?: Awaited<ReturnType<typeof attachmentSummary>>;
   clientId: string; brand: Brand; template: TemplateDef; data: TemplateData;
   recipients: { role: RecipientRow['role']; address: string }[];
@@ -55,8 +61,25 @@ function addressHint(address: string): string {
   return `${Array.from(local)[0]}***@${domain[0].toLowerCase()}***${suffix.toLowerCase()}`;
 }
 
+export function prepareRecord(input: RecordInput, policy: Config['logging']['defaults'], patterns: Config['logging']['patterns']) {
+  const canReplay = policy.resend === 'replay' && !input.template.secretFields?.length
+    && !input.template.optionalSecretFields?.some(field => input.data[field]);
+  const replay = { to: input.recipients.filter(r => r.role === 'to').map(r => r.address),
+    ...(input.recipients.some(r => r.role === 'cc') ? { cc: input.recipients.filter(r => r.role === 'cc').map(r => r.address) } : {}),
+    ...(input.recipients.some(r => r.role === 'bcc') ? { bcc: input.recipients.filter(r => r.role === 'bcc').map(r => r.address) } : {}),
+    ...(input.replyTo !== undefined ? { replyTo: input.replyTo } : {}),
+    ...(input.subject !== undefined ? { subjectOverride: input.subject } : {}),
+    template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
+  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
+    budget: input.budget, render: input.render, metadata: { clientId: input.clientId, status: 'sending', createdAt: new Date(0).toISOString(),
+      ...(input.renderMetadata ? { render: input.renderMetadata } : {}) } });
+  measureJson(archive, 2 * 1024 * 1024);
+  if (canReplay) { try { measureJson(replay, MAX_OPENED); } catch { throw new RangeError('replay_payload_limit'); } }
+  return { archive, ...(canReplay ? { replay } : {}) };
+}
+
 export async function recordIntent(deps: RecordDeps, input: RecordInput): Promise<{ id: string | undefined }> {
-  const { policy, policy_hash } = await resolvePolicy(deps.logging, input.brand.id, input.template.id);
+  const { policy, policy_hash } = await resolvePolicy(deps.logging, input.brand.id, input.template.id, input.template);
   if (policy.level === 'none') return { id: undefined };
   try {
     if (!deps.store) throw new LogUnavailableError();
@@ -88,14 +111,8 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
       const address = input.data[field];
       if (address && /^[^\s@]+@[^\s@]+$/.test(address.trim())) await addSubject('submitter', address);
     }
-    const canReplay = policy.resend === 'replay' && !input.template.secretFields?.length
-      && !input.template.optionalSecretFields?.some(field => input.data[field]);
-    const replay = { to: input.recipients.filter(r => r.role === 'to').map(r => r.address),
-      ...(input.recipients.some(r => r.role === 'cc') ? { cc: input.recipients.filter(r => r.role === 'cc').map(r => r.address) } : {}),
-      ...(input.recipients.some(r => r.role === 'bcc') ? { bcc: input.recipients.filter(r => r.role === 'bcc').map(r => r.address) } : {}),
-      ...(input.replyTo !== undefined ? { replyTo: input.replyTo } : {}),
-      ...(input.subject !== undefined ? { subjectOverride: input.subject } : {}),
-      template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
+    const prepared = input.prepared ?? prepareRecord(input, policy, deps.logging.patterns);
+    const canReplay = prepared.replay !== undefined, replay = prepared.replay;
     const idemHash = input.idempotencyKey === undefined ? null : await idempotencyHash(input.clientId, input.idempotencyKey);
     const intent: MessageIntent = {
       message: {
@@ -111,10 +128,11 @@ export async function recordIntent(deps: RecordDeps, input: RecordInput): Promis
         meta_expires_at: at + policy.metaDays * 86400000, content_expires_at: hasContent ? expires : null,
       }, recipients, subjects,
     };
-    if (hasContent) intent.content = { message_id: id, expires_at: expires, sealed: await encrypt(projectArchive({
-      policy, patterns: deps.logging.patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
-      metadata: { clientId: input.clientId, status: 'sending', createdAt: now.toISOString() },
-    }), 'content') };
+    if (hasContent) {
+      const archive = structuredClone(prepared.archive);
+      if (archive) archive.metadata.createdAt = now.toISOString();
+      intent.content = { message_id: id, expires_at: expires, sealed: await encrypt(archive, 'content') };
+    }
     if (canReplay) intent.replay = { message_id: id, expires_at: expires, sealed: await encrypt(replay, 'replay') };
     await deps.store.insertMessage(intent);
     return { id };

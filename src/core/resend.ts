@@ -1,3 +1,7 @@
+import { config, compiledTemplates } from "./config";
+import { effectiveTemplate } from "../templates/privacy.ts";
+import { resolvePresentation } from "../templates/locale.ts";
+import { templatePlans } from "../templates/config.ts";
 import { sql } from 'kysely';
 import { permits } from '../clients';
 import { renderAndSend } from '../send';
@@ -22,6 +26,7 @@ async function attempt<T>(run: () => Promise<T>): Promise<T | SendResult> {
   }
 }
 export function createResendService(cfg: Config, store: KyselyStore, env: Env, deps: SendDeps) {
+  const plans = cfg === config ? compiledTemplates : cfg.mailTemplates ? templatePlans(cfg) : undefined;
   const at = () => deps.now().getTime();
   const jobId = async (key: string) => 'rs_' + await idempotencyHash('panel', key);
   const audit = (actor: string, action: string, target: string, details?: unknown) => appendAudit(store, { at: at(), actor: 'panel:' + actor, action, target, ...(details === undefined ? {} : { details }) });
@@ -37,8 +42,9 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     const m = await store.db.selectFrom('messages').selectAll().where('id', '=', id).executeTakeFirst();
     if (!m || m.meta_expires_at <= at() || m.created_at <= at() - cfg.logging.ceilings.metaDays * 86400000) return fail(404, 'not_found');
     if (panel && ((panel.brands !== '*' && !panel.brands.includes(m.brand)) || (panel.templates !== '*' && !panel.templates.includes(m.template)))) fail(403, 'scope');
-    const template = getTemplate(m.template), brand = cfg.brands[m.brand];
-    const { policy } = await resolvePolicy(cfg.logging, m.brand, m.template);
+    const rawTemplate = getTemplate(m.template), brand = cfg.brands[m.brand];
+    const template = rawTemplate && brand ? effectiveTemplate(rawTemplate, plans ? resolvePresentation(plans, brand, m.template).definition.secretFields : []) : undefined;
+    const { policy } = await resolvePolicy(cfg.logging, m.brand, m.template, template);
     if (!template || !Object.hasOwn(cfg.brands, m.brand) || policy.resend === 'off' || policy.level === 'none') return fail(409, 'resend_disabled');
     if (m.created_at <= at() - policy.metaDays * 86400000) fail(404, 'not_found');
     if (m.status === 'sending' || m.status === 'unknown') fail(409, 'original_unresolved');

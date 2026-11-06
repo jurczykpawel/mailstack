@@ -468,7 +468,7 @@ export async function renderAndSend(
     return { ok: false, status: code === 'invalid_subject' ? 400 : 422, code, message: code.replaceAll('_', ' ') };
   }
   const { subject, html, text } = prepared;
-  return deliver(deps, env, brand, template, prepared.data, {
+  return deliver(deps, env, brand, prepared.template, prepared.data, {
     from: brand.from,
     ...(params.attachments ? { attachments: params.attachments } : {}),
     to: params.to,
@@ -476,5 +476,9 @@ export async function renderAndSend(
     subject,
     html,
     text,
-  }, params);
+  }, { ...params, record: {
+    budget: prepared.budget,
+    renderMetadata: { ...(prepared.formKind ? { formKind: prepared.formKind } : {}), ...(prepared.locale ? { locale: prepared.locale } : {}) },
+    render: projected => prepareEmail(brand, template, projected, { ...params, plans: compiledTemplates, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget }),
+  } });
 }

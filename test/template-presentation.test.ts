@@ -92,3 +92,24 @@ it('uses every recipe slot on its corresponding branch', () => {
     for (const slot of slots) expect(result.html + result.text + result.subject, `${id}/${slot}`).toContain(`Slot-${slot}`);
   }
 });
+
+it.each(['  VALUE-123456  ', 'A\nB'])('checks the complete header representation for %j', licenseKey => {
+  const cfg = configured();
+  expect(() => render(cfg, 'license', { licenseKey, productName: licenseKey.trim().replace(/\n/g, ' ') })).toThrow('template_sensitive_header');
+});
+it('keeps the chosen form and language in a masked projection', async () => {
+  const { projectArchive } = await import('../src/core/logging/projection.ts');
+  const cfg = configured({}, { languages: { default: 'pl', allowed: ['pl', 'en'] }, forms: {
+    selector: { byTemplate: { contact: 'type' }, values: { Question: 'question' }, empty: 'other', otherwise: 'other' },
+    kinds: { question: { templates: { contact: { locales: { en: { heading: 'Question EN' } } } } }, other: { templates: { contact: { locales: { en: { heading: 'Other EN' } } } } } },
+  } });
+  const plans = templatePlans(cfg), brand = cfg.brands.acme, template = getTemplate('contact')!, data = { type: 'Question', name: 'Jane' };
+  const prepared = prepareEmail(brand, template, data, { plans, locale: 'en' });
+  const archive = projectArchive({ policy: { ...cfg.logging.defaults, level: 'masked', show: [] }, patterns: [], brand, template: prepared.template, data,
+    metadata: { render: { formKind: prepared.formKind, locale: prepared.locale! } },
+    render: projected => prepareEmail(brand, template, projected, { plans, selected: prepared, projection: true, explicitJsonLd: [] }),
+  });
+  expect(archive).toMatchObject({ metadata: { render: { formKind: 'question', locale: 'en' } } });
+  if (!archive || archive.level === 'meta') throw Error('missing content');
+  expect(archive.html).toContain('<title>Question EN</title>'); expect(archive.html).toContain('lang="en"'); expect(archive.html).not.toContain('Other EN');
+});
