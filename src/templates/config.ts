@@ -30,7 +30,7 @@ export function freezePlans<T>(value: T): T {
   return value;
 }
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
-const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => map && Object.hasOwn(map, key) ? map[key] : undefined;
+export const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => map && Object.hasOwn(map, key) ? map[key] : undefined;
 const refs = (value: Presentation["subject"]): string[] => value === undefined ? [] : (typeof value === "string" ? [value] : value)
   .flatMap(part => typeof part === "string" ? tokenize(part).flatMap(token => typeof token === "string" ? [] : [token.field]) : [part.field]);
 const dictionaries = ["copy", "labels", "ctaLabels", "fields"] as const;

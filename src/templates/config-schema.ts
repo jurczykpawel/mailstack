@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeLocale } from "./language-tag.ts";
 import { MANIFEST } from "./manifest.ts";
 
 export const safeKey = (key: string) => !["__proto__", "prototype", "constructor"].includes(key);
@@ -6,13 +7,7 @@ const field = z.string().min(1).max(128).refine(v => safeKey(v) && !/[.{}\u0000-
 const id = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/).refine(safeKey);
 const plain = z.string().refine(v => !/\{[^{}]*\}/.test(v) && !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(v));
 const label = plain.max(160).refine(v => !/[\n\t]/.test(v));
-export function normalizeLocale(value: unknown): string | null {
-  if (typeof value !== "string" || value.length > 5) return null;
-  const tag = value.replace(/^ +| +$/g, "");
-  if (!/^[a-z]{2}(?:-[a-z]{2})?$/i.test(tag)) return null;
-  const [language, region] = tag.split("-");
-  return language.toLowerCase() + (region ? `-${region.toUpperCase()}` : "");
-}
+
 const language = z.string().transform((v, ctx) => {
   const tag = normalizeLocale(v);
   if (tag === null) { ctx.addIssue({ code: "custom", message: "invalid language tag" }); return z.NEVER; }
