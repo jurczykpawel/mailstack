@@ -1,41 +1,38 @@
-import { describe, it, expect } from "vitest";
-import { getTemplate, renderLayout } from "../src/templates/index";
-import { getBrand } from "../src/core/config";
-const brand = { ...getBrand("acme")!, id: "selfware", name: "Selfware", subjectPrefix: "Nowe zlecenie" };
-describe("Selfware templates", () => {
-  it("confirms a task with the promised diagnosis deadline", () => {
-    const body = getTemplate("received")!.render(brand, { summary: "Opis zadania" });
-    expect(body.bodyText).toContain("Dostaliśmy opis Twojego zadania");
-    expect(body.bodyText).toContain("darmową diagnozą do 3 dni roboczych");
-    expect(body.bodyText).not.toContain(":");
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { getTemplate } from '../src/templates/index';
+import { getBrand } from '../src/core/config';
+import { templatePlans } from '../src/templates/config';
+import { prepareEmail } from '../src/templates/prepare';
+import { escapeHtml } from '../src/templates/layout';
+import { formConfig } from './fixtures/form-config';
+import type { Brand, TemplateData } from '../src/types';
+const brand = { ...getBrand('acme')!, id: 'selfware', name: 'Selfware', subjectPrefix: 'Nowe zlecenie' };
+const fixtures = JSON.parse(readFileSync('test/fixtures/templates/legacy.json', 'utf8')) as { id: string; brand: Brand; template: string; data: TemplateData; expected: { subject: string; html: string; text: string } }[];
+const configured = (brand: Brand, template: string, data: TemplateData, confirmation = false) => {
+  const cfg = formConfig(brand); return prepareEmail(cfg.brands[brand.id], getTemplate(template)!, data, { plans: templatePlans(cfg), confirmation });
+};
+describe('configured form presentation', () => {
+  it('uses the ordinary recipe for an id without configured presentation', () => {
+    expect(getTemplate('received')!.subject(brand, {})).toBe('Potwierdzenie: otrzymaliśmy Twoje zgłoszenie');
+    expect(getTemplate('received')!.render(brand, {}).bodyText).toContain('odezwiemy się wkrótce');
   });
-  it("includes and escapes the film product in HTML and keeps plain text", () => {
-    const body = getTemplate("received")!.render(brand, { name: "<Jan>", summary: "<Sellf>" });
-    expect(body.bodyHtml).toContain("&lt;Sellf&gt;");
-    expect(body.bodyHtml).toContain("&lt;Jan&gt;");
-    expect(body.bodyText).toContain("<Sellf>");
-    expect(body.bodyText).not.toContain("3 dni");
-    expect(renderLayout(brand, body).text).toContain("Selfware");
+  for (const f of fixtures.filter(f => f.brand.id === 'selfware')) it(f.id, () => {
+    if (f.id.endsWith('unicode-5000')) { expect(() => configured(f.brand, f.template, f.data)).toThrow('template_output_limit'); return; }
+    const mail = configured(f.brand, f.template, f.data);
+    expect({ subject: mail.subject, html: mail.html, text: mail.text }).toEqual({ subject: f.expected.subject, html: f.expected.html, text: f.expected.text });
   });
-  it("preserves all submitted fields and metadata in the notification", () => {
-    const template = getTemplate("contact")!;
-    const data = { type: "Sellf", email: "test@example.com", message: "<opis>", custom: "inne", _origin: "https://example.com" };
-    const body = template.render(brand, data);
-    expect(template.subject(brand, data)).toBe("Nowe zlecenie — Sellf — Selfware");
-    for (const value of Object.values(data)) expect(body.bodyText).toContain(value);
-    expect(body.bodyHtml).toContain("&lt;opis&gt;");
-    expect(body.bodyHtml).not.toContain("<opis>");
+  it('applies the same presentation to any registry id', () => {
+    for (const f of fixtures.filter(f => f.brand.id === 'selfware' && f.template === 'contact')) {
+      const mail = configured({ ...f.brand, id: 'demo-form' }, f.template, f.data);
+      expect(mail.html).toBe(f.expected.html); expect(mail.text).toBe(f.expected.text);
+    }
   });
-  it("renders the technical task product as a task notification", () => {
-    const body = getTemplate("contact")!.render(brand, { type: "Opis zadania", message: "Zadanie" });
-    expect(body.bodyText).toContain("Przyszedł opis zadania");
-    expect(body.bodyText).toContain("3 dni roboczych");
-    expect(body.bodyText).not.toContain("podobne do");
-  });
-  it("keeps other brands on the existing templates", () => {
-    const other = getBrand("acme")!;
-    expect(getTemplate("received")!.subject(other, {})).toBe("Potwierdzenie: otrzymaliśmy Twoje zgłoszenie");
-    expect(getTemplate("received")!.render(other, {}).bodyText).toContain("odezwiemy się wkrótce");
-    expect(getTemplate("contact")!.render(other, { message: "hello" }).bodyText).toContain("Wiadomość:");
+  it('caps confirmation input against the recorded long output', () => {
+    const f = fixtures.find(f => f.id === 'selfware/received/unicode-5000')!;
+    const pairs = Object.entries(f.data).map(([key, value]) => [value.trim(), Array.from(value.trim()).slice(0, key === 'name' ? 100 : 200).join('')]);
+    const shorten = (value: string, html: boolean) => pairs.reduce((text, [from, to]) => text.replaceAll(html ? escapeHtml(from) : from, html ? escapeHtml(to) : to), value);
+    const mail = configured(f.brand, f.template, f.data, true);
+    expect(mail.html).toBe(shorten(f.expected.html, true)); expect(mail.text).toBe(shorten(f.expected.text, false));
   });
 });

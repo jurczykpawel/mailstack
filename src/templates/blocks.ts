@@ -5,7 +5,7 @@ import type { TemplatePlans } from "./config.ts";
 import { own } from "./config.ts";
 import { tokenize } from "./tokens.ts";
 import { Output, length, parts, type Content, type Emit } from "./output.ts";
-import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout } from "./layout.ts";
+import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout, humanizeLabel } from "./layout.ts";
 
 export function expandText(text: Presentation["subject"], brand: Brand, data: TemplateData, plans: TemplatePlans): readonly string[] {
   const field = (key: string) => key.startsWith("brand.") ? String(own(brand as unknown as Record<string, string>, key.slice(6)) ?? "") : (own(data, key) ?? "").trim();
@@ -18,9 +18,9 @@ export function expandText(text: Presentation["subject"], brand: Brand, data: Te
   });
 }
 export type Pair = { html: Emit; text: Emit };
-export function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData): Pair {
+export function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData, locale?: string | null): Pair {
   const blocks: Pair[] = [];
-  const label = (key: string) => labelFor(patch.labels, key);
+  const label = (key: string) => labelFor(patch.labels, key, humanizeLabel(key, locale));
   for (const block of patch.body?.blocks ?? []) {
     const value = "field" in block ? own(data, block.field) ?? "" : "";
     if (block.kind === "paragraph") {
@@ -63,7 +63,7 @@ export function renderConfigured(brand: Brand, patch: TemplatePatch, plans: Temp
   const subject = new Output(998, false, false, encodings);
   subject.raw(input.subject);
   if (length(input.heading) > 5000 || length(input.previewText ?? "") > 5000) throw new RangeError("template_output_limit");
-  const body = configuredBody(brand, patch, plans, data);
+  const body = configuredBody(brand, patch, plans, data, input.locale);
   const layout = { ...input, bodyHtml: body.html, bodyText: body.text };
   renderLayout(brand, layout, { html: new Output(512 * 1024, false, false, encodings), text: new Output(256 * 1024, false, false, encodings) });
   const result = renderLayout(brand, layout, { html: new Output(512 * 1024, true, false, encodings), text: new Output(256 * 1024, true, false, encodings) });

@@ -137,3 +137,37 @@ it('records source locale preference and resolves duplicates before rendering ag
     expect((await call('fr')).status).toBe(409); expect(sendEmail).toHaveBeenCalledOnce();
   } finally { await store.db.destroy(); }
 });
+it('uses English helper fallbacks for a partial locale patch', () => {
+  const input = translated();
+  input.mailTemplates = { version: 1, templates: { contact: { locales: { en: { subject: 'Message' } } }, notice: { locales: { en: { heading: 'Update' } } }, welcome: { locales: { en: { subject: 'Welcome', heading: 'Welcome' } } } } };
+  const cfg = parseConfig(input), plans = templatePlans(cfg);
+  const contact = prepareEmail(cfg.brands.acme, getTemplate('contact')!, { NAME: 'Jane', 'Imię i nazwisko': 'Doe', message: 'Hello' }, { plans, locale: 'en' });
+  expect(contact.text).toContain('Name: Jane'); expect(contact.text).toContain('Name: Doe'); expect(contact.text).toContain('Message:');
+  for (const id of ['notice', 'welcome']) for (const ctaLabel of ['', '  ']) {
+    const mail = prepareEmail(cfg.brands.acme, getTemplate(id)!, { paragraphs: 'Ready', ctaUrl: 'https://example.com', ctaLabel }, { plans, locale: 'en' });
+    expect(mail.text).toContain(id === 'notice' ? 'Learn more' : 'Get started'); expect(mail.text).not.toContain('Otwórz');
+  }
+});
+it('keeps localized copy separate from configured form selectors', () => {
+  const input = translated(), action = original.sources.sellf.events['lead.captured']; if (action.action !== 'send') throw Error('send expected');
+  input.mailTemplates.templates.welcome.locales.en.subject = 'Thanks';
+  Object.assign(input.brands.acme, { autoReplyTemplate: 'welcome', mailTemplates: { languages: { default: 'pl', allowed: ['pl', 'en'] },
+    templates: { welcome: { subject: 'Thanks', heading: 'Thanks', previewText: 'Thanks', body: { blocks: [{ id: 'intro', kind: 'paragraph', text: 'Thanks' }] } } },
+    forms: { selector: { byTemplate: { welcome: 'intro' }, values: {}, empty: 'question', otherwise: 'question' }, kinds: { question: { templates: {} } } } } });
+  const without = { ...input, sources: { alpha: { ...original.sources.sellf, events: { lead: { ...action, fieldsByLocale: undefined } } } } };
+  expect(() => parseConfig(without)).not.toThrow();
+  expect(() => parseConfig({ ...without, sources: { alpha: { ...without.sources.alpha, events: { lead: action } } } })).toThrow('$.sources.alpha.events.lead.fieldsByLocale');
+});
+
+it('uses the brand default for documented refund, waitlist and expiry envelopes without locale', async () => {
+  const seen: string[] = [];
+  for (const file of readdirSync('bruno/sellf-webhook').filter(file => file.endsWith('.bru'))) {
+    const text = readFileSync('bruno/sellf-webhook/' + file, 'utf8'), match = /body:json \{\n([\s\S]*?)\n\}/.exec(text);
+    if (!match) continue;
+    const body = JSON.parse(match[1]);
+    if (!['refund.issued', 'waitlist.signup', 'access.expired'].includes(body.event)) continue;
+    expect(body.data.customer.locale).toBeUndefined();
+    const result = await send(body); expect(result.response.status).toBe(200); expect(result.sendEmail.mock.calls[0][1].html).toContain('lang="pl"'); seen.push(body.event);
+  }
+  expect(seen.sort()).toEqual(['access.expired', 'refund.issued', 'waitlist.signup']);
+});

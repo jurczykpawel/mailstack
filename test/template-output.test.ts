@@ -100,3 +100,15 @@ it("preserves legal source substitution and strict config braces across determin
     expect(sourceSchema.safeParse(action).success).toBe(legal);
   }
 });
+it('measures JSON strings exactly across repeated escapes and Unicode boundaries', () => {
+  const values = ['"'.repeat(5000), '\\'.repeat(5000), '\b\t\n\f\r\u0000\u001f', 'é😀\ud800\udfff', '\u2028\u2029'];
+  let seed = 925;
+  for (let i = 0; i < 200; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const text = Array.from({ length: 4 }, (_, j) => values[(seed >>> (j * 3)) % values.length]).join('');
+    const value = { [text.slice(0, 20)]: [text, text, null, true, 1.25], other: undefined };
+    const size = new TextEncoder().encode(JSON.stringify(value)).length;
+    expect(() => measureJson(value, size - 1)).toThrow('template_output_limit');
+    expect(measureJson(value, size)).toBe(size); expect(measureJson(value, size + 1)).toBe(size);
+  }
+});

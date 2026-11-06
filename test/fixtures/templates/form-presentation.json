@@ -1,0 +1,143 @@
+{
+  "templates": {
+    "contact": {
+      "subject": [
+        "{brand.subjectPrefix}",
+        {
+          "field": "type",
+          "prefix": " — "
+        },
+        " — Selfware"
+      ],
+      "previewText": "Przyszedł opis zadania. Odpowiedz na ten mail, aby skontaktować się z nadawcą. Darmową diagnozę zapowiadamy do 3 dni roboczych.",
+      "labels": {
+        "type": "Produkt",
+        "_receivedAt": "Otrzymano",
+        "_origin": "Źródło",
+        "_ip": "IP"
+      },
+      "body": {
+        "htmlJoin": "",
+        "textJoin": "\n\n",
+        "blocks": [
+          {
+            "id": "intro",
+            "kind": "paragraph",
+            "text": "Przyszedł opis zadania. Odpowiedz na ten mail, aby skontaktować się z nadawcą. Darmową diagnozę zapowiadamy do 3 dni roboczych."
+          },
+          {
+            "id": "fields",
+            "kind": "fieldTable",
+            "allFields": true,
+            "includeMeta": true,
+            "textStyle": "stacked"
+          }
+        ]
+      }
+    },
+    "received": {
+      "subject": "Selfware — dostaliśmy Twoje zgłoszenie",
+      "heading": "Dostaliśmy opis Twojego zadania",
+      "previewText": "Dostaliśmy opis Twojego zadania. Odezwiemy się z darmową diagnozą do 3 dni roboczych.",
+      "body": {
+        "blocks": [
+          {
+            "id": "greeting",
+            "kind": "paragraph",
+            "text": [
+              "Cześć",
+              {
+                "field": "name",
+                "prefix": " "
+              },
+              ","
+            ]
+          },
+          {
+            "id": "intro",
+            "kind": "paragraph",
+            "text": "Dostaliśmy opis Twojego zadania. Odezwiemy się z darmową diagnozą do 3 dni roboczych."
+          },
+          {
+            "id": "closing",
+            "kind": "paragraph",
+            "text": "Jeśli chcesz coś dopowiedzieć, odpowiedz na tego maila.\n\nSelfware"
+          }
+        ]
+      }
+    }
+  },
+  "forms": {
+    "selector": {
+      "byTemplate": {
+        "contact": "type",
+        "received": "summary"
+      },
+      "values": {
+        "Opis zadania": "task"
+      },
+      "empty": "task",
+      "otherwise": "product"
+    },
+    "kinds": {
+      "task": {
+        "templates": {}
+      },
+      "product": {
+        "templates": {
+          "contact": {
+            "previewText": "Ktoś pyta o rozwiązanie podobne do {type}. Odpowiedz na ten mail, aby skontaktować się z nadawcą.",
+            "body": {
+              "htmlJoin": "",
+              "textJoin": "\n\n",
+              "blocks": [
+                {
+                  "id": "intro",
+                  "kind": "paragraph",
+                  "text": "Ktoś pyta o rozwiązanie podobne do {type}. Odpowiedz na ten mail, aby skontaktować się z nadawcą."
+                },
+                {
+                  "id": "fields",
+                  "kind": "fieldTable",
+                  "allFields": true,
+                  "includeMeta": true,
+                  "textStyle": "stacked"
+                }
+              ]
+            }
+          },
+          "received": {
+            "heading": "Dostaliśmy Twoje zapytanie",
+            "previewText": "Dostaliśmy Twoje zapytanie o podobne rozwiązanie do {summary}. Odezwę się osobiście na podany adres e-mail.",
+            "body": {
+              "blocks": [
+                {
+                  "id": "greeting",
+                  "kind": "paragraph",
+                  "text": [
+                    "Cześć",
+                    {
+                      "field": "name",
+                      "prefix": " "
+                    },
+                    ","
+                  ]
+                },
+                {
+                  "id": "intro",
+                  "kind": "paragraph",
+                  "text": "Dostaliśmy Twoje zapytanie o podobne rozwiązanie do {summary}. Odezwę się osobiście na podany adres e-mail."
+                },
+                {
+                  "id": "closing",
+                  "kind": "paragraph",
+                  "text": "Jeśli chcesz coś dopowiedzieć, odpowiedz na tego maila.\n\nSelfware"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

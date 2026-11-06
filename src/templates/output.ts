@@ -72,19 +72,25 @@ export class Output {
   result() { return this.writing ? this.chunks.join("") : ""; }
 }
 export function measureJson(value: unknown, limit: number): number {
-  const output = new Output(limit, false);
+  const output = new Output(limit, false), strings = new Map<string, number>();
   const visit = (item: unknown) => {
     if (typeof item === "string") {
-      output.raw('"');
-      let start = 0;
-      for (let i = 0; i < item.length; i++) {
-        const code = item.charCodeAt(i);
-        if (code >= 0xd800 && code <= 0xdbff && i + 1 < item.length && item.charCodeAt(i + 1) >= 0xdc00 && item.charCodeAt(i + 1) <= 0xdfff) { i++; continue; }
-        if (code < 32 || code === 34 || code === 92 || code >= 0xd800 && code <= 0xdfff) {
-          output.raw(item.slice(start, i)); output.raw(JSON.stringify(item[i]).slice(1, -1)); start = i + 1;
+      let bytes = strings.get(item);
+      if (bytes === undefined) {
+        bytes = 2;
+        for (let i = 0; i < item.length; i++) {
+          const code = item.charCodeAt(i);
+          if (code < 32) bytes += [8, 9, 10, 12, 13].includes(code) ? 2 : 6;
+          else if (code === 34 || code === 92) bytes += 2;
+          else if (code >= 0xd800 && code <= 0xdfff) {
+            if (code <= 0xdbff && i + 1 < item.length && item.charCodeAt(i + 1) >= 0xdc00 && item.charCodeAt(i + 1) <= 0xdfff) { bytes += 4; i++; }
+            else bytes += 6;
+          } else bytes += code < 128 ? 1 : code < 2048 ? 2 : 3;
+          if (output.bytes + bytes > limit) throw new RangeError("template_output_limit");
         }
+        strings.set(item, bytes);
       }
-      output.raw(item.slice(start)); output.raw('"');
+      output.addBytes(bytes);
     } else if (Array.isArray(item)) { output.raw("["); item.forEach((child, i) => { if (i) output.raw(","); visit(child ?? null); }); output.raw("]"); }
     else if (item && typeof item === "object") {
       output.raw("{"); Object.entries(item).filter(([, child]) => child !== undefined).forEach(([key, child], i) => { if (i) output.raw(","); visit(key); output.raw(":"); visit(child); }); output.raw("}");

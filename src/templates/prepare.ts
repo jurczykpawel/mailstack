@@ -1,6 +1,6 @@
 import type { Brand, TemplateData, TemplateDef } from '../types.ts';
 import type { TemplatePlans } from './config.ts';
-import { own } from './config.ts';
+import { own, hasPresentation } from './config.ts';
 import { normalizeLocale, resolvePresentation } from './locale.ts';
 import { Recipe } from './recipe.ts';
 import { expandText, renderConfigured } from './blocks.ts';
@@ -27,11 +27,11 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
   template = effectiveTemplate(template, definition.secretFields);
   const budget = options.budget ?? new WorkBudget();
   const candidates = secretCandidates(template, data, budget);
-  const active = ['subject', 'heading', 'previewText', 'body', 'copy', 'labels', 'ctaLabels'].some(key => Object.hasOwn(definition, key));
+  const active = hasPresentation(definition);
   const header = (value: Parameters<typeof expandText>[0]) => {
     const content = expandText(value, brand, data, options.plans), sink = new Output(512 * 1024, false); sink.raw(content); return content.join('');
   };
-  const dry = new Recipe(definition, brand, data, options.plans, active);
+  const dry = new Recipe(definition, brand, data, options.plans, active, locale, template.id);
   const recipeSubject = template.subject(brand, data, dry);
   // A replacement body doesn't need the recipe's body serialization.
   const rendered = template.render(brand, data, dry);
@@ -57,7 +57,7 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
       renderLayout(brand, { ...layout, bodyHtml: out => out.addBytes(dry.htmlOutput.bytes), bodyText: out => out.addBytes(dry.textOutput.bytes) },
         { html: new Output(512 * 1024, false), text: new Output(256 * 1024, false) });
     }
-    const body = dry.measuring ? template.render(brand, data, new Recipe(definition, brand, data, options.plans)) : rendered;
+    const body = dry.measuring ? template.render(brand, data, new Recipe(definition, brand, data, options.plans, false, locale, template.id)) : rendered;
     result = renderLayout(brand, { ...body, ...layout });
   }
   return { ...result, subject, heading, previewText, data, formKind, locale, localeInput, definition, template, budget };

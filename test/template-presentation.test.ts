@@ -118,3 +118,14 @@ it('applies exact and folded labels to configured field tables', () => {
   const result = render(configured({ contact: { labels: { name: 'Name', NAME: 'Exact name', 'Imię i nazwisko': 'Full name' }, body: { blocks: [{ id: 'fields', kind: 'fieldTable', allFields: true }] } } }), 'contact', { NAME: 'Jane', Name: 'John', 'IMIĘ I NAZWISKO': 'Doe' });
   expect(result.text).toContain('Exact name: Jane'); expect(result.text).toContain('Name: John'); expect(result.text).toContain('Full name: Doe');
 });
+it('keeps empty presentation dictionaries on the legacy output path', () => {
+  const data = { type: 'x'.repeat(1100), message: 'Hello' };
+  const legacy = render(configured(), 'contact', data);
+  for (const key of ['copy', 'labels', 'ctaLabels']) expect(render(configured({ contact: { [key]: {} } }), 'contact', data)).toMatchObject({ subject: legacy.subject, html: legacy.html, text: legacy.text });
+});
+it('accepts empty presentation dictionaries with existing logging patterns', () => {
+  for (const key of ['copy', 'labels', 'ctaLabels']) expect(() => parseConfig({ ...example,
+    mailTemplates: { version: 1, templates: { contact: { [key]: {} } } },
+    logging: { ...example.logging, defaults: { ...example.logging.defaults, level: 'masked' }, patterns: [{ name: 'code', regex: 'x' }] },
+  })).not.toThrow();
+});

@@ -22,9 +22,22 @@ const LABELS: Record<string, string> = {
   gdpr: "Zgoda RODO",
 };
 
+const EN_LABELS: Record<string, string> = {
+  email: "Email",
+  name: "Name",
+  "imię i nazwisko": "Name",
+  phone: "Phone",
+  type: "Topic",
+  topic: "Topic",
+  person: "Contact person",
+  message: "Message",
+  gdpr: "Consent",
+};
+
 /** Turn a raw content key into a human label: known map, else Title Case. */
-export function humanizeLabel(key: string): string {
-  const mapped = Object.hasOwn(LABELS, key.toLowerCase()) ? LABELS[key.toLowerCase()] : undefined;
+export function humanizeLabel(key: string, locale?: string | null): string {
+  const labels = locale?.split("-")[0] === "en" ? EN_LABELS : LABELS;
+  const mapped = Object.hasOwn(labels, key.toLowerCase()) ? labels[key.toLowerCase()] : undefined;
   if (mapped) return mapped;
   return key
     .replace(/[_-]+/g, " ")

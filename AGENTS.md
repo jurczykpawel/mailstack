@@ -67,6 +67,7 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `template` | email type to render (trusted mode only); public is always `contact` |
 | `autoreply` | per-request toggle for the submitter confirmation (`1`/`true`/`yes`/`on` vs `0`/`false`); overrides `brand.autoReply`. See [Auto-reply](#auto-reply). |
 | `ref` | trusted correlation string (1-128 characters) |
+| `locale` | language preference only when the brand enables `mailTemplates.languages`; otherwise content |
 | `resendOf` | trusted: approved source jobs only with an enabled extension; otherwise `400 not_supported`; public: ignored |
 | `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
 | `markup` | trusted JSON-LD directives; ignored in public mode |
@@ -192,7 +193,7 @@ precedence, `secretFields`, `subjectRoles` and policy constraints are described 
 ### API keys: free core vs Mailstack Pro
 
 The free core (`src/clients.ts`) authenticates ONE full key: `API_KEY` / `legacyApiKey`
-(scopes `send` + `hook:sellf`, all brands/templates, `to` override allowed). Free options:
+(scope `send` plus `hook:<id>` for sources with `legacyKey: true`, all brands/templates, `to` override allowed). Free options:
 `enabled`, `env`, `attachments`, `signatureSecretEnv` (Sellf signature on the full key).
 Restricting `scopes`/`brands`/`templates`/`recipientOverride` fails validation
 (`additional or restricted API keys require Mailstack Pro`).
@@ -239,6 +240,8 @@ skip this check. See [form instructions](README.md#public-forms-using-altcha) fo
 product matching, errors and the scope of the `nonce`/`product` control fields.
 
 ## Templates
+
+Template copy, form kinds, languages, source overlays and rollback are documented in [README](README.md#template-copy-and-optional-languages). Presentation is configuration data; renderers do not recognize brand or source system names.
 
 mailstack can send different **kinds** of email, all sharing one per-brand look. The
 chrome (header band with logo/accent + footer with address/phone/site) lives in a single
@@ -377,7 +380,7 @@ using the shared templates, including bank-transfer instructions.
   scope. `legacyApiKey.signatureSecretEnv` (free) or a Pro client's signature reference additionally require a valid
   `X-Sellf-Signature` (see Send logging and idempotency below). Missing/invalid
   credentials return `401 {success:false,message:"unauthorized"}`.
-- **Brand:** `?brand=<id>`, defaults to `SELLF_DEFAULT_BRAND` env var or the first brand in the registry. Unknown brand → `400 {success:false,message:"unknown brand"}`.
+- **Brand:** `?brand=<id>`, defaults to `sources.sellf.defaultBrand` or the first brand in the registry. Unknown brand → `400 {success:false,message:"unknown brand"}`.
 - **Body and response:** see the [Sellf event contract](README.md#sellf-event-contract).
   Malformed JSON is 400; invalid envelopes are 400 `invalid_envelope`. Mapped events
   with missing template-required output return 422 `invalid_event_data` (template
@@ -672,7 +675,7 @@ identity; recipient, subject, content, Reply-To, ref and explicit markup do.
 
 Sellf uses the generic source engine and requires a Bearer client with `hook:sellf`
 scope. `signatureSecretEnv` names the optional runtime signing secret;
-`sellfSignatureSecretEnv` remains an alias. When configured, the runtime secret and
+the same field applies to every allowed source. Old aliases require the offline migration described in README. When configured, the runtime secret and
 `X-Sellf-Signature: t=<unix>,v1=<hex>` are required (HMAC-SHA256 over `${t}.${rawBody}`,
 300-second tolerance); invalid credentials return `401 unauthorized`.
 

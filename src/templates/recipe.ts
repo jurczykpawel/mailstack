@@ -6,11 +6,15 @@ import { expandText } from './blocks.ts';
 import { Output, type Emit } from './output.ts';
 import * as layout from './layout.ts';
 
+const EN_CTA: Record<string, string> = { notice: "Learn more", welcome: "Get started" };
+
 export class Recipe {
+  locale: string | null; templateId?: string;
   htmlOutput: Output;
   textOutput: Output;
   patch: TemplatePatch; brand?: Brand; data: TemplateData; plans?: TemplatePlans; measuring: boolean;
-  constructor(patch: TemplatePatch = {}, brand?: Brand, data: TemplateData = {}, plans?: TemplatePlans, measuring = false) {
+  constructor(patch: TemplatePatch = {}, brand?: Brand, data: TemplateData = {}, plans?: TemplatePlans, measuring = false, locale: string | null = null, templateId?: string) {
+    this.locale = locale; this.templateId = templateId;
     this.patch = patch; this.brand = brand; this.data = data; this.plans = plans; this.measuring = measuring;
     this.htmlOutput = new Output(512 * 1024, !measuring); this.textOutput = new Output(256 * 1024, !measuring);
   }
@@ -21,11 +25,12 @@ export class Recipe {
     const output = new Output(256 * 1024, false); output.raw(content);
     return content.join('');
   }
-  label(key: string, fallback = layout.humanizeLabel(key)): string {
+  label(key: string, fallback = layout.humanizeLabel(key, this.locale)): string {
     return layout.labelFor(this.patch.labels, key, fallback);
   }
   cta(key: string, fallback: string, supplied?: string): string {
-    return supplied?.trim() || own(this.patch.ctaLabels, key) || (supplied === undefined || !supplied ? fallback : 'Otwórz');
+    const english = this.locale?.split('-')[0] === 'en' && key === 'main' ? EN_CTA[this.templateId ?? ''] : undefined;
+    return supplied?.trim() || own(this.patch.ctaLabels, key) || english || (supplied === undefined || !supplied ? fallback : 'Otwórz');
   }
   paragraph = (value: string) => { if (this.patch.body) return ""; if (!this.measuring) return layout.paragraph(value); layout.emitParagraph(value, this.htmlOutput); return ''; };
   table = (rows: { label: string; value: string }[]) => this.patch.body ? "" : layout.summaryTable(rows, this.measuring ? this.htmlOutput : undefined);

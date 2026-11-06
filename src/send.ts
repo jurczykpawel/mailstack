@@ -458,7 +458,7 @@ export interface RenderAndSendParams extends DeliveryContext {
 
 /**
  * Render a template through the shared layout and send it via SES. Shared by the
- * trusted `/v1/send` path and the Sellf webhook so both produce identical,
+ * trusted `/v1/send` path and configured webhooks so both produce identical,
  * brand-themed mail. Awaited (not background) so callers can surface failures.
  */
 export async function renderAndSend(

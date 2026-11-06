@@ -35,6 +35,8 @@ const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)
 export const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => map && Object.hasOwn(map, key) ? map[key] : undefined;
 const refs = (value: Presentation["subject"]): string[] => value === undefined ? [] : (typeof value === "string" ? [value] : value)
   .flatMap(part => typeof part === "string" ? tokenize(part).flatMap(token => typeof token === "string" ? [] : [token.field]) : [part.field]);
+export const hasPresentation = (patch: TemplatePatch) => ["subject", "heading", "previewText", "body"].some(key => Object.hasOwn(patch, key)) ||
+  [patch.copy, patch.labels, patch.ctaLabels].some(map => Object.keys(map ?? {}).length > 0);
 const dictionaries = ["copy", "labels", "ctaLabels", "fields"] as const;
 export function mergeDefinitions(layers: TemplatePatch[]): TemplatePatch {
   const result: TemplatePatch = {};
@@ -66,7 +68,7 @@ function checkPatch(id: TemplateId, patch: TemplatePatch, fields: NonNullable<Te
   }
   for (const [key, value] of Object.entries(patch.copy ?? {})) {
     if (!manifest.copy.includes(key) && !COMMON_SLOTS.includes(key)) fail([...path, "copy", key], "unknown slot");
-    checkRefs(refs(value), [...path, "copy", key]);
+    checkRefs(refs(value).filter(field => field !== "name" || !COMMON_SLOTS.includes(key)), [...path, "copy", key]);
     if (refs(value).some(field => secrets.includes(field)) && Object.entries(HEADER_SLOTS[id] ?? {}).some(([header, slots]) =>
       patch[header as "subject"] === undefined && slots.includes(key))) fail([...path, "copy", key], "header dependency requires override");
   }
@@ -203,7 +205,7 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
           for (const key of ["subject", "heading", "previewText"] as const) if (effective[key] === undefined && manifest.secretFields.some(field => HEADER_FIELDS[id][key].includes(field))) fail([...at, key], "secret header dependency requires override");
           const policy = { ...config.logging.defaults, ...config.logging.brands[brandId]?.defaults, ...config.logging.brands[brandId]?.templates?.[id] };
           if (policy.resend === "replay" && effective.secretFields?.length) fail(at, "template requires source or off");
-          if ((policy.level === "masked" || policy.level === "full") && selected.some(layer => Object.keys(layer.patch).some(key => !["fields", "secretFields", "locales"].includes(key))) && config.logging.patterns.some(pattern => "regex" in pattern)) fail(["logging", "patterns"], "active presentation requires literal patterns");
+          if ((policy.level === "masked" || policy.level === "full") && selected.some(layer => hasPresentation(layer.patch)) && config.logging.patterns.some(pattern => "regex" in pattern)) fail(["logging", "patterns"], "active presentation requires literal patterns");
           if (available) { if (++count > 1024) fail(["mailTemplates"], "combination limit"); routes[locale] = [fragment(manifest), ...selected.map(layer => fragment(layer.patch))]; }
         }
       }
@@ -211,6 +213,11 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
   }
   for (const [id, source] of Object.entries(config.sources ?? {})) for (const [event, action] of Object.entries(source.events)) {
     if (action.action !== 'send' || !Object.keys(action.fields).some(key => SOURCE_COPY_FIELDS[action.template]?.includes(key))) continue;
+    for (const brand of Object.values(config.brands)) {
+      const selector = brand.mailTemplates?.forms?.selector.byTemplate[action.template];
+      if (selector && Object.values(action.fieldsByLocale ?? {}).some(overlay => Object.hasOwn(overlay, selector)))
+        fail(['sources', id, 'events', event, 'fieldsByLocale'], 'selector field cannot be localized');
+    }
     const reachable = new Set(Object.values(plans.routes).flatMap(brand => Object.values(brand[action.template] ?? {}).flatMap(routes => Object.keys(routes))));
     for (const locale of Object.keys(action.fieldsByLocale ?? {})) if (!reachable.has(locale))
       plans.warnings.push(`$.sources.${id}.events.${event}.fieldsByLocale.${locale}: no available template locale`);

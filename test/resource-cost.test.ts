@@ -24,8 +24,8 @@ import type { Env } from '../src/types';
 vi.setConfig({ testTimeout: 30000 });
 
 // D1 calls, rows read and rows written (`meta`, index writes included) of everything since `reset`.
-let mf: Miniflare, store: ReturnType<typeof createD1Store>, calls = 0, reads = 0, writes = 0;
-const t = Date.UTC(2026, 10, 4), now = () => t, reset = () => { calls = reads = writes = 0; };
+let mf: Miniflare, store: ReturnType<typeof createD1Store>, calls = 0, statements = 0, reads = 0, writes = 0;
+const t = Date.UTC(2026, 10, 4), now = () => t, reset = () => { calls = statements = reads = writes = 0; };
 const rows = async (query: RawBuilder<unknown>) => (await query.execute(store.db)).rows;
 const event = (n: number) => sql`insert into domain_events(id,cause,type,message_id,brand,template,status,at)
   values(${'evt_' + n},${'msg:m' + n + ':sent'},'message.sent',${'m' + n},'acme','notice','sent',${t})`.execute(store.db);
@@ -34,7 +34,7 @@ beforeAll(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ modules: true, script: 'export default {fetch(){return new Response("ok")}}',
     compatibilityDate: '2026-06-01', d1Databases: ['DB'] }));
   const db = await mf.getD1Database('DB'), originals = new WeakMap<object, D1PreparedStatement>();
-  const record = (r: D1Result[]) => { calls++; for (const x of r) { reads += x.meta.rows_read; writes += x.meta.rows_written; } };
+  const record = (r: D1Result[]) => { calls++; statements += r.length; for (const x of r) { reads += x.meta.rows_read; writes += x.meta.rows_written; } };
   const wrap = (s: D1PreparedStatement): D1PreparedStatement => { const w = { bind: (...v: unknown[]) => wrap(s.bind(...v)),
     all: async () => { const r = await s.all(); record([r]); return r; } } as D1PreparedStatement; originals.set(w, s); return w; };
   store = createD1Store({ prepare: (q: string) => wrap(db.prepare(q)),
@@ -213,4 +213,54 @@ it('N: runs one drain per invocation and gives an event committed during it one 
   await event(1); reset(); await metered(50, () => Promise.all([emit('m1'), emit('m1')]));
   expect(seen).toEqual(['evt_1', 'evt_2']); expect(calls).toBeLessThanOrEqual(18);
   expect(await rows(sql`select seq from ext_event_cursor where extension='x'`)).toEqual([{ seq: 2 }]);
+});
+
+it('keeps language selection within the same delivery storage operations', async () => {
+  const { parseConfig } = await import('../src/core/config/schema.ts');
+  const { templatePlans } = await import('../src/templates/config.ts');
+  const { generateKeyPairSync } = await import('node:crypto');
+  const original = structuredClone(config), english = JSON.parse(readFileSync('config/mail-templates.en.example.json', 'utf8'));
+  const pair = generateKeyPairSync('x25519');
+  const env = { API_KEY: 'example', CONTENT_PUBLIC_KEYS: JSON.stringify({ keys: [{ ...pair.publicKey.export({ format: 'jwk' }), kid: 'test' }] }), INDEX_KEYS: JSON.stringify([{ kid: 'test', key: Buffer.alloc(32, 19).toString('base64url') }]) } as Env;
+  const result: Record<string, unknown> = {};
+  const random = crypto.getRandomValues.bind(crypto); let idCount = 0;
+  const ids = vi.spyOn(crypto, 'getRandomValues').mockImplementation(value => {
+    if (value?.byteLength !== 10) return random(value);
+    const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength); bytes.fill(0); bytes[9] = ++idCount; return value;
+  });
+  try {
+    for (const level of ['none', 'meta', 'masked', 'full'] as const) for (const scenario of ['first', 'duplicate', 'failed', 'unknown', 'public']) {
+      const measured = [];
+      for (const languages of [false, true]) {
+        idCount = 0;
+        for (const table of ['contents', 'replays', 'recipients', 'subjects', 'events', 'messages', 'guards', 'domain_events', 'jobs']) await sql`delete from ${sql.table(table)}`.execute(store.db);
+        const cfg = parseConfig({ ...original, mailTemplates: languages ? english : undefined,
+          brands: { ...original.brands, acme: { ...original.brands.acme, mailTemplates: languages ? { languages: { default: 'pl', allowed: ['pl', 'en'] } } : undefined } } });
+        Object.assign(config, cfg);
+        const tasks: Promise<unknown>[] = [];
+        const sendEmail = vi.fn(async () => { if (scenario === 'unknown') throw Error('Provider unavailable'); return { ok: scenario !== 'failed', status: scenario === 'failed' ? 500 : 200 }; });
+        const app = createApp({ store, sendEmail, templates: templatePlans(cfg), logging: { ...cfg.logging, defaults: { ...cfg.logging.defaults, level }, brands: {} },
+          now: () => new Date('2026-11-06T12:00:00Z'), verifyTurnstile: async () => true, waitUntil: task => { tasks.push(task); } });
+        const body = scenario === 'public' ? { brand: 'acme', email: 'reader@example.com', name: 'Jane', locale: 'en', message: 'Hello', 'cf-turnstile-response': 'local-test' }
+          : JSON.parse(readFileSync('test/fixtures/sellf-w176/purchase.completed.json', 'utf8'));
+        const request = () => new Request('https://local.example' + (scenario === 'public' ? '/v1/send' : '/v1/hooks/sellf?brand=acme'), { method: 'POST', body: JSON.stringify(body), headers: scenario === 'public' ? { origin: 'https://acme.example' } : { authorization: 'Bearer example' } });
+        reset();
+        const response = await app.fetch(request(), env, {} as ExecutionContext);
+        expect(response.status).toBe(['failed', 'unknown'].includes(scenario) ? 502 : 200);
+        if (scenario === 'duplicate') expect((await app.fetch(request(), env, {} as ExecutionContext)).status).toBe(200);
+        for (let i = 0; i < tasks.length; i++) await tasks[i];
+        measured.push({ calls, statements, reads, writes, sends: sendEmail.mock.calls.length });
+        expect(sendEmail).toHaveBeenCalledTimes(scenario === 'public' ? 2 : 1);
+        const saved = await store.db.selectFrom('messages').select('status').execute();
+        expect(saved).toHaveLength(level === 'none' ? 0 : scenario === 'public' ? 2 : 1);
+        expect(saved.every(row => row.status === (scenario === 'failed' ? 'send_failed' : scenario === 'unknown' ? 'unknown' : 'sent'))).toBe(true);
+      }
+      expect(measured[1], level + '/' + scenario).toEqual(measured[0]); result[level + '/' + scenario] = measured[0];
+    }
+    process.stdout.write(JSON.stringify({ languageDeliveryD1: result }) + '\n');
+  } finally {
+    ids.mockRestore();
+    for (const key of Object.keys(config)) if (!Object.hasOwn(original, key)) Reflect.deleteProperty(config, key);
+    Object.assign(config, original);
+  }
 });

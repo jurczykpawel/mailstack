@@ -218,3 +218,11 @@ it('retains an explicit declaration of an otherwise optional field', () => {
   const logging = { ...draft.logging, brands: { acme: { templates: { notice: { level: 'masked', resend: 'replay' } } } } };
   expect(() => parseConfig({ ...draft, logging })).toThrow('template requires source or off');
 });
+it('accepts shared name greetings without extending type-specific body fields', async () => {
+  const value = input({ defaults: { copy: { greetingWithName: 'Hello {name}', greetingWithoutName: 'Hello,' } } });
+  expect(() => parseConfig(value)).not.toThrow();
+  const cfg = parseConfig(value), { prepareEmail } = await import('../src/templates/prepare.ts');
+  const { getTemplate } = await import('../src/templates/index.ts');
+  expect(prepareEmail(cfg.brands.acme, getTemplate('payment')!, { name: 'Jane' }, { plans: templatePlans(cfg) }).text).toContain('Hello Jane');
+  expect(() => parseConfig(input({ templates: { refund: { body: { blocks: [{ id: 'name', kind: 'paragraph', text: '{name}' }] } } } }))).toThrow('invalid field reference');
+});
