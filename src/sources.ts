@@ -83,11 +83,14 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   const fields = [...missingRequiredFields(template, mapped), ...requiredSourceFields(action).filter(key => !mapped[key]?.trim())];
   if (!z.email().safeParse(to).success) fields.push(action.to);
   if (fields.length) return invalid([...new Set(fields)]);
+  if (mapped.subject && /[\u0000-\u001f\u007f-\u009f]/.test(mapped.subject)) return invalid(['subject']);
   const urls = brand.licenseActivationUrls;
   if (template.id === 'license' && urls && Object.hasOwn(urls, mapped.productId)) mapped.activationUrl = urls[mapped.productId];
   const idempotencyKey = `source:${id}:${event}:${JSON.stringify([brandId, identity || (await tokenSha256(raw)).slice(0, 32)])}`;
   const result = await renderAndSend(deps, env, brand, template, mapped, {
     to: [to], replyTo: brand.to[0], clientId: client.id, ref: ref || undefined, idempotencyKey,
   });
+  if (!result.ok && ['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(result.code ?? ''))
+    return invalid([result.code === 'invalid_subject' ? 'subject' : result.code === 'template_empty_heading' ? 'heading' : result.code!]);
   return json(deliveryResponse(result, true), result.status);
 }

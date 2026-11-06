@@ -1,3 +1,5 @@
+import { prepareEmail } from "./templates/prepare.ts";
+import { normalizeLocale } from "./templates/locale.ts";
 import { validateAttachments } from "./attachments";
 import { boundedText } from "./core/http";
 import type {
@@ -12,14 +14,14 @@ import type {
 } from "./types";
 import { deliver, deliveryResponse } from "./core/logging/delivery";
 import type { DeliveryContext } from "./core/logging/delivery";
-import { config, findBrandByOrigin, getBrand } from "./core/config";
+import { config, compiledTemplates, findBrandByOrigin, getBrand } from "./core/config";
 import { authenticate, licenseRequired, permits } from "./clients.ts";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { consumeAltcha, verifyNonce } from "./altcha";
 import { checkRateLimit } from "./ratelimit";
-import { getTemplate, renderLayout } from "./templates/index";
+import { getTemplate } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
-import { buildBlocks, serializeToHead } from "./markup";
+import { buildBlocks } from "./markup";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_FIELDS = 40;
@@ -105,11 +107,11 @@ function coerceValue(v: unknown): string {
 }
 
 /** Build the flat content map (non-reserved keys, coerced + capped). */
-function extractData(body: Record<string, unknown>, publicNonce: boolean): TemplateData {
+function extractData(body: Record<string, unknown>, publicNonce: boolean, languages = false): TemplateData {
   const data: TemplateData = Object.create(null);
   let count = 0;
   for (const [key, raw] of Object.entries(body)) {
-    if (RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;
+    if (languages && key === "locale" || RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;
     if (count >= MAX_FIELDS) break;
     data[key] = coerceValue(raw);
     count++;
@@ -269,7 +271,7 @@ export async function handleSend(
   }
 
   // Content fields (reserved keys stripped).
-  const data = extractData(body, !trusted && !!brand.requireNonce);
+  const data = extractData(body, !trusted && !!brand.requireNonce, !!brand.mailTemplates?.languages);
   if (nonceProduct !== undefined) data.type = nonceProduct;
   // For the contact template, attach request-time meta (footer small print).
   if (template.id === "contact") {
@@ -296,6 +298,8 @@ export async function handleSend(
   const replyTo = resolveReplyTo(brand, template.id, data, trusted, body.replyTo);
 
   // Subject: trusted `subject` override wins, else the template decides.
+  if (trusted && typeof body.subject === 'string' && /[\u0000-\u001f\u007f-\u009f]/.test(body.subject))
+    return json({ success: false, message: 'invalid subject', code: 'invalid_subject' }, { status: 400, cors: corsOrigin });
   const subjectOverride =
     trusted && typeof body.subject === "string" && body.subject.trim() !== ""
       ? body.subject.trim()
@@ -314,6 +318,7 @@ export async function handleSend(
       return json({ success: false, message: "resend mismatch", code: "resend_mismatch" }, { status: 409, cors: corsOrigin });
     const result = await deps.resendSource!(env, client!.id, body.resendOf, idempotencyKey, {
       to: recipients, template: template.id, data, ...(replyTo ? { replyTo } : {}),
+      ...(brand.mailTemplates?.languages && normalizeLocale(body.locale) ? { locale: normalizeLocale(body.locale)! } : {}),
       ...(subjectOverride ? { subjectOverride } : {}), ...(explicitJsonLd ? { markup: explicitJsonLd } : {}),
     }, body.ref as string | undefined, attachments, brand.id);
     return json(deliveryResponse(result, true), { status: result.status, cors: corsOrigin });
@@ -323,6 +328,7 @@ export async function handleSend(
     to: recipients,
     replyTo,
     subject: subjectOverride,
+    locale: body.locale,
     explicitJsonLd,
     clientId: client?.id ?? "public",
     ref: trusted ? body.ref as string | undefined : undefined,
@@ -396,7 +402,7 @@ function maybeSendAutoReply(ctx: AutoReplyContext): void {
   const task = (async () => {
     await Promise.resolve();
     await renderAndSend(deps, env, brand, template, replyData, {
-      to: [to], replyTo: brand.to[0], clientId: "public",
+      to: [to], replyTo: brand.to[0], clientId: "public", locale: body.locale, confirmation: true,
     });
   })();
 
@@ -427,6 +433,8 @@ function resolveReplyTo(
 }
 
 export interface RenderAndSendParams extends DeliveryContext {
+  locale?: unknown;
+  confirmation?: boolean;
   attachments?: Attachment[];
   to: string[];
   replyTo?: string;
@@ -452,25 +460,15 @@ export async function renderAndSend(
   data: TemplateData,
   params: RenderAndSendParams,
 ): Promise<SendResult> {
-  const subject =
-    params.subject && params.subject.trim() !== ""
-      ? params.subject.trim()
-      : template.subject(brand, data);
-  const rendered = template.render(brand, data);
-  // Explicit markup (present in the request) wins wholesale; otherwise fall back
-  // to whatever markup the template produced from its own data.
-  const blocks =
-    params.explicitJsonLd !== undefined
-      ? params.explicitJsonLd
-      : rendered.jsonLd ?? [];
-  const { html, text } = renderLayout(brand, {
-    heading: rendered.heading,
-    bodyHtml: rendered.bodyHtml,
-    bodyText: rendered.bodyText,
-    previewText: rendered.previewText,
-    headHtml: serializeToHead(blocks),
-  });
-  return deliver(deps, env, brand, template, data, {
+  let prepared;
+  try { prepared = prepareEmail(brand, template, data, { ...params, plans: compiledTemplates }); }
+  catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (!['invalid_subject', 'template_empty_heading', 'template_sensitive_header', 'template_output_limit', 'replay_payload_limit'].includes(code)) throw error;
+    return { ok: false, status: code === 'invalid_subject' ? 400 : 422, code, message: code.replaceAll('_', ' ') };
+  }
+  const { subject, html, text } = prepared;
+  return deliver(deps, env, brand, template, prepared.data, {
     from: brand.from,
     ...(params.attachments ? { attachments: params.attachments } : {}),
     to: params.to,

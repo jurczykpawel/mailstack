@@ -46,8 +46,8 @@ export function textToHtml(s: string): string {
 export function paragraph(text: Content): string {
   const output = new Output(); emitParagraph(text, output); return output.result();
 }
-export function emitParagraph(text: Content, output: Output): void {
-  output.html`<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">${esc(text, true)}</p>`;
+export function emitParagraph(text: Content, output: Output, content: Emit = esc(text, true)): void {
+  output.html`<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">${content}</p>`;
 }
 
 export function codeBox(value: Content, sink?: Output): string {
@@ -127,7 +127,7 @@ export function metadataBlock(items: { label: Content; value: string }[], sink?:
   return sink ? "" : output.result();
 }
 
-type LayoutParts = Omit<LayoutInput, "heading" | "previewText" | "bodyHtml" | "bodyText"> & { heading: Content; previewText?: Content; bodyHtml: Content | Emit; bodyText: Content | Emit };
+type LayoutParts = { locale?: string | null; layoutCopy?: { sentBy: string; phoneLabel: string } } & Omit<LayoutInput, "heading" | "previewText" | "bodyHtml" | "bodyText"> & { heading: Content; previewText?: Content; bodyHtml: Content | Emit; bodyText: Content | Emit };
 export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: Output; text: Output }): RenderedEmail {
   const output = sinks?.html ?? new Output();
   const { theme } = brand;
@@ -147,14 +147,14 @@ export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: O
 
   const footerLines: ((out: Output) => void)[] = [out => safeName(out)];
   if (theme.address) footerLines.push(esc(theme.address));
-  if (theme.phone) footerLines.push(out => out.html`tel: ${esc(theme.phone!)}`);
+  if (theme.phone) footerLines.push(out => out.html`${esc(input.layoutCopy?.phoneLabel ?? "tel:")} ${esc(theme.phone!)}`);
   if (isHttpUrl(theme.siteUrl)) footerLines.push(out => out.html`<a href="${esc(theme.siteUrl)}" style="color:${accent};text-decoration:none;">${esc(
       theme.siteUrl.replace(/^https?:\/\//, ""),
     )}</a>`,
   );
 
   output.html`<!doctype html>
-<html lang="pl">
+<html lang="${esc(input.locale ?? "pl")}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -187,7 +187,7 @@ export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: O
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="${esc(MAILSTACK_HOME_URL)}" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">${esc(input.layoutCopy?.sentBy ?? "Wysłano przez")} <a href="${esc(MAILSTACK_HOME_URL)}" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -208,8 +208,8 @@ function renderLayoutText(brand: Brand, input: LayoutParts, output = new Output(
   if (output.writing) output.raw(body.result()); else output.addBytes(body.bytes);
   output.raw(["\n\n", "-".repeat(40), "\n", brand.name]);
   if (brand.theme.address) output.raw(["\n", brand.theme.address]);
-  if (brand.theme.phone) output.raw(["\ntel: ", brand.theme.phone]);
+  if (brand.theme.phone) output.raw(["\n", input.layoutCopy?.phoneLabel ?? "tel:", " ", brand.theme.phone]);
   if (isHttpUrl(brand.theme.siteUrl)) output.raw(["\n", brand.theme.siteUrl]);
-  output.raw(["\n\nWysłano przez mailstack (", MAILSTACK_HOME_URL, ")"]);
+  output.raw(["\n\n", input.layoutCopy?.sentBy ?? "Wysłano przez", " mailstack (", MAILSTACK_HOME_URL, ")"]);
   return output.result();
 }

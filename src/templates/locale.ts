@@ -4,7 +4,7 @@ import { normalizeLocale } from "./language-tag.ts";
 import { MANIFEST } from "./manifest.ts";
 export { normalizeLocale } from "./language-tag.ts";
 const handles = new WeakMap<number[], { definition: ReturnType<typeof mergeDefinitions>; locale: string | null }>();
-const neutral = freezePlans({ definition: {}, locale: null });
+const neutral = freezePlans({ definition: {} as ReturnType<typeof mergeDefinitions>, locale: null });
 export function resolvePresentation(plans: TemplatePlans, brand: Config["brands"][string], template: string, kind = "", input: unknown = null) {
   if (!Object.hasOwn(MANIFEST, template)) throw new Error("unknown template combination");
   const brandRoutes = own(plans.routes, brand.id);

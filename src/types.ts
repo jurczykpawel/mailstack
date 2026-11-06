@@ -1,3 +1,4 @@
+import type { Recipe } from "./templates/recipe.ts";
 import type { Notifier, Sender, Store } from './core/ports';
 import type { Config } from './core/config/schema';
 import type { KeyEnvironment } from './core/keyring';
@@ -52,6 +53,7 @@ export interface BrandTheme {
 
 /** A single tenant: where mail goes, who may submit, and how it looks. */
 export interface Brand {
+  mailTemplates?: import("./templates/config-schema.ts").BrandMailTemplates;
   id: string;
   name: string;
   /** Verified SES sender, e.g. "Foo <info@foo.example>". */
@@ -141,8 +143,8 @@ export interface TemplateDef {
   id: string;
   /** Whether public (browser) requests may select this type. Only 'contact' is true. */
   publicAllowed?: boolean;
-  subject(brand: Brand, data: TemplateData): string;
-  render(brand: Brand, data: TemplateData): RenderedBody;
+  subject(brand: Brand, data: TemplateData, recipe?: Recipe): string;
+  render(brand: Brand, data: TemplateData, recipe?: Recipe): RenderedBody;
 }
 
 /** Result of a send attempt. */

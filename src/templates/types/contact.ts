@@ -1,6 +1,7 @@
+import { Recipe } from "../recipe.ts";
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
 import { selfwareContact, selfwareContactSubject } from "./selfware.ts";
-import { humanizeLabel, summaryTable, messageBlock, metadataBlock } from "../layout.ts";
+
 
 /**
  * Meta keys injected by the handler (request-time context, not user content).
@@ -37,40 +38,40 @@ export const contactTemplate: TemplateDef = {
     return `${brand.subjectPrefix}${typePart} — ${brand.name}`;
   },
 
-  render(_brand: Brand, data: TemplateData): RenderedBody {
+  render(_brand: Brand, data: TemplateData, recipe = new Recipe()): RenderedBody {
     if (_brand.id === "selfware") return selfwareContact(_brand, data);
     const rows = Object.entries(data)
       .filter(([key, value]) => !RESERVED_CONTENT.has(key) && value.trim() !== "")
-      .map(([key, value]) => ({ label: humanizeLabel(key), value }));
+      .map(([key, value]) => ({ label: recipe.label(key), value }));
 
-    const table = summaryTable(rows);
+    const table = recipe.table(rows);
 
     const message = (data.message || "").trim();
-    const messageHtml = message ? messageBlock(message, humanizeLabel("message")) : "";
-    const metaHtml = metadataBlock([
-      { label: "Otrzymano", value: metaValue(data, META_KEYS.receivedAt) },
-      { label: "Źródło", value: metaValue(data, META_KEYS.origin) },
-      { label: "IP", value: metaValue(data, META_KEYS.ip) },
+    const messageHtml = message ? recipe.message(message, recipe.copy("messageLabel", recipe.label("message"))) : "";
+    const metaHtml = recipe.metadata([
+      { label: recipe.copy("receivedAtLabel", "Otrzymano"), value: metaValue(data, META_KEYS.receivedAt) },
+      { label: recipe.copy("originLabel", "Źródło"), value: metaValue(data, META_KEYS.origin) },
+      { label: recipe.copy("ipLabel", "IP"), value: metaValue(data, META_KEYS.ip) },
     ]);
 
-    const bodyHtml = `${table}${messageHtml}${metaHtml}`;
+    const bodyHtml = recipe.html([table, messageHtml, metaHtml], "");
 
     const textLines: string[] = [];
     for (const r of rows) textLines.push(`${r.label}: ${r.value}`);
     if (message) {
       textLines.push("");
-      textLines.push(`${humanizeLabel("message")}:`);
+      textLines.push(`${recipe.copy("messageLabel", recipe.label("message"))}:`);
       textLines.push(message);
     }
     textLines.push("");
-    textLines.push(`Otrzymano: ${metaValue(data, META_KEYS.receivedAt)}`);
-    textLines.push(`Źródło: ${metaValue(data, META_KEYS.origin)}`);
-    textLines.push(`IP: ${metaValue(data, META_KEYS.ip)}`);
+    textLines.push(`${recipe.copy("receivedAtLabel", "Otrzymano")}: ${metaValue(data, META_KEYS.receivedAt)}`);
+    textLines.push(`${recipe.copy("originLabel", "Źródło")}: ${metaValue(data, META_KEYS.origin)}`);
+    textLines.push(`${recipe.copy("ipLabel", "IP")}: ${metaValue(data, META_KEYS.ip)}`);
 
     return {
-      heading: this.subject(_brand, data),
+      heading: this.subject(_brand, data, recipe),
       bodyHtml,
-      bodyText: textLines.join("\n"),
+      bodyText: recipe.text(textLines, "\n"),
     };
   },
 };

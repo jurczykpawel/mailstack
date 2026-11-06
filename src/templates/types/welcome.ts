@@ -1,5 +1,6 @@
+import { Recipe } from "../recipe.ts";
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
-import { ctaButton, ctaText, paragraph } from "../layout.ts";
+import { ctaText } from "../layout.ts";
 
 /** Welcome / onboarding email with an optional CTA button. */
 export const welcomeTemplate: TemplateDef = {
@@ -10,19 +11,19 @@ export const welcomeTemplate: TemplateDef = {
     return `Witaj w ${brand.name}`;
   },
 
-  render(brand: Brand, data: TemplateData): RenderedBody {
+  render(brand: Brand, data: TemplateData, recipe = new Recipe()): RenderedBody {
     const name = (data.name || "").trim();
-    const heading = `Witaj${name ? ", " + name : ""} w ${brand.name}!`;
+    const heading = name ? recipe.copy("headingWithName", `Witaj, ${name} w ${brand.name}!`) : recipe.copy("headingWithoutName", `Witaj w ${brand.name}!`);
 
     const intro = (data.intro || "").trim();
     const body = (data.body || "").trim();
     const ctaUrl = (data.ctaUrl || "").trim();
-    const ctaLabel = (data.ctaLabel || "Zaczynamy").trim();
+    const ctaLabel = recipe.cta("main", "Zaczynamy", data.ctaLabel);
 
     const htmlParts: string[] = [];
-    if (intro) htmlParts.push(paragraph(intro));
-    if (body) htmlParts.push(paragraph(body));
-    htmlParts.push(ctaButton(brand, ctaUrl, ctaLabel));
+    if (intro) htmlParts.push(recipe.paragraph(intro));
+    if (body) htmlParts.push(recipe.paragraph(body));
+    htmlParts.push(recipe.button(brand, ctaUrl, ctaLabel));
 
     const textParts: string[] = [];
     if (intro) textParts.push(intro);
@@ -32,8 +33,8 @@ export const welcomeTemplate: TemplateDef = {
 
     return {
       heading,
-      bodyHtml: htmlParts.join("\n"),
-      bodyText: textParts.join("\n\n"),
+      bodyHtml: recipe.html(htmlParts),
+      bodyText: recipe.text(textParts),
       previewText: intro || body || heading,
     };
   },

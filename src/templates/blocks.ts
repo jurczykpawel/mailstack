@@ -17,8 +17,8 @@ export function expandText(text: Presentation["subject"], brand: Brand, data: Te
     return (own(plans.texts, part) ?? tokenize(part)).map(token => typeof token === "string" ? token : field(token.field));
   });
 }
-type Pair = { html: Emit; text: Emit };
-function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData): Pair {
+export type Pair = { html: Emit; text: Emit };
+export function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData): Pair {
   const blocks: Pair[] = [];
   const label = (key: string) => own(patch.labels, key) ?? humanizeLabel(key);
   for (const block of patch.body?.blocks ?? []) {
@@ -58,7 +58,7 @@ function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans
   return { html: emit("html"), text: emit("text") };
 }
 export function renderConfigured(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData,
-  input: { subject: Content; heading: Content; previewText?: Content; headHtml?: string }) {
+  input: { subject: Content; heading: Content; previewText?: Content; headHtml?: string; locale?: string | null; layoutCopy?: { sentBy: string; phoneLabel: string } }) {
   const encodings = new Output().encodings;
   const subject = new Output(998, false, false, encodings);
   subject.raw(input.subject);

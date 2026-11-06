@@ -1,6 +1,7 @@
+import { Recipe } from "../recipe.ts";
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
 import { selfwareReceived } from "./selfware.ts";
-import { escapeHtml, paragraph } from "../layout.ts";
+import { esc, type Emit } from "../output.ts";
 
 /** Acknowledgement that a submission was received. */
 export const receivedTemplate: TemplateDef = {
@@ -11,41 +12,37 @@ export const receivedTemplate: TemplateDef = {
     return "Potwierdzenie: otrzymaliśmy Twoje zgłoszenie";
   },
 
-  render(_brand: Brand, data: TemplateData): RenderedBody {
+  render(_brand: Brand, data: TemplateData, recipe = new Recipe()): RenderedBody {
     if (_brand.id === "selfware") return selfwareReceived(data);
     const name = (data.name || "").trim();
     const refId = (data.refId || "").trim();
     const summary = (data.summary || "").trim();
 
     const heading = "Dziękujemy za wiadomość";
-    const greeting = name ? `Witaj ${name},` : "Witaj,";
+    const greeting = name ? recipe.copy("greetingWithName", `Witaj ${name},`) : recipe.copy("greetingWithoutName", "Witaj,");
     const intro =
-      "Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.";
+      recipe.copy("intro", "Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.");
 
-    const htmlParts: string[] = [paragraph(greeting), paragraph(intro)];
+    const htmlParts: (string | Emit)[] = [recipe.paragraph(greeting), recipe.paragraph(intro)];
     if (refId) {
       htmlParts.push(
-        `<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>${escapeHtml(
-          refId,
-        )}</strong></p>`,
+        out => out.html`<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">${esc(recipe.copy("refLabel", "Numer zgłoszenia"))}: <strong>${esc(refId)}</strong></p>`,
       );
     }
     if (summary) {
       htmlParts.push(
-        `<div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
-          summary,
-        )}</div>`,
+        out => out.html`<div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">${esc(summary)}</div>`,
       );
     }
 
     const textParts: string[] = [greeting, intro];
-    if (refId) textParts.push(`Numer zgłoszenia: ${refId}`);
+    if (refId) textParts.push(`${recipe.copy("refLabel", "Numer zgłoszenia")}: ${refId}`);
     if (summary) textParts.push(summary);
 
     return {
       heading,
-      bodyHtml: htmlParts.join("\n"),
-      bodyText: textParts.join("\n\n"),
+      bodyHtml: recipe.html(htmlParts),
+      bodyText: recipe.text(textParts),
       previewText: intro,
     };
   },
