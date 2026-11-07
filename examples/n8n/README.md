@@ -11,6 +11,17 @@ Import whichever file matches your preference (n8n -> Workflows -> Import from F
 
 Both templates use mailstack's **trusted mode** (`Authorization: Bearer <API_KEY>`) - never public mode - since n8n is a server-to-server caller, not a browser. See the root [README](../../README.md) for how to deploy mailstack and create an API key.
 
+Mailstack is a sender, nothing more: n8n/the calling application owns business
+rules and scheduling. Both examples use a validated `to` override. A Pro client
+needs `send`, the selected brand/template and `recipientOverride: true`; the full
+key allows them by default. Keep production keys in n8n credentials/environment.
+Payment `amount` is a decimal major-unit string (for example `149.00`); convert
+minor units from your provider before calling this API. Built-in Polish copy,
+subjects and body blocks can be changed in external `mailTemplates`; optional
+brand languages accept `locale` (add it in the builder). See
+[template configuration](../../docs/templates.md). API placement in profiles
+a/b/c does not change `/v1/send`; see [architecture](../../docs/architecture.md).
+
 ## Send a transactional email with mailstack
 
 **Files:** `send-transactional-email-EN.json` / `send-transactional-email-PL.json`
@@ -24,7 +35,7 @@ The foundational template: any trigger you like feeds a `Configuration` node (re
 4. **Send email via mailstack** - POSTs it with your API key as a Bearer token.
 
 ### Setup
-1. Deploy mailstack (see the root README) and create an API key (`wrangler secret put API_KEY`).
+1. Deploy mailstack (see the root README) and set the full key (Worker: `npx wrangler secret put API_KEY`; Node: runtime environment).
 2. Fill in **Configuration (EDIT ME)**.
 3. Replace the trigger, run once, check the recipient's inbox.
 
@@ -38,7 +49,7 @@ The foundational template: any trigger you like feeds a `Configuration` node (re
 
 **Files:** `purchase-confirmation-gmail-action-EN.json` / `purchase-confirmation-gmail-action-PL.json`
 
-Turns a purchase/order webhook into a branded `payment` confirmation carrying **schema.org markup** - Gmail renders a real "View order" action button in the message bar, plus an optional discount-code badge in the Promotions tab. A showcase for mailstack's markup feature (`docs/superpowers/specs/2026-07-17-email-markup-design.md` in the main repo has the full design).
+Turns a purchase/order webhook into a branded `payment` confirmation carrying **schema.org markup** - eligible Gmail senders can show a "View order" action button in the message bar, plus an optional discount-code badge in the Promotions tab. See the root README’s email markup section for supported directives and Gmail sender requirements.
 
 ### What it does
 1. **Purchase webhook** - receives your provider's payload. This example expects a generic `{customer:{email,name}, amount, currency, product, orderId, orderUrl}` shape - replace the node with your provider's own trigger if it has one (Stripe, Gumroad, WooCommerce, [Sellf](https://sellf.app)...).
@@ -53,7 +64,7 @@ Turns a purchase/order webhook into a branded `payment` confirmation carrying **
 4. Fill in `baseUrl`/`apiKey`/`brand`. Activate.
 
 ### Customization
-- mailstack's Promotions-tab annotations (discount codes, image cards) render for arbitrary recipients only after Google allowlists your sending domain - action buttons (the "View order" one this template ships) work immediately, no allowlisting needed. See the root README's markup section.
+- Gmail actions and Promotions annotations require sender eligibility for arbitrary recipients; including markup alone does not guarantee display. See the root README's markup section.
 - Add more `markup` directives (`organization`, `promotionCard`, `trackAction`...) in the Code node - see the root README's markup kind table.
 
 **Security note:** this workflow's webhook has no signature verification by design (kept generic across providers) - add your provider's own verification (e.g. Stripe's `Stripe-Signature` header) before trusting the payload in production. See the sticky note on the canvas.

@@ -88,54 +88,54 @@ STRINGS_SEND = {
         "wf_name": "Send a transactional email with mailstack",
         "overview": """## Send self-hosted transactional emails with mailstack
 
-[mailstack](https://github.com/jurczykpawel/mailstack) is a free, self-hosted email sender (Cloudflare Worker + Amazon SES) you deploy once and call from anywhere - no SaaS email API, no per-email pricing, no vendor lock-in.
+[mailstack](https://github.com/jurczykpawel/mailstack) is a free, self-hosted email sender (Worker/SES or Node/SES/SMTP) you deploy once and call from anywhere - self-owned sending; provider charges still apply.
 
 ### How it works
 - A **Configuration** node holds your mailstack URL, API key and the email's content (this example sends a `payment` confirmation - mailstack also ships `welcome`, `received` and `notice` templates).
 - **Build request body** assembles the JSON mailstack expects (keeping your URL and API key out of the body).
-- The **HTTP Request** POSTs it to `/v1/send` with your API key as a Bearer token (trusted mode) - mailstack renders a branded HTML+text email and sends it via Amazon SES.
-- Setting `orderUrl` also makes mailstack add a Gmail action button ("View order") automatically - no extra config needed.
+- The **HTTP Request** POSTs it to `/v1/send` with your API key as a Bearer token (trusted mode) - mailstack renders a branded HTML+text email and sends it via SES/SMTP.
+- `orderUrl` adds ViewAction markup; Gmail display requires sender eligibility (README).
 
 ### Setup
-1. Deploy mailstack (`git clone` + `wrangler deploy` - see the repo README) and note its URL and your brand id.
+1. Deploy mailstack (Worker: `npm run release`; Node: see README) and note its URL and your brand id.
 2. Create an API key: set the `API_KEY` secret with `wrangler secret put API_KEY`.
 3. Replace the **When clicking Execute** trigger with your own (webhook, form, CRM event, cron...).
 4. Fill in **Configuration (EDIT ME)**: `baseUrl`, `apiKey`, `brand`, and the email fields.
 5. Run once - check the recipient's inbox.
 
 ### Customization tips
-Change `template` to `welcome`, `received` or `notice` for other email types (see the mailstack README for each template's fields). Map `to`/`name`/`amount`/etc. from your trigger's data instead of typing them in.
+Change `template` to `welcome`, `received` or `notice` for other email types (fields, copy/language configuration: README and docs/templates.md). Map `to`/`name`/`amount`/etc. from your trigger's data instead of typing them in.
 """,
         "sec1": "## 1. What to send\nTrigger your flow, then fill in the recipient, template and content in Configuration.",
         "sec2": "## 2. Send it\nBuild the JSON body mailstack expects and POST it with your API key as a Bearer token.",
-        "warning": "## Keep your API key secret\nThe mailstack API key unlocks trusted mode (any recipient, any template). Store it in n8n credentials/environment for production - don't commit workflows with a real key.",
+        "warning": "## Keep your API key secret\nThe full key allows any recipient/template; Pro clients need send scope, allowed brand/template and recipientOverride. Store it in n8n credentials/environment for production - don't commit workflows with a real key.",
     },
     "pl": {
         "file": "send-transactional-email-PL.json",
         "wf_name": "Wyślij mail transakcyjny przez mailstack",
         "overview": """## Wysyłaj self-hostowane maile transakcyjne przez mailstack
 
-[mailstack](https://github.com/jurczykpawel/mailstack) to darmowy, samodzielnie hostowany wysyłacz e-maili (Cloudflare Worker + Amazon SES), który wdrażasz raz i wywołujesz skądkolwiek - bez SaaS-owego API do maili, bez płacenia za sztukę, bez vendor lock-inu.
+[mailstack](https://github.com/jurczykpawel/mailstack) to darmowy, samodzielnie hostowany wysyłacz e-maili (Worker/SES or Node/SES/SMTP), który wdrażasz raz i wywołujesz skądkolwiek - własna wysyłka; opłaty dostawcy nadal obowiązują.
 
 ### Jak to działa
 - Node **Configuration** trzyma adres mailstacka, klucz API i treść maila (ten przykład wysyła potwierdzenie `payment` - mailstack ma też szablony `welcome`, `received` i `notice`).
 - **Build request body** buduje JSON, jakiego oczekuje mailstack (adres i klucz API zostają poza treścią body).
-- **HTTP Request** wysyła POST na `/v1/send` z kluczem API jako Bearer token (tryb zaufany) - mailstack renderuje branded mail HTML+text i wysyła go przez Amazon SES.
-- Ustawienie `orderUrl` sprawia, że mailstack automatycznie dodaje przycisk akcji w Gmailu ("Zobacz zamówienie") - bez dodatkowej konfiguracji.
+- **HTTP Request** wysyła POST na `/v1/send` z kluczem API jako Bearer token (tryb zaufany) - mailstack renderuje branded mail HTML+text i wysyła go przez SES/SMTP.
+- `orderUrl` dodaje markup ViewAction; wyświetlenie w Gmailu wymaga kwalifikacji nadawcy (README).
 
 ### Konfiguracja
-1. Wdróż mailstack (`git clone` + `wrangler deploy` - patrz README repo) i zanotuj jego adres oraz id brandu.
+1. Wdróż mailstack (Worker: `npm run release`; Node: patrz README) i zanotuj jego adres oraz id brandu.
 2. Utwórz klucz API: ustaw sekret `API_KEY` przez `wrangler secret put API_KEY`.
 3. Podmień trigger **When clicking Execute** na własny (webhook, formularz, event z CRM, cron...).
 4. Uzupełnij **Configuration (EDIT ME)**: `baseUrl`, `apiKey`, `brand` i pola maila.
 5. Uruchom raz - sprawdź skrzynkę odbiorcy.
 
 ### Wskazówki
-Zmień `template` na `welcome`, `received` lub `notice` dla innych typów maili (pola każdego szablonu - patrz README mailstacka). Podepnij `to`/`name`/`amount`/itd. z danych triggera zamiast wpisywać je na sztywno.
+Zmień `template` na `welcome`, `received` lub `notice` dla innych typów maili (pola, konfiguracja treści/języków: README i docs/templates.md). Podepnij `to`/`name`/`amount`/itd. z danych triggera zamiast wpisywać je na sztywno.
 """,
         "sec1": "## 1. Co wysłać\nUruchom flow, potem uzupełnij odbiorcę, szablon i treść w Configuration.",
         "sec2": "## 2. Wyślij\nZbuduj JSON, jakiego oczekuje mailstack, i wyślij POST z kluczem API jako Bearer token.",
-        "warning": "## Chroń swój klucz API\nKlucz API mailstacka odblokowuje tryb zaufany (dowolny odbiorca, dowolny szablon). W produkcji trzymaj go w credentials/zmiennych środowiskowych n8n - nie commituj workflowa z prawdziwym kluczem.",
+        "warning": "## Chroń swój klucz API\nPełny klucz pozwala na dowolnego odbiorcę/szablon; klient Pro wymaga send, brandu/szablonu i recipientOverride. W produkcji trzymaj go w credentials/zmiennych środowiskowych n8n - nie commituj workflowa z prawdziwym kluczem.",
     },
 }
 
@@ -203,7 +203,7 @@ STRINGS_PURCHASE = {
         "wf_name": "Send order confirmation emails with a Gmail action button (mailstack)",
         "overview": """## Turn purchase webhooks into a branded confirmation email with a Gmail action button
 
-Receives a purchase/order webhook (from Stripe, Gumroad, WooCommerce, [Sellf](https://sellf.app) or your own checkout), then sends the buyer a branded confirmation through [mailstack](https://github.com/jurczykpawel/mailstack) - a free, self-hosted email sender. The email carries **schema.org markup**, so Gmail renders a real "View order" action button in the message bar, plus an optional discount-code badge in the Promotions tab.
+Receives a purchase/order webhook (from Stripe, Gumroad, WooCommerce, [Sellf](https://sellf.app) or your own checkout), then sends the buyer a branded confirmation through [mailstack](https://github.com/jurczykpawel/mailstack) - a free, self-hosted email sender. The email carries **schema.org markup**, so eligible senders can show a "View order" action button in the message bar, plus an optional discount-code badge in the Promotions tab.
 
 ### How it works
 - The **Purchase webhook** receives your provider's payload (this example expects a generic `{customer:{email,name}, amount, currency, product, orderId, orderUrl}` shape).
@@ -219,7 +219,7 @@ Receives a purchase/order webhook (from Stripe, Gumroad, WooCommerce, [Sellf](ht
 5. Activate the workflow.
 
 ### Customization tips
-mailstack's Promotions-tab annotations (discount codes, image cards) currently render for arbitrary recipients only after Google allowlists your sending domain - see mailstack's README. Action buttons work immediately, no allowlisting needed.
+Gmail actions and Promotions annotations need sender eligibility for arbitrary recipients (README). Mailstack only sends; the caller owns payment rules and scheduling.
 """,
         "sec1": "## 1. Receive + map the order\nThe webhook receives your provider's payload; Configuration maps it to mailstack's fields.",
         "sec2": "## 2. Build + send the email\nAssemble the payment email with its Gmail action button/discount markup, then POST it to mailstack.",
@@ -230,7 +230,7 @@ mailstack's Promotions-tab annotations (discount codes, image cards) currently r
         "wf_name": "Wyślij potwierdzenie zamówienia z przyciskiem akcji Gmail (mailstack)",
         "overview": """## Zamień webhook zamówienia w branded mail potwierdzający z przyciskiem akcji Gmail
 
-Odbiera webhook zamówienia/zakupu (ze Stripe, Gumroad, WooCommerce, [Sellf](https://sellf.app) albo własnego checkoutu) i wysyła kupującemu branded potwierdzenie przez [mailstack](https://github.com/jurczykpawel/mailstack) - darmowy, samodzielnie hostowany wysyłacz maili. Mail niesie **markup schema.org**, więc Gmail pokazuje prawdziwy przycisk akcji "Zobacz zamówienie" na pasku wiadomości oraz opcjonalny badge z kodem rabatowym w zakładce Oferty.
+Odbiera webhook zamówienia/zakupu (ze Stripe, Gumroad, WooCommerce, [Sellf](https://sellf.app) albo własnego checkoutu) i wysyła kupującemu branded potwierdzenie przez [mailstack](https://github.com/jurczykpawel/mailstack) - darmowy, samodzielnie hostowany wysyłacz maili. Mail niesie **markup schema.org**, więc uprawnieni nadawcy mogą pokazać przycisk akcji Gmail "Zobacz zamówienie" na pasku wiadomości oraz opcjonalny badge z kodem rabatowym w zakładce Oferty.
 
 ### Jak to działa
 - **Purchase webhook** odbiera payload Twojego dostawcy (przykład zakłada ogólny kształt `{customer:{email,name}, amount, currency, product, orderId, orderUrl}`).
@@ -246,7 +246,7 @@ Odbiera webhook zamówienia/zakupu (ze Stripe, Gumroad, WooCommerce, [Sellf](htt
 5. Aktywuj workflow.
 
 ### Wskazówki
-Adnotacje mailstacka w zakładce Oferty (kody rabatowe, karty z obrazkiem) renderują się dla dowolnych odbiorców dopiero po allowliście domeny u Google - patrz README mailstacka. Przyciski akcji działają od razu, bez allowlisty.
+Akcje Gmail i adnotacje Ofert wymagają kwalifikacji nadawcy dla dowolnych odbiorców (README). Mailstack tylko wysyła; reguły płatności i harmonogramy należą do wywołującego.
 """,
         "sec1": "## 1. Odbierz i zmapuj zamówienie\nWebhook odbiera payload dostawcy; Configuration mapuje go na pola mailstacka.",
         "sec2": "## 2. Zbuduj i wyślij mail\nZłóż mail payment z przyciskiem Gmail/markupem rabatu i wyślij POST do mailstacka.",

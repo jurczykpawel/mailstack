@@ -39,11 +39,10 @@ docs {
   the body would be ignored (anti-relay); this brand always mails
   `inbox@acme.example`.
 
-  `acme` uses Cloudflare Turnstile. Locally, set
-  `TURNSTILE_SECRET=1x0000000000000000000000000000000AA` (the official
-  always-pass testing secret) in `.dev.vars` so the literal `"test-token"`
-  verifies. In production, this value must be a real token from the Turnstile
-  widget.
+  `acme` uses Cloudflare Turnstile with action `contact`. Replace `test-token`
+  with a fresh widget token from an allowed origin and configure its matching
+  secret. Siteverify must return an allowed hostname and the configured action;
+  an always-pass testing secret alone does not satisfy those checks.
 
   Requires a working SES path (real or mocked) for the send to succeed and
   return 200 — otherwise the handler returns 502 `send failed`. Because `acme`

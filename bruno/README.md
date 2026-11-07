@@ -1,7 +1,7 @@
 # mailstack — Bruno API collection
 
-A [Bruno](https://www.usebruno.com/) collection that exercises every endpoint of
-the mailstack Worker: the public contact form (Turnstile **and** Altcha brands),
+A [Bruno](https://www.usebruno.com/) collection of public API examples for
+the mailstack Worker or Node API: the public contact form (Turnstile **and** Altcha brands),
 trusted/transactional sends, schema.org email markup, the Sellf webhook, and the
 error paths. Every request carries a `docs` block explaining what it demonstrates
 and an `assert` block checking at least the status code.
@@ -26,12 +26,16 @@ cp environments/production.bru.example environments/production.bru
 | Var       | Local default            | Meaning                                             |
 |-----------|--------------------------|-----------------------------------------------------|
 | `baseUrl` | `http://localhost:8787`  | Where the Worker is reachable                       |
-| `apiKey`  | `your-api-key-here`      | Trusted-mode bearer — must match the `API_KEY` secret |
+| `apiKey`  | `your-api-key-here`      | Full `API_KEY`, or a permitted Pro client (see below) |
+
+The whole collection assumes the full key with attachments disabled (the 413
+example uses the 64 KiB limit). A restricted Pro send client needs `send`, the
+used brands/templates and `recipientOverride: true`.
 
 Sellf examples require a `hook:sellf` client with brand `acme` and templates
-`payment,refund,notice,welcome`, or an explicitly enabled legacy API key.
+`payment,refund,notice,welcome`, or the full API key (enabled by default).
 The examples assume no configured signing secret. With `signatureSecretEnv`
-(or `sellfSignatureSecretEnv`), add `X-Sellf-Signature` computed over the exact
+(on a Pro client or `legacyApiKey`), add `X-Sellf-Signature` computed over the exact
 serialized request bytes as documented in the main README. Bearer remains required.
 Known unsupported events return `422 unsupported_event`; only unknown events are
 acknowledged with `200 ignored`. A missing required refund field returns
@@ -46,20 +50,14 @@ Then pick the environment from Bruno's top-right selector before sending.
 npm run dev   # wrangler dev, serves http://localhost:8787
 ```
 
-`wrangler dev` reads secrets from `.dev.vars` (copy `.dev.vars.example`). For the
-public **Turnstile** contact requests to pass locally, set Cloudflare's official
-always-pass testing secret:
-
-```
-API_KEY=some-long-local-key            # must equal the collection's {{apiKey}}
-TURNSTILE_SECRET=1x0000000000000000000000000000000AA
-ALTCHA_HMAC_KEY=any-local-hmac-key     # needed for the demo brand's Altcha flow
-```
-
-With that Turnstile secret, **any** `cf-turnstile-response` token verifies, so the
-collection's literal `"test-token"` works with no real widget. (Matching site key
-for a real widget: `1x00000000000000000000AA`.) These are public Cloudflare
-documentation values, not secrets.
+`wrangler dev` reads secrets from `.dev.vars` (copy `.dev.vars.example`). Public Turnstile sends require a widget token whose Siteverify response has a
+hostname matching `brand.allowedOrigins` and action matching `turnstileAction`
+(`contact` in the example). The literal `test-token` is a placeholder: an
+always-pass test secret alone does not bypass these checks. For offline gate
+coverage use `test/turnstile.test.ts` and injected verifiers in handler tests.
+For a real local send use a widget on an allowed origin with action `contact`,
+put its token in the request and configure its matching secret in `.dev.vars`.
+Set `API_KEY` to match `{{apiKey}}` and `ALTCHA_HMAC_KEY` for the demo ALTCHA flow.
 
 > Note: a successful `/v1/send` still needs a working SES path — real
 > `SES_ACCESS_KEY_ID`/`SES_SECRET_ACCESS_KEY` **and** a `from` address on a domain
@@ -68,18 +66,17 @@ documentation values, not secrets.
 > `502 send failed`; point `from` at your own verified domain to test a real
 > send). The gate-only requests (honeypot, blocked origin, 401, 400, 413,
 > unmapped webhook) don't touch SES at all and pass regardless.
->
-> Historical verification (before the source-engine migration): the then-current
-> collection was green against a real local
-> `wrangler dev` + real SES credentials + a verified sender domain: `bru run
-> --env local` → 34/34 requests, 79/79 assertions passed, including the Altcha
-> proof-of-work solve script and the full `trackAction`/ParcelDelivery directive.
 
 ### Pointing at a deployed instance
 
 Fill `environments/production.bru` with your Worker's custom domain and the real
 `API_KEY`. Public-mode requests then need a real allowlisted `Origin` and, for
 Turnstile brands, a genuine widget token instead of `test-token`.
+
+This is a sending API collection, not coverage of the Pro internal/panel API or
+all supported source events. Mailstack renders and sends; the caller owns business
+rules, webhook authenticity and scheduling. The core [architecture](../docs/architecture.md)
+describes profiles a/b/c. The same public API works in all three.
 
 ## Folders
 
@@ -118,5 +115,12 @@ With the `bru` CLI:
 bru run --env local
 ```
 
-The Altcha pair must run in order (challenge → solve); Bruno runs a folder in
-`seq` order, which the filenames enforce.
+The Altcha pair must run in `seq` order (challenge → solve). Each challenge
+expires after ten minutes and is consumed once before delivery; fetch a new one
+for retries, including after a provider failure. These examples assume
+`requireNonce` is off. With nonce-enabled brands use the product/nonce flow
+from the main README.
+
+Examples use the built-in Polish presentation. External `mailTemplates` patches
+can change subjects and copy; opt-in brand languages accept `locale`. See
+[template configuration](../docs/templates.md).

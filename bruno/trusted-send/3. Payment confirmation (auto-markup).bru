@@ -45,7 +45,8 @@ docs {
   Crucially, the `markup` key is **omitted** here. Per the merge rule, that lets
   the template supply its own schema.org markup: `payment` auto-emits a
   `ViewAction` ("Zobacz zamówienie" from `orderUrl`, or "Pobierz fakturę" from
-  `invoiceUrl`) so Gmail shows an action button. Compare with
+  `invoiceUrl`) so eligible Gmail senders can show an action button (see README for sender
+  registration requirements). Compare with
   "10. Suppress template auto-markup", which sends `"markup": []` to turn this
   off.
 }

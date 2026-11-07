@@ -39,7 +39,9 @@ script:pre-request {
 docs {
   # Error: payload too large
 
-  The handler caps the body at 64 KB (`MAX_BODY_BYTES`). The pre-request script
+  With attachments disabled (the collection assumption), the handler caps the
+  body at 64 KiB (`MAX_BODY_BYTES`). Attachment-enabled clients have a 10 MiB
+  limit and this request will not exercise their 413 path. The pre-request script
   fills one field with 70,000 characters via `{{bigValue}}`, so the request
   exceeds the cap. The guard checks the `content-length` header and the raw text
   length before parsing, returning `413 payload too large`. (Individual field

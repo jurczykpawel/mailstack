@@ -6,11 +6,17 @@
 git clone <repo>
 cd mailstack
 npm install          # also runs `prepare` which initializes husky
-npm run setup        # generates wrangler.toml from .env + copies brand/logo examples
+cp .env.example .env
+# Copy config/mailstack.example.json outside the repository.
+export MAILSTACK_CONFIG=/absolute/path/outside/repo/mailstack.json
+# Fill in D1 ids (+ optional custom domain) in .env.
+npm run setup        # validates/bundles config, generates Wrangler/migrations/logo
 ```
 
-Now copy `.env.example` to `.env` and fill in your D1 ids (+ optional custom domain), then
-edit the external `mailstack.json` with at least one brand (the example has `acme` and `demo`).
+Edit the external `mailstack.json` with at least one brand (the example has `acme` and `demo`).
+Mailstack is a sender, nothing more: the caller owns business decisions, schedules
+and event correctness. For API/panel placement in profiles a/b/c, see
+[architecture](docs/architecture.md).
 
 For local dev, copy `.dev.vars.example` to `.dev.vars` and fill in the secrets:
 
@@ -28,13 +34,17 @@ Deployment config is generated (gitignored), so nothing private is committed:
 |---|---|
 | `wrangler.toml` | `wrangler.template.toml` + `.env` (`MAILSTACK_*` vars) |
 | `src/core/config/bundled.ts` | external `MAILSTACK_CONFIG` JSON |
-| `.wrangler/migrations/0001_initial.sql` | `src/core/store/migration.ts` |
+| `.wrangler/migrations/*.sql` | core schemas + enabled extension migrations |
+| `src/core/pro.generated.ts` | optional `MAILSTACK_PRO_PATH` checkout |
 | `src/assets/logo.ts` | `src/assets/logo.example.ts` |
 
 Configure via `.env` (D1 ids + domain) and the external `mailstack.json` — not the generated files.
 
-`npm run setup` (also runs automatically before `dev`, `test`, `typecheck`, `deploy`)
-generates the runtime config and migration SQL. Never edit the
+`npm run setup` generates the runtime config and migration SQL before `dev` and
+guarded `deploy`. The `test` and `typecheck` prehooks explicitly bundle the public
+example instead; rerun setup with your external configuration before building.
+Use `npm run release` for Worker upgrades so core and Pro schemas are upgraded
+before deployment; it is not a dry-run. See the README for Node upgrades. Never edit the
 `.example` files with real data — they are committed as-is and serve as the public
 template.
 
@@ -56,12 +66,24 @@ mocked in tests — no real AWS or Cloudflare calls are made.
 3. `npm run typecheck && npm test`.
 4. Redeploy.
 
+## Changing template copy
+
+Prefer `mailTemplates.version: 1` and global/brand type patches in the external
+JSON for subjects, copy and body blocks. Brand form kinds select presentation;
+brand `mailTemplates.languages` opts into language resolution via `locale`.
+These settings do not change recipients or permissions. See
+[template configuration](docs/templates.md) and validate with
+`node scripts/mailstack.ts config check <file>`. Eight types are built in:
+`contact`, `received`, `welcome`, `payment`, `license`, `notice`, `refund`,
+`bank-transfer`. Add code only for a new type/behavior.
+
 ## Adding a template type
 
 1. Create `src/templates/types/<id>.ts` exporting a `TemplateDef` (`id`, `subject`,
    `render`). Use shared helpers from `../layout` (`escapeHtml`, `paragraph`,
    `summaryTable`, `ctaButton`/`ctaText`) for consistent brand chrome.
-2. Register it in `src/templates/index.ts`.
+2. Register it in `src/templates/index.ts` and define its configuration contract
+   in `src/templates/manifest.ts`/`src/templates/recipes.ts` (fields, slots, defaults).
 3. Set `publicAllowed: true` only if the type is safe for unauthenticated browser use
    (only `contact` should be).
 4. Add tests in `test/template-types.test.ts`.
@@ -71,7 +93,9 @@ mocked in tests — no real AWS or Cloudflare calls are made.
 1. Add a declarative event mapping to `docs/sources/sellf.json` and the example
    configuration, covering the selected template requirements with closed operations.
 2. Add a regression in `test/sellf-hook.test.ts`.
-3. Use an operator-installed runtime extension for behavior outside the closed list.
+3. Keep business decisions in the caller. Mailstack validates/mapping-renders the
+   event; it does not determine payment/refund status or schedule reminders.
+   Use an operator-installed runtime extension only for behavior outside the closed list.
 
 ## PR expectations
 

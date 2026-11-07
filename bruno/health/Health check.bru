@@ -20,7 +20,8 @@ docs {
   # Health check
 
   Liveness probe — no auth, no brand. Returns
-  `{ "ok": true, "service": "mailstack" }`.
+  `ok`, `service`, `version`, `commit` and `store` (`ok` or `down`); Pro builds
+  also identify `proCommit`. A 200 alone does not establish store readiness.
 
   Run this first to confirm the Worker is up and `{{baseUrl}}` points at it
   before exercising the rest of the collection.
