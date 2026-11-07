@@ -1,0 +1,23 @@
+{
+  "id": "fbb8bc26-b6fb-4e7f-a12c-a228fdfb4ceb",
+  "data": {
+    "product": {
+      "id": "1e4660eb-3672-487b-b34b-7956621e9029",
+      "icon": null,
+      "name": "Language workshop",
+      "slug": "language-1e4660eb-3672-487b-b34b-7956621e9029",
+      "price": 20,
+      "currency": "PLN"
+    },
+    "customer": {
+      "email": "buyer-79986440-8446-42f6-bf5d-4ba2931083e0@example.com",
+      "locale": "en",
+      "userId": "79986440-8446-42f6-bf5d-4ba2931083e0"
+    },
+    "accessExpiresAt": null,
+    "accessGrantedAt": "2026-11-06T11:23:18.244045+00:00",
+    "customFieldValues": {}
+  },
+  "event": "lead.captured",
+  "timestamp": "2026-11-06T11:23:18.400Z"
+}

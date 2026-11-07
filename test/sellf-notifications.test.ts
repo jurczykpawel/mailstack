@@ -12,7 +12,7 @@ import { open } from '../src/core/crypto';
 import type { Env, SendParams } from '../src/types';
 
 const events = ['order.placed', 'order.payment_reminder', 'order.cancelled', 'order.participants_needed', 'access.granted', 'license.issued', 'purchase.completed'];
-type Payload = { event: string; timestamp: string; data: Record<string, any> };
+type Payload = { id?: string; event: string; timestamp: string; data: Record<string, any> };
 const fixture = (event: string): Payload => JSON.parse(readFileSync(new URL(`./fixtures/sellf/${event}.json`, import.meta.url), 'utf8'));
 let store: ReturnType<typeof createSqliteStore>;
 const sendEmail = vi.fn(async (_env: Env, _params: SendParams) => ({ ok: true, status: 200 }));
@@ -207,4 +207,16 @@ it.each(['purchase-licenses', 'sellf-license', 'free-access'])('requires updatin
   const cfg = structuredClone(config);
   Object.assign(cfg.sources.sellf.events['purchase.completed'], { transform });
   expect(() => parseConfig(cfg)).toThrow('transform');
+});
+
+it('delivers the producer lead envelope with its access details', async () => {
+  const body = fixture('lead.captured');
+  const response = await request(body);
+  expect(response.status).toBe(200); expect(sendEmail).toHaveBeenCalledOnce();
+  const mail = sendEmail.mock.calls[0][1];
+  expect(mail.to).toEqual([body.data.customer.email]);
+  expect(mail.subject).toBe('Witaj w Acme Inc.');
+  expect(mail.text).toContain('Twój dostęp do Language workshop jest gotowy.');
+  for (const value of ['undefined', 'null', body.data.customer.userId, body.id!]) expect(mail.text).not.toContain(value);
+  expect(mail.html).not.toContain('class="cta"');
 });
