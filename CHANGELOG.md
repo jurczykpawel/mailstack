@@ -4,6 +4,8 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-07
+
 - Document the three deployment profiles, Worker panel, shared VPS egress and
   Workers Free CPU, cron and account-wide D1 constraints.
 - Store recorded outcomes in a durable event stream with bounded fan-out and
