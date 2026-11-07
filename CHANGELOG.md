@@ -2,6 +2,11 @@
 
 All notable changes to mailstack are documented here.
 
+## [1.1.1] - 2026-11-07
+
+### Fixed
+- Test suite: the tombstone register test used a macOS-only temporary path and failed on Linux CI.
+
 ## [Unreleased]
 
 ## [1.1.0] - 2026-11-07

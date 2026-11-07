@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { generateIdentity, identityToRecipient } from 'age-encryption';
 import { createSqliteStore } from '../src/core/store/sqlite';
@@ -8,7 +9,7 @@ import { createD1Store } from '../src/core/store/d1';
 import { initTombstoneRegistry, readTombstones, tombstoneRegistry } from '../src/core/offsite';
 import { b2Env, fakeB2 } from './fixtures/fake-b2';
 it.each(['sqlite', 'd1'] as const)('serializes independent %s writers and keeps pending allocation after restart', async driver => {
-  const dir = await mkdtemp('/private/tmp/mailstack-register-'), identity = await generateIdentity();
+  const dir = await mkdtemp(join(tmpdir(), 'mailstack-register-')), identity = await generateIdentity();
   const env = { ...b2Env, BACKUP_AGE_RECIPIENT: await identityToRecipient(identity) };
   const mf = driver === 'd1' ? new Miniflare(convertV4MiniflareOptions({ modules: true, script: 'export default { fetch() { return new Response() } }', compatibilityDate: '2026-06-01', d1Databases: ['DB'] })) : undefined;
   const db = await mf?.getD1Database('DB');
