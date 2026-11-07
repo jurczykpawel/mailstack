@@ -3,7 +3,7 @@ import { version } from '../../package.json';
 import { jobStats } from './jobs';
 import { parseTransitKeys } from './keyring';
 import { panelAllows, type PanelPrincipal } from './panel';
-import { effectivePolicies, type Config } from './config/schema';
+import { cloudflarePlan, effectivePolicies, type Config } from './config/schema';
 import type { ExtensionHost } from './extension-host';
 import type { KyselyStore } from './store';
 
@@ -32,7 +32,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
   const loaded = ext.features();
   const pro = loaded.find(f => f.state === 'ready' && f.name === 'pro'), failed = loaded.find(f => f.state === 'unavailable');
   const options = pro && cfg.extensions.find(e => e.module === pro.module)?.options;
-  const resend = new Set(effectivePolicies(cfg).map(p => p.policy.resend)), free = cfg.cloudflare?.plan === 'free';
+  const resend = new Set(effectivePolicies(cfg).map(p => p.policy.resend)), free = cloudflarePlan(cfg) === 'free';
   const admin = panelAllows(panel, 'admin'), full = panel.brands === '*' && panel.templates === '*';
   const configured: Record<Name, boolean> = { panel: true, webhooks: options?.webhooks !== undefined, 'resend.replay': resend.has('replay'),
     'resend.source': resend.has('source'), 'aws.status': !!cfg.events?.ses, 'aws.test': options?.aws !== undefined };
@@ -63,8 +63,7 @@ export async function capabilities(env: object, store: KyselyStore, cfg: Config,
     principal: { role: panel.role, brands: panel.brands, templates: panel.templates },
     features: { ...Object.fromEntries(FEATURES.map(name => [name, state(name)])), events, 'subjects.erase': panel.denied ? { state: 'disabled', reason: 'license' } : !erasureAvailable(env) ? { state: 'disabled', reason: 'erasure_registry_unavailable' } : !admin ? { state: 'disabled', reason: 'role' } : { state: 'enabled' } },
     limits: LIMITS,
-    // The plan changes only how long provider-side copies outlive an erasure: D1 Time Travel keeps 30 days (Paid) or 7 (Free);
-    // every feature runs on Free (measured on staging, WP20S). Node keeps its snapshots.
+    // D1 provider-side copies outlive an erasure for 30 days (Paid) or 7 (Free, including an omitted plan). Node keeps its snapshots.
     backupWindowDays: host.platform === 'node' ? NODE_SNAPSHOTS : free ? 7 : 30,
     jobs: await jobStats(store, now, ext.jobs),
     transitKeys: transit.publicKeys,
