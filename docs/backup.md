@@ -51,7 +51,7 @@ old index keys the restored database cannot be searched.
 
 ```bash
 node scripts/backup/export.mjs                       # source from BACKUP_SOURCE (Compose)
-node scripts/backup/export.mjs --d1 <database id>    # Worker (D1), manual run
+node scripts/backup/export.mjs --d1 "$DATABASE_ID"    # Worker (D1), manual run
 node scripts/backup/export.mjs --sqlite-dir /data/backups   # Node (newest snapshot)
 ```
 
@@ -99,7 +99,10 @@ Setup on the API (Worker secrets with `npx wrangler secret put`, Node `api.env`)
 On the owner's computer, choose an empty prefix and set the variables above.
 Generate an id once, for example `openssl rand -hex 16`, retain it, then explicitly
 initialize the register using an installation key with `listFiles`, `readFiles`
-and `writeFiles` on that prefix:
+and `writeFiles` on that prefix. Stackpilot runs this initialization with the
+register key referenced by `secrets.api`, so that key needs all three capabilities
+for the first install; afterwards it may be replaced with the runtime
+`readFiles`+`writeFiles` key. A manual install can use a separate installation key:
 
 ```bash
 node scripts/backup/init-register.mjs
@@ -140,6 +143,17 @@ retained numbered chain; it must never be treated as a complete shorter register
 
 ## Restore
 
+Keep public send and provider-event ingress quarantined until erasures and
+reconciliation have completed on the restored database. In profile (a), deploying
+the temporary internal route does not by itself quarantine the public routes:
+arrange this at ingress before pointing the API Worker at restored data. Neither
+`restore.mjs` nor the panel CLI performs that traffic isolation automatically.
+
+Erasure is asynchronous. A successful `tombstones replay` queues erase jobs;
+wait for every job to reach `done`, using the API cron (or Node job clock), before
+allowing access. A new cron can need several minutes to propagate. See
+[background completion](architecture.md#background-work-and-completion).
+
 A restore never writes into a database in use. It accepts only a **new SQLite file**
 (the path must not exist) or an **empty D1 database**; anything else is refused
 before any data is written. A damaged file or a wrong key is refused before the
@@ -152,7 +166,7 @@ target is touched.
    ```bash
    # new D1 database next to the one in use
    npx wrangler d1 create mailstack-restore-20261103
-   node scripts/backup/restore.mjs mailstack-20261103T030000Z.sql.age \
+   node scripts/backup/restore.mjs "<database-id>-20261103T030000Z.sql.age" \
      --identity mailstack-backup.key --d1 mailstack-restore-20261103
 
    # new SQLite file (Node); a D1 export can also be restored this way
@@ -173,7 +187,7 @@ target is touched.
    and the replay runs right after it), quarantine events and deliveries
    from before the restore point, reconcile `sending`/`unknown` messages, then check
    the list, content decryption in the browser, address search and the audit chain.
-4. Switch: Worker — set `MAILSTACK_D1_ID` to the new database, `npm run setup`,
-   deploy; Node — stop the API, point the data volume at the new file, start.
+4. Switch: Worker — set `MAILSTACK_D1_ID` to the new database, run `npm run release`
+   (shared schema upgrade, then deploy); Node — stop the API, point the data volume at the new file, start.
    Messages sent between the restore point and the switch stay in the old database
    and are exported to the owner's archive; they are not merged automatically.
