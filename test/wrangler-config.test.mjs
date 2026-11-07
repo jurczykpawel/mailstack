@@ -27,7 +27,7 @@ it('adds the internal host as a second custom domain and disables workers.dev', 
       'ACCESS_TEAM_DOMAIN = "team.cloudflareaccess.com"', `ACCESS_AUD = "${'a'.repeat(64)}"`]) expect(out).toContain(line);
     for (const change of [{ MAILSTACK_ROUTE: '' }, { MAILSTACK_ACCESS_TEAM_DOMAIN: '' }, { MAILSTACK_ACCESS_AUD: ' ' },
       { MAILSTACK_ACCESS_TEAM_DOMAIN: 'https://team.cloudflareaccess.com' }, { MAILSTACK_ACCESS_TEAM_DOMAIN: 'evil.example.com' }]) {
-      expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...change }, stdio: 'pipe' })).toThrow();
+      expect(() => execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...change }, stdio: 'pipe' })).toThrow(change.MAILSTACK_ROUTE === '' ? /MAILSTACK_INTERNAL_ROUTE requires MAILSTACK_ROUTE/ : undefined);
     }
     execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, MAILSTACK_INTERNAL_ROUTE: '', MAILSTACK_ACCESS_TEAM_DOMAIN: '', MAILSTACK_ACCESS_AUD: '' }, stdio: 'pipe' });
     for (const line of ['INTERNAL_HOST = ""', 'ACCESS_TEAM_DOMAIN = ""', 'ACCESS_AUD = ""']) expect(readFileSync('wrangler.toml', 'utf8')).toContain(line);

@@ -26,9 +26,11 @@ import { createAccessVerifier, type AccessVerifier } from "./core/access";
 import type { KeyProvider } from "./clients";
 import type { EmitEvent } from "./core/extensions";
 
+import { cloudflarePlan } from "./core/config/schema";
+
 const verifySns = createVerifier();
 // D1 queries per invocation (Free 50, Paid 1000; D1 limits), minus room for calls the meter does not see (license refresh, DoH).
-const INVOCATION_OPS = config.cloudflare?.plan === "paid" ? 990 : 40;
+const INVOCATION_OPS = cloudflarePlan(config) === "paid" ? 990 : 40;
 
 const defaultDeps: SendDeps = {
   logging: config.logging,
