@@ -13,7 +13,7 @@ compatibility_flags = ["nodejs_compat"]
 __ROUTES__
 
 [triggers]
-# Minute: background jobs (src/core/jobs.ts). Hour at :17: retention, with the larger hourly CPU limit.
+# One minute trigger: jobs except at minute :17 (retention). Retention uses the same trigger and platform limits.
 crons = ["* * * * *"]
 
 [build]

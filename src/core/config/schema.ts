@@ -50,7 +50,7 @@ const shape = z.strictObject({
     options: z.record(z.string(), z.unknown()).optional(),
   })).default([]),
   sender: z.strictObject({ type: z.enum(["ses", "smtp"]) }).optional(),
-  // Workers plan declared by the operator; Free switches off the features it cannot carry (A 5).
+  // Workers plan controls the invocation operations budget and provider backup window; omitted means Free.
   cloudflare: z.strictObject({ plan: z.enum(["paid", "free"]) }).optional(),
   sources: z.record(sourceId, sourceSchema).default(() => ({ sellf: sourceSchema.parse(sellfPreset) })),
   version: z.literal(1), brands: z.record(z.string(), brand),
@@ -133,3 +133,6 @@ export function parseConfig(input: unknown, templates: TemplatePolicies = TEMPLA
     return paths.map((path) => `$.${path.join(".")}: ${issue.code === "custom" ? issue.message : "invalid configuration"}`);
   }).join("\n"));
 }
+
+/** The declared Workers plan, defaulting to Free. */
+export const cloudflarePlan = (cfg: Pick<Config, 'cloudflare'>): 'free' | 'paid' => cfg.cloudflare?.plan ?? 'free';

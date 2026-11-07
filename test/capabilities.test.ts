@@ -123,6 +123,13 @@ describe('capabilities', () => {
     expect(() => parseConfig({ ...example, cloudflare: { plan: 'enterprise' } })).toThrow('$.cloudflare.plan');
   });
 
+  it.each([undefined, 'free', 'paid'] as const)('reports the Worker backup window for plan %s', async plan => {
+    await configure({ cloudflare: plan ? { plan } : undefined });
+    const body = await capabilities(env, store, cfg, { ...panelClaims(), scopes: ['panel'], brands: '*', templates: '*' },
+      { platform: 'worker', extensions: async () => ({ features: () => [], resendSource: undefined }) });
+    expect(body.backupWindowDays).toBe(plan === 'paid' ? 30 : 7);
+  });
+
   it('reports a missing or failed Pro extension instead of enabling its features', async () => {
     await configure({}, false);
     expect((await caps()).features).toMatchObject({ panel: { state: 'enabled' }, webhooks: { state: 'disabled', reason: 'not_configured' } });
