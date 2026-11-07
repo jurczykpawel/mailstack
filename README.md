@@ -3,11 +3,16 @@
 
 # mailstack
 
-**Your own email-sending service — a free, self-hosted alternative to Web3Forms / Formspree.**
+Form-to-email and transactional email API. Run it on a Cloudflare Worker with D1
+and Amazon SES, or Node 24+ with SQLite and SES/SMTP. Each brand has its own sender,
+recipient, origin allowlist and theme. Callers decide what to send and when;
+Mailstack renders and sends it without enforcing the caller's business rules.
 
-Put mailstack between your website's contact form (or your app) and your inbox. It catches the
-submission, blocks spam, and sends you a clean, branded email. Run it on Cloudflare Workers with D1 and Amazon SES, or in Docker with Node, SQLite
-and SES or SMTP. Each brand has its own sender, inbox, allowed origins and theme.
+[Architecture and deployment profiles](docs/architecture.md) compares (a) API and
+panel on Workers, (b) Worker API with a VPS panel, and (c) Node API and panel on a
+VPS. It includes Workers Free limits, cron completion, egress, keys and recovery.
+The operator panel, scoped keys, outbound webhooks and resend require Mailstack Pro;
+the core API works independently.
 
 ## Run with Docker (Node + SQLite)
 
@@ -56,7 +61,7 @@ storage permissions or write locks; after restoring writes, verify a controlled 
 Use `MAILSTACK_CONFIG` to mount a different configuration file and `MAILSTACK_PORT` to
 change the published port. The container runs as a non-root user on a read-only root filesystem;
 only `/data` and the `/tmp` tmpfs are writable. The named data volume survives container restarts.
-No panel listener is included yet.
+The Pro panel is a separate service with its own state; this core Compose file runs only the API.
 
 `TRUSTED_PROXY` is unset by default: the socket address is used and incoming
 `CF-Connecting-IP` and `X-Forwarded-For` are overwritten. Set `TRUSTED_PROXY=cloudflare`
@@ -280,18 +285,21 @@ fetches origin before setup and passes HEAD to Wrangler as `BUILD_COMMIT`. A Wor
 of any branch; its SHA is still reported in `/health`.
 ```bash
 export MAILSTACK_HEALTH_URL=https://mail.example.com/health
-npm run deploy
+npm run release
 ```
-Cloudflare gives you a URL like `https://mailstack.<your-name>.workers.dev`. Check it works:
+With `MAILSTACK_ROUTE` set, setup disables `workers.dev` and preview URLs.
+Profiles (a)/(b) use a custom hostname; configure it before deploying, then check it:
 ```bash
-curl https://mailstack.<your-name>.workers.dev/health
+curl https://mail.example.com/health
 # → {"ok":true,"service":"mailstack","version":"1.0.0","commit":"<HEAD sha>"}
 ```
+A core-only Worker with no `MAILSTACK_ROUTE` uses its default `workers.dev` URL;
+use that URL for the health check instead.
 The command fails if the deployed commit differs from HEAD. With no exported
 `MAILSTACK_HEALTH_URL`, it explicitly reports that verification was skipped.
 
-For a release that changes the schema use `npm run release` instead (same guard and health
-check): it runs setup with `MAILSTACK_CONFIG` (and `MAILSTACK_PRO_PATH` when the configuration
+Use `npm run release` for installation and updates (same guard and health
+check as `npm run deploy`): it runs setup with `MAILSTACK_CONFIG` (and `MAILSTACK_PRO_PATH` when the configuration
 uses Pro), refuses a migration set that misses core or Pro files or whose extension files differ
 from those compiled for the configuration, applies the shared Node/Worker schema upgrade
 through `npm run migrate:worker`, checks the migration files again and deploys the same set.
@@ -301,7 +309,6 @@ with its schema changes. Pro's schema includes resend and SES tables with or wit
 The generated SQL files remain available for inspection and fresh local databases; use the
 shared upgrader for existing remote databases instead of applying those files separately. Do not run `npm test` or `npm run typecheck` between setup and deploy: they
 regenerate the example bundle and remove Pro migrations, which the release then refuses.
-That's your live email service.
 
 Migration `0008_without_rowid.sql` (Node: the first start) rebuilds `messages`, `recipients`,
 `subjects`, `guards` and `jobs` as `WITHOUT ROWID` tables, one written row less per insert.
@@ -329,7 +336,7 @@ Add the spam widget and point the form at mailstack. A minimal example:
     const data = Object.fromEntries(new FormData(e.target));
     data.brand = "acme"; // your brand id from step 6
     data["cf-turnstile-response"] = e.target.querySelector("[name=cf-turnstile-response]").value;
-    const res = await fetch("https://mailstack.<your-name>.workers.dev/v1/send", {
+    const res = await fetch("https://mail.example.com/v1/send", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(data),
@@ -400,7 +407,7 @@ return 429, and trusted sends skip nonce checks.
 For server-to-server emails (no spam check needed), call the same endpoint with your `API_KEY`
 and pick a template:
 ```bash
-curl -X POST https://mailstack.<your-name>.workers.dev/v1/send \
+curl -X POST https://mail.example.com/v1/send \
   -H "content-type: application/json" \
   -H "authorization: Bearer YOUR_API_KEY" \
   -d '{
@@ -411,7 +418,7 @@ curl -X POST https://mailstack.<your-name>.workers.dev/v1/send \
     "amount": "49.99", "currency": "USD", "item": "Pro Plan", "orderId": "ORD-1001"
   }'
 ```
-Built-in templates: `payment`, `refund`, `welcome`, `received`, `notice`, `license` (and `contact` for forms).
+Built-in templates: `payment`, `refund`, `welcome`, `received`, `notice`, `license`, `bank-transfer` (and `contact` for forms).
 `license` accepts `name`, `productName`, `tier`, `domain`, `licenseKey`, `activationUrl`
 and `instructions`; `licenseKey` and `activationUrl` are declared secret fields.
 
@@ -422,7 +429,9 @@ Check your providers before deployment; mailstack itself is MIT-licensed.
 ## Updating it later
 After editing the configuration, validate it with `npm run mailstack -- config check "$MAILSTACK_CONFIG"`.
 Restart the Docker service with `docker compose up --build -d --force-recreate`, or use
-the guarded Worker deploy from a clean release checkout. Keep runtime images and backups current; see [docs/backup.md](docs/backup.md) for encrypted offsite copies and restore.
+the guarded `npm run release` from a clean release checkout (setup, schema upgrade, deploy).
+`npm run migrate:worker` applies only the remote schema upgrade after setup; it has no dry-run
+mode. `npm run deploy` alone does not upgrade the schema. Keep runtime images and backups current; see [docs/backup.md](docs/backup.md) for encrypted offsite copies and restore.
 
 ## Troubleshooting
 - **Email not arriving?** You're probably still in SES "sandbox" — verify the recipient address
@@ -441,7 +450,7 @@ the guarded Worker deploy from a clean release checkout. Keep runtime images and
 - **Public recipient** — public mail goes to `brand.to`; the full API key may set `to` (scoped Pro clients need `recipientOverride: true`).
 - **One full API key, free** — additional and restricted keys are a Mailstack Pro feature; see [API keys: free and Pro](#api-keys-free-and-pro).
 - **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
-- **Template types** — `contact`, `welcome`, `received`, `payment`, `notice`, `license`; one branded layout.
+- **Template types** — `contact`, `welcome`, `received`, `payment`, `refund`, `notice`, `license`, `bank-transfer`; one branded layout.
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
 - **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
 - **Sellf webhook source** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
@@ -537,6 +546,9 @@ The legacy key has attachment permission here solely for the local attachment ex
 
 ### Template copy and optional languages
 
+See [template configuration reference](docs/templates.md) for merge order, block
+shapes and a complete opt-in language example.
+
 Declare `mailTemplates.version: 1` to configure any of the eight registered types.
 Global `mailTemplates.templates` and each brand's `mailTemplates.templates` accept
 `subject`, `heading`, `previewText`, `copy`, `labels`, `ctaLabels` and `body`.
@@ -580,7 +592,7 @@ Then add this to the chosen brand:
 }
 ```
 
-`locales.en` patches the selected type. Complete neutral overrides of body, subject,
+`locales.en` patches the selected type. Neutral brand/form-kind overrides of body, subject,
 heading or preview need matching localized coverage; otherwise that candidate falls
 back as a whole. `config check` prints inherited-copy and source-overlay warnings.
 Keep nonempty `defaults.copy` and `defaults.labels` in per-type patches when enabling
@@ -637,26 +649,30 @@ The free core authenticates exactly one **full key**: the secret in `API_KEY` (o
 variable named by `legacyApiKey.env`). It has `send` and `hook:<id>` for sources with `legacyKey: true`, every brand
 and template, and may override `to`. Free `legacyApiKey` options are `enabled`, `env`,
 `attachments` and `signatureSecretEnv` (required `X-Sellf-Signature` on `/v1/hooks/sellf`,
-see [Sellf webhook](#sellf-event-contract)). `scopes`, `brands`, `templates` and
-`recipientOverride` may only restate the full values; any restriction fails validation with
+see [Sellf webhook](#sellf-event-contract)). `brands`, `templates` and `recipientOverride` may only restate the full values;
+`scopes` is not a legacy-key configuration member; any restriction fails validation with
 `additional or restricted API keys require Mailstack Pro`.
 
 Everything beyond that single key is Mailstack Pro (valid license):
 additional `clients` with their own tokens, brand/template/scope restrictions,
 `recipientOverride: false`, `rate`, `resendCallback`, and the `panel` client. Pro registers
 a key provider through the extension `keys` hook; the core asks it only about tokens other
-than the full key. Without a license Pro rejects those tokens with 401 while the full key
-keeps sending. A configuration containing `clients` stops startup when no loaded extension
+than the full key. A recognized scoped token without a valid license returns `403 license_required`
+(except authorized panel capabilities, which report the invalid license); an unknown
+token is unauthenticated. The full key keeps sending. A configuration containing `clients` stops startup when no loaded extension
 provides keys (`$.clients: additional or restricted API keys require Mailstack Pro`).
-The Worker loads no extensions: without `MAILSTACK_PRO_PATH`, `npm run setup` rejects `clients`
+The Worker cannot dynamically load modules: without `MAILSTACK_PRO_PATH`, `npm run setup` rejects `clients`
 and only the full key works there. With `MAILSTACK_PRO_PATH=/abs/path/mailstack-pro` in `.env`,
 setup validates `clients` and the `mailstack-pro` extension options through Pro, generates the
 gitignored `src/core/pro.generated.ts` and migration `0003_pro_license_cache.sql` (license cache in
 D1). Set the license with `wrangler secret put MAILSTACK_LICENSE`; options are `product`, `host`,
-`seller`, `jwksUrl` and `revocationUrl` (no `cachePath`, `webhooks` or `aws`). A stale cache is
-refreshed after the response; scoped keys keep working for seven days without the issuer.
+`seller`, `jwksUrl` and `revocationUrl` (no `cachePath`). The extension entry may also
+configure `webhooks` and `aws`; those are separate from license options. A stale
+cache refreshes after the response. Previously confirmed keys can use offline grace
+for less than seven days from the older public-key/revocation snapshot, subject to
+token expiry and retained refusals; cold offline starts remain unavailable.
 `npm run deploy` and `npm run release` then also require a clean Pro checkout at its `origin/main` (or a reachable tag; any clean branch for a non-production Worker)
-and reports it as `proCommit` in `/health`.
+and report it as `proCommit` in `/health`.
 
 ### Migrating a legacy brand registry
 
@@ -1195,6 +1211,10 @@ response headers are excluded. No open/click tracking configuration is sent.
 
 ### Reading the log without the panel
 
+Run these commands on the owner's computer against an isolated SQLite copy.
+Decryption here is an explicit offline tool; never install private content keys on
+the API or panel server. The panel itself decrypts only in the operator's browser.
+
 Use Node 24+ and a local SQLite database to read the log offline. These commands
 use local files and do not contact the API or email provider:
 
@@ -1245,7 +1265,11 @@ or run migrations. For a separate machine, use a consistent SQLite snapshot (see
 
 ### Retention and snapshots
 
-The Worker has a single minute cron; it runs retention hourly at minute 17 (UTC) and background jobs in every other minute. Expired content, resend data
+The Worker has one `* * * * *` cron: retention alone at UTC minute 17 and
+background work alone in every other minute. Keep it enabled for erase completion
+and queued work across invocation budgets. HTTP `202` means queued, not erased.
+After a cron change, propagation can take up to 15 minutes; see
+[background work](docs/architecture.md#background-work-and-completion). Expired content, resend data
 and guards are removed; message metadata and its children are deleted in atomic
 batches of at most 500 messages. Logging ceilings also apply to existing rows.
 Content readers must call `isContentReadable(row, now)` before returning content,
@@ -1271,9 +1295,12 @@ daily and at startup when the last snapshot is absent or at least 24 hours old. 
 running daily, removed data ages out of backups within seven days. Keep keys outside
 the database and backup directory. Worker databases use
 [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/). Declare the account plan as
-`"cloudflare": { "plan": "free" }` or `"paid"` (missing means paid): it sets only the
-backup window the panel reports for erasures (7 days on Free, 30 on Paid) and never
-disables a feature.
+`"cloudflare": { "plan": "free" }` or `"paid"`: it sets the API operation budget and
+backup window reported for erasures (7 days on Free, 30 on Paid), and never
+disables a feature merely because of the plan. It does not change the account plan.
+Omission reports the Paid backup window but retains a conservative 40-operation
+budget; explicit `paid` selects 990, explicit `free` selects 40.
+See [limits and resource sharing](docs/architecture.md#requirements-and-workers-free).
 
 ### ntfy alerts
 
@@ -1402,7 +1429,8 @@ a file with the same idempotency key returns `409 idempotency_conflict` at level
 
 ## Extensions
 
-Node can load optional modules at startup; Worker does not load or execute them.
+Node loads configured modules at startup. Worker bundles the supported Mailstack Pro
+entry during setup with `MAILSTACK_PRO_PATH`; it does not dynamically import modules.
 Omitting `extensions` is equivalent to `"extensions": []`. At most one extension may
 implement `keys(config)`, returning `{ authenticate(token, env), client(id) }` for tokens
 other than the full key (Mailstack Pro uses it for scoped clients).
@@ -1509,8 +1537,9 @@ in-process Node code, not in a sandbox.
 Event hooks run in the background with a five-second wait limit. Exceptions and
 timeouts produce a generic log entry and never change the email/API result.
 The limit stops waiting; it cannot cancel a module's ongoing work. Modules should
-bound their own I/O and avoid blocking the Node event loop. Delivery is best-effort;
-there is no persistent event queue in the core.
+bound their own I/O and avoid blocking the Node event loop. Events without a saved message row are best-effort. Recorded domain events are stored
+atomically with their outcome and consumed through durable fan-out; extension
+acknowledgements commit with their writes. Unconfirmed events expire after seven days.
 
 ### Internal panel API
 
@@ -1550,8 +1579,8 @@ preserves data; `reset` destroys and recreates the sandbox. After source changes
 
 All mail goes to Mailpit, including `.example` recipients. API, panel and Mailpit
 have no external network; a fixture gateway publishes their fixed ports on loopback.
-The internal API port 8081 is not published. The panel has separate state and private
-content keys; API mounts contain public content keys and index keys only. The fixture
+The internal API port 8081 is not published. The panel has separate state; the operator imports content private keys in the
+browser. API mounts contain public content keys and index keys, never content private keys. The fixture
 gateway holds its own signing keys, never panel content keys. The containers use the
 host's non-root UID so private bind-mounted files can remain mode 0600. Mailpit also
 runs with that UID; the init container assigns its separate `mailpit-data` volume.
@@ -1791,22 +1820,11 @@ The script does not delete or recreate D1 databases. A missing permission is rep
 without preventing local tests. Never run the normal production deploy command for
 this sandbox. [Wrangler command reference](https://developers.cloudflare.com/workers/wrangler/commands/).
 
-### Manual-test runner (private coordination files)
+### Staging and release checks
 
-```bash
-priv/run-manual-tests.sh --dry-run
-priv/run-manual-tests.sh             # coordinator only; starts four Codex runs
-priv/run-manual-tests.sh --fresh     # explicit new cycle after source/brief changes
-```
-
-The private plan, scenarios and charters are in `priv/plans`; six tester briefs are
-in `priv/briefs/manual`. The runner executes REG-A, REG-B, EXP-1 and EXP-2 sequentially,
-with a fresh local sandbox between runs, a shared browser-slot reservation, resource
-checks, capacity retries and report-based resumption. State is `priv/manual.state`,
-logs are `priv/run-logs/manual`, and the final table is
-`priv/reports/manual-summary.md`. A completed report may still contain product bugs;
-completion is not release approval. SMOKE and RETEST are separate coordinator briefs.
-Never commit generated tokens, reports containing credentials, or temporary state.
+See [docs/staging.md](docs/staging.md) for isolated profiles, SES budgets, test entry
+conditions and cleanup. Infrastructure-specific inventories, credentials and test
+coordination files belong outside the public repository.
 
 When connecting to SMTP by IP, set `SMTP_TLS_SERVERNAME` to the certificate hostname. This preserves TLS certificate verification with a direct address, including when `SMTP_URL` supplies the connection. The value must be a hostname.
 

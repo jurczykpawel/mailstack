@@ -51,7 +51,7 @@ old index keys the restored database cannot be searched.
 
 ```bash
 node scripts/backup/export.mjs                       # source from BACKUP_SOURCE (Compose)
-node scripts/backup/export.mjs --d1 <database id>    # Worker (D1), manual run
+node scripts/backup/export.mjs --d1 "$DATABASE_ID"    # Worker (D1), manual run
 node scripts/backup/export.mjs --sqlite-dir /data/backups   # Node (newest snapshot)
 ```
 
@@ -139,6 +139,17 @@ or a different register cause refusal before any replay, including with
 retained numbered chain; it must never be treated as a complete shorter register.
 
 ## Restore
+
+Keep public send and provider-event ingress quarantined until erasures and
+reconciliation have completed on the restored database. In profile (a), deploying
+the temporary internal route does not by itself quarantine the public routes:
+arrange this at ingress before pointing the API Worker at restored data. Neither
+`restore.mjs` nor the panel CLI performs that traffic isolation automatically.
+
+Erasure is asynchronous. A successful `tombstones replay` queues erase jobs;
+wait for every job to reach `done`, using the API cron (or Node job clock), before
+allowing access. A new cron can need several minutes to propagate. See
+[background completion](architecture.md#background-work-and-completion).
 
 A restore never writes into a database in use. It accepts only a **new SQLite file**
 (the path must not exist) or an **empty D1 database**; anything else is refused

@@ -1,9 +1,10 @@
 # Internal API
 
 Node serves these routes through the existing internal listener on port 8081.
-The public listener does not mount them. The Cloudflare Worker serves only
-`/internal/v2/*` (no extension routes), and only on `INTERNAL_HOST`: set
-`MAILSTACK_INTERNAL_ROUTE` in `.env` (a second custom domain; `npm run setup`
+The public listener does not mount them. The Cloudflare Worker serves `/internal/v2/*` and bundled Pro
+`/internal/ext/pro/*` on `INTERNAL_HOST` in profile (b): set
+`MAILSTACK_INTERNAL_ROUTE` in `.env` alongside the public `MAILSTACK_ROUTE`
+(a second custom domain; `npm run setup`
 also turns off `workers.dev` and preview URLs) and the `PANEL_ASSERTION_KEYS`
 secret. `/internal/v1/*` was removed and returns 404 in both runtimes. Panel clients come from Mailstack Pro keys. Every other host, or a
 missing key, returns 404. Put the host behind Cloudflare Access with a service
@@ -18,7 +19,9 @@ and a `nbf` at most 60 seconds ahead. Otherwise, or when the keys cannot be
 fetched, the Worker returns 403 before checking panel credentials (no audit row).
 Keys are cached for an hour per isolate.
 Both runtimes use the same `authorizePanel` gate in `src/core/panel.ts`. The API returns sealed values; only the
-panel holds private content keys. Responses use `Cache-Control: no-store`.
+operator browser holds content private keys; the panel server never decrypts them.
+Profile (a) exposes the same routes only through the `Internal` service binding;
+no permanent internal hostname or Access credentials are needed on that binding. Responses use `Cache-Control: no-store`.
 
 ## Credentials and panel assertions
 

@@ -27,6 +27,23 @@ and track that system's rules.
 - Example: the Sellf license key is sent only from `license.issued`; Sellf guarantees one event per
   license, Mailstack does not deduplicate between `purchase.completed` and `license.issued`.
 
+## Deployment and data boundaries
+
+See [architecture](docs/architecture.md) for profiles (a) API/panel Workers + D1,
+(b) Worker API + Node panel, and (c) Node API/panel + SQLite. Profile (a) still needs
+VPS egress and backup services. Workers Free is subject to CPU and shared account
+D1/cron limits; no feature is disabled solely by `cloudflare.plan: "free"`.
+The API has one minute cron; the panel Worker has none. Keep cron enabled for
+completion of erase and queued work; `202` is acceptance only. Scheduling changes
+can take several minutes to propagate. Never promise completion in the HTTP request.
+
+Only the operator browser opens archived content in panel workflows. Never mount
+content private keys on an API or panel server. The API owns transit private keys
+and opens operation envelopes, not archived email. Owner-side offline CLI recovery
+is separate. Erasure publishes the independent B2 register before deleting data;
+restore must verify the full register and reapply erasures before reopening traffic.
+See [backup](docs/backup.md) and [internal API](docs/internal-api.md).
+
 ## Public API
 
 Base URL is wherever the Worker is deployed (e.g. `https://mail.example.com`).
@@ -65,9 +82,9 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `to` | recipient override (trusted mode only, validated) |
 | `replyTo` | Reply-To override (trusted mode only, validated) |
 | `template` | email type to render (trusted mode only); public is always `contact` |
+| `locale` | language preference only for brands with `mailTemplates.languages`; otherwise content. Exact tag → base → available default; public confirmation resolves independently. |
 | `autoreply` | per-request toggle for the submitter confirmation (`1`/`true`/`yes`/`on` vs `0`/`false`); overrides `brand.autoReply`. See [Auto-reply](#auto-reply). |
 | `ref` | trusted correlation string (1-128 characters) |
-| `locale` | language preference only when the brand enables `mailTemplates.languages`; otherwise content |
 | `resendOf` | trusted: approved source jobs only with an enabled extension; otherwise `400 not_supported`; public: ignored |
 | `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
 | `markup` | trusted JSON-LD directives; ignored in public mode |
@@ -207,7 +224,9 @@ client, answers `403 license_required` on send, hooks and every internal route e
 `GET /internal/v2/capabilities` (panel scope + assertion), which reports
 `license.state: invalid` and all Pro features `disabled: license` (`src/core/capabilities.ts`;
 also protocol range, platform, feature reasons, limits, `backupWindowDays`, job stats and
-public `TRANSIT_KEYS`; `cloudflare.plan: "free"` keeps every feature and only sets `backupWindowDays` to 7).
+derived public transit keys (never the private `TRANSIT_KEYS` secret);
+`cloudflare.plan: "free"` keeps every feature, selects the API operation budget
+and sets `backupWindowDays` to 7).
 The full key never depends on licensing. `clients` without a key provider stops
 Node startup and `npm run setup`; a configured extension that fails to import or
 initialize is only marked unavailable (`createExtensionHost` in
@@ -250,8 +269,8 @@ content. The type is chosen by the `template` control key — **public requests 
 pinned to `contact`**; only trusted requests may pick another type.
 
 Every value is HTML-escaped. Subjects/headings follow the existing brand conventions; new
-copy uses hyphens and colons (no em-dashes). The `contact` template is unchanged from the
-original form behavior.
+copy uses hyphens and colons (no em-dashes). Without presentation patches, the built-in recipes retain the legacy output.
+See [template configuration](docs/templates.md) before changing text or languages.
 
 | `template` | Purpose | Content fields (all optional unless noted) |
 |---|---|---|
@@ -261,6 +280,7 @@ original form behavior.
 | `bank-transfer` | Bank transfer instructions/reminder | `orderId`, `holder`, `account`, `bank`, `title`, `amount`, `currency`, `deadline`, `orderUrl`, optional `reminder`; `orderUrl` is secret |
 | `payment` | Payment confirmation | `amount` (shown), `currency` (default `PLN`), `item`/`description`, `orderId`, `date`, `invoiceUrl` (→ "Pobierz fakturę" button), `name` |
 | `license` | License delivery | `name`, `productName`, `tier`, `domain`, `licenseKey`, `activationUrl`, `instructions`; `licenseKey` and `activationUrl` are secret |
+| `refund` | Refund confirmation | required `amount`, `currency`, `productName`, `transactionId`, `paymentId`, `refundId`, `isFullRefund`, `totalRefunded`, `refundedAt`; optional `reason` |
 | `notice` | Generic catch-all | `heading`, `paragraphs` (string or array of strings), `ctaUrl`, `ctaLabel`, `subject` (subject override) |
 
 Notes:
@@ -277,7 +297,8 @@ Notes:
    bodyText, previewText?, jsonLd? }`, optional `secretFields` and `subjectRoles`). Build HTML with the shared helpers from `../layout`
    (`escapeHtml`, `paragraph`, `summaryTable`, `ctaButton`/`ctaText`) so it stays on-brand —
    do **not** re-create the header/footer chrome.
-2. Register it in the `TEMPLATES` map in `src/templates/index.ts`.
+2. Register it in the `TEMPLATES` map in `src/templates/index.ts`. Also update the presentation manifest/recipes and
+   their configuration contracts when adding a configurable type.
 3. Leave `publicAllowed` falsy unless the type is safe for unauthenticated browser use
    (only `contact` is). The handler pins public requests to `contact` regardless.
 4. Add a test in `test/template-types.test.ts`, then `npm run typecheck && npm run test`.
@@ -537,19 +558,20 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
 1. **Create the D1 databases** with `npx wrangler d1 create mailstack` and
    `npx wrangler d1 create mailstack-preview`, then put their ids in `.env`
    (`MAILSTACK_D1_ID` / `MAILSTACK_D1_PREVIEW_ID`). Run `npm run setup`, then
-   `npx wrangler d1 migrations apply DB --local` for development or `--remote` before deploy.
+   `npx wrangler d1 migrations apply DB --local` for a fresh development database.
+   Use the shared upgrader through `npm run release` for remote installation/upgrades.
 2. **Verify the SES sender(s)** (domain or email identity) in the SES console for the
    region in `SES_REGION` (default `eu-west-1`), and move the account out of the SES
    sandbox so it can mail arbitrary recipients.
 3. **Set the secrets** (see above).
-4. **Deploy:** `npm run deploy`. The guard runs before setup, fetches `origin/main`,
+4. **Release:** `npm run release` (setup, shared remote schema upgrade, then deploy). The guard runs before setup, fetches `origin/main`,
    and requires a clean tree plus HEAD equal to `origin/main` or tagged and reachable
    from it. A Worker other than `mailstack` (`MAILSTACK_WORKER_NAME`, e.g. staging) only needs
    a clean tree on any branch. It passes HEAD as `BUILD_COMMIT` to Wrangler. Export `MAILSTACK_HEALTH_URL`
    (the full `/health` URL) to verify the deployed commit; without it the check is
    explicitly skipped. `/health.version` comes from package.json; commit defaults to `dev`.
-   With schema changes run `npm run release`: setup from the external config (+ `MAILSTACK_PRO_PATH`),
-   migration manifest check, `wrangler d1 migrations apply DB --remote`, manifest recheck, then the
+   `npm run release` performs: setup from the external config (+ `MAILSTACK_PRO_PATH`),
+   migration manifest check, `npm run migrate:worker` (shared upgrader), manifest recheck, then the
    guarded deploy of the same files; no example generator (`npm test`/typecheck) in between.
    Release tags `v*` run checks and publish the container image; the private-config
    Worker deploy workflow is deferred. See README for release tags and local Compose.
@@ -558,10 +580,11 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
    behind a Tunnel + Access (Pro README). Without all four they stay `disabled` (`platform:secure_egress_unavailable`).
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
-   Optional `MAILSTACK_INTERNAL_ROUTE` adds a second domain serving only `/internal/v2/*`
+   Optional `MAILSTACK_INTERNAL_ROUTE` adds a second domain serving `/internal/v2/*` and `/internal/ext/pro/*`
    for the panel (needs Pro keys, `PANEL_ASSERTION_KEYS`, Cloudflare Access in front and
    `MAILSTACK_ACCESS_TEAM_DOMAIN` + `MAILSTACK_ACCESS_AUD` so the Worker checks the Access JWT).
-   A configured route disables `workers.dev`. See [internal API](docs/internal-api.md).
+   A public `MAILSTACK_ROUTE` disables `workers.dev` and preview URLs. Profile (a) uses the `Internal`
+   service binding with no permanent internal route. See [internal API](docs/internal-api.md).
 6. **Frontends:** point each site's form at `POST /v1/send` with the right `brand`, and add
    the Cloudflare Turnstile widget so a `cf-turnstile-response` token is included.
 
@@ -580,11 +603,18 @@ src/
   templates/
     layout.ts          shared brand chrome + helpers (escapeHtml, paragraph, summaryTable, ctaButton)
     index.ts           template registry + getTemplate + legacy renderEmail wrapper
+    config-schema.ts   presentation/language schema
+    config.ts          boot compilation of bounded template plans
+    locale.ts          exact/base/default presentation resolution
+    prepare.ts         bounded HTML/text rendering and archive metadata
     types/contact.ts   contact form (publicAllowed) — the original behavior
     types/welcome.ts   onboarding / welcome
     types/received.ts  submission acknowledgement
     types/payment.ts   payment confirmation
     types/notice.ts    generic catch-all
+    types/license.ts   standalone license delivery
+    types/refund.ts    refund confirmation
+    types/bank-transfer.ts bank transfer instructions/reminder
   markup/              schema.org email markup (JSON-LD)
     builders.ts        typed builders (viewAction, discountOffer, ...) + generic schema()/raw()
     serialize.ts       safe JSON-in-<script> serialization (neutralizes </script>) + head assembly
@@ -668,7 +698,7 @@ request body. At those levels, a matching request follows this table:
 | Different request with the same key | `409`, `code: "idempotency_conflict"` |
 
 An `unknown` result needs provider reconciliation before considering another send.
-The operator panel and resend endpoints are not included in this release. The SES
+Mailstack Pro provides the operator panel and resend endpoints. The SES
 adapter makes one request per attempt. No idempotency key
 means no deduplication. Generated contact receipt timestamps do not change request
 identity; recipient, subject, content, Reply-To, ref and explicit markup do.
@@ -682,9 +712,12 @@ the same field applies to every allowed source. Old aliases require the offline 
 Source keys are `source:<id>:<event>:` followed by
 `JSON.stringify([brandId, selectedIdentityOrBodyDigest])`, then scoped to the client
 by the pipeline. The body fallback is the first 32 hex characters of SHA-256.
-The Sellf preset selects PI then CS for purchases, refund ID for refunds, and
-order CS/PI then payment CS/PI for other events. Purchase and refund `ref` select
-PI then CS; other events use the same selection as their key. Different refund IDs
+The Sellf preset selects saved order UUID then PI/CS for purchases and refund ID
+for refunds. Orders use orderId, licenses license.id, and access grants access.id;
+participant reminders combine orderId and stage. Legacy notice/welcome events
+use order CS/PI then payment CS/PI. Purchase `ref` selects UUID then PI/CS; refund
+`ref` selects PI then CS; license `ref` selects orderId/order/id. See the preset
+for the remaining selections. Different refund IDs
 produce separate deliveries. Missing refund IDs fail the refund template requirement.
 Duplicate, pending, conflict and uncertain outcomes follow the table above.
 Comparison covers mapped delivery intent; level `none` compares only the key.

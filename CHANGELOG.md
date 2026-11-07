@@ -4,6 +4,22 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- Document the three deployment profiles, Worker panel, shared VPS egress and
+  Workers Free CPU, cron and account-wide D1 constraints.
+- Store recorded outcomes in a durable event stream with bounded fan-out and
+  leased delivery queues; one API minute cron shares retention and background work.
+- Open archived content in the operator browser; servers hold no content private
+  keys. Browser-created transit envelopes carry search, privacy and resend inputs.
+- Record erasures in an independently retained, numbered B2 register before
+  deletion; restore verifies the complete register and reapplies later erasures.
+- Add guarded Worker releases using the shared schema upgrader and matching core/Pro
+  migration manifests; Node upgrades before listening.
+- Configure copy, form presentation and optional per-brand languages for all eight
+  templates; resolve request/source language by exact tag, base tag, then default.
+- Extend the Sellf preset with bank-transfer orders/reminders, cancellation,
+  participant reminders, access grants and standalone license issuance.
+- Refresh installation, staging, recovery and operator documentation.
+
 - Breaking (Sellf preset): only `license.issued` sends keys, with idempotency by
   `license.id`. `purchase.completed` ignores `licenses[]` and sends no keys.
   Sellf older than 2026.11.0 without `license.issued` no longer gets license emails.
