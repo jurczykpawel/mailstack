@@ -62,8 +62,8 @@ Set `"cloudflare": {"plan":"free"}` in the API configuration when using Free;
 the value informs the API operation budget and reported provider
 backup window; it does not change your Cloudflare subscription or disable Pro
 features. The API uses a 40-operation budget on Free and 990 only with explicit `paid`.
-Omission reports the Paid backup window but still uses the conservative 40-operation
-budget; set the intended plan explicitly. The Worker
+Omission defaults to Free: 40 operations and a 7-day backup window. Explicit
+`paid` selects 990 operations and 30 days; explicit `free` selects 40 and 7 days. The Worker
 panel bounds audit verification and stores checkpoints so a long chain can advance
 across requests. These bounds do not prove CPU compliance. Measure the actual
 configuration, payload sizes, passkeys and background workload before rollout.
@@ -97,10 +97,10 @@ hourly. None of these timers is an email campaign scheduler.
 
 | Location | Data and keys |
 | --- | --- |
-| API | Provider credentials, public content keys, index keys, transit private keys, assertion keyring, log database and Pro endpoint keys |
+| API | Provider credentials, public content keys, index keys, transit private keys, assertion keyring, log database and Pro endpoint keys; B2 erasure-register credentials (`B2_KEY_ID`/`B2_APP_KEY`) and public `BACKUP_AGE_RECIPIENT` |
 | Panel server/Worker | Sessions, users, passkeys, audit checkpoints, scoped API token, assertion keyring, license state; no content private key, API database or provider credentials |
 | Operator browser | Imported content private keyring; opens sealed subjects, addresses, archives and evidence locally |
-| Backup host | Encrypted database values plus metadata during export; public age recipient and upload credentials; no age identity or content private key |
+| Backup host | Encrypted database values plus metadata during export; public age recipient and upload credentials; D1-only Cloudflare API token for profiles (a)/(b); no age identity or content private key |
 | Owner's recovery computer | Offline content keyrings, backup age identity, retained configuration and key generations |
 
 The API necessarily receives plaintext for a new send and opens transit envelopes
@@ -123,8 +123,10 @@ internal hostname with Access service authentication and API-side Access JWT
 verification. Both retain the scoped token and assertion-v2 checks. Profile (c)
 keeps port 8081 on the private container network. See [internal-api.md](internal-api.md).
 
-Worker webhook and source-resend requests use `EGRESS_URL`, `EGRESS_KEYS`,
-`EGRESS_ACCESS_CLIENT_ID` and `EGRESS_ACCESS_CLIENT_SECRET`. Without the complete
+For Worker webhook and source-resend requests, set `MAILSTACK_EGRESS_URL` in
+the core `.env` (setup emits it as the non-secret Wrangler variable `EGRESS_URL`),
+plus the secrets `EGRESS_KEYS`, `EGRESS_ACCESS_CLIENT_ID` and
+`EGRESS_ACCESS_CLIENT_SECRET`. Without the complete
 configuration those features report `platform:secure_egress_unavailable`.
 The egress host is a separate Tunnel hostname guarded by a Service Auth policy.
 The egress verifies signed orders and uses the Node transport. Its host firewall

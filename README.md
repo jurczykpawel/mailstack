@@ -230,7 +230,7 @@ MAILSTACK_ROUTE=
 ```
 
 After configuring brands in step 6, step 7 generates the SQL migration. Apply it
-locally for development, or remotely before deployment.
+locally for development. For remote installation and upgrades, use `npm run release`.
 
 ### 6) Describe your "brand" (who the email is from and to)
 Copy `config/mailstack.example.json` to a private location outside this repository, then
@@ -1298,8 +1298,12 @@ the database and backup directory. Worker databases use
 `"cloudflare": { "plan": "free" }` or `"paid"`: it sets the API operation budget and
 backup window reported for erasures (7 days on Free, 30 on Paid), and never
 disables a feature merely because of the plan. It does not change the account plan.
-Omission reports the Paid backup window but retains a conservative 40-operation
-budget; explicit `paid` selects 990, explicit `free` selects 40.
+Omission defaults to Free: 40 operations and a 7-day backup window. Explicit
+`paid` selects 990 operations and 30 days; explicit `free` selects 40 and 7 days.
+For Worker webhook/source callbacks, set `MAILSTACK_EGRESS_URL` in the core `.env`;
+setup emits it as the non-secret Wrangler variable `EGRESS_URL`. Set the three
+`EGRESS_KEYS`, `EGRESS_ACCESS_CLIENT_ID` and `EGRESS_ACCESS_CLIENT_SECRET` secrets
+as described in [network and egress](docs/architecture.md#network-and-egress).
 See [limits and resource sharing](docs/architecture.md#requirements-and-workers-free).
 
 ### ntfy alerts

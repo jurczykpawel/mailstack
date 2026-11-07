@@ -547,8 +547,19 @@ npx wrangler secret put ALTCHA_HMAC_KEY        # ALTCHA brands
 npx wrangler secret put CONTENT_PUBLIC_KEYS    # public JWK set from npm run keys
 npx wrangler secret put INDEX_KEYS             # index-key array from npm run keys
 npx wrangler secret put B2_KEY_ID              # erasure register (with B2_ENDPOINT, B2_BUCKET, B2_APP_KEY, BACKUP_AGE_RECIPIENT; docs/backup.md)
-npx wrangler secret put PANEL_ASSERTION_KEYS   # only with MAILSTACK_INTERNAL_ROUTE (panel), JSON [{kid, key}]
+npx wrangler secret put PANEL_ASSERTION_KEYS   # Pro panel: profile a binding or profile b internal route, JSON [{kid, key}]
+npx wrangler secret put TRANSIT_KEYS           # Pro panel transit envelopes; never content private keys
+npx wrangler secret put TOMBSTONE_REGISTRY_ID  # initialized B2 erasure register
+npx wrangler secret put MAILSTACK_LICENSE     # Pro license
+npx wrangler secret put PRO_WEBHOOK_KEYS      # Pro encrypted endpoint secrets
+npx wrangler secret put EGRESS_KEYS           # Worker outbound callbacks through VPS egress
+npx wrangler secret put EGRESS_ACCESS_CLIENT_ID
+npx wrangler secret put EGRESS_ACCESS_CLIENT_SECRET
 ```
+
+For the full B2 register settings, initialization and key permissions see
+[backup.md](docs/backup.md); for egress configuration and key boundaries see
+[architecture.md](docs/architecture.md#network-and-egress).
 
 For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill placeholders
 (`.dev.vars` is gitignored). The non-secret `SES_REGION` lives in `wrangler.toml [vars]`.
@@ -593,6 +604,8 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
 ```
 src/
   index.ts             router (health, /v1/send + CORS preflight, /v1/hooks/sellf, /internal/v2 + /internal/ext on INTERNAL_HOST, brand logo asset)
+  worker.ts            Worker entrypoint and Internal service binding
+  clients.ts           full-key authentication and Pro key-provider boundary
   send.ts              POST /v1/send handler: modes, validation, template select, anti-relay, auto-reply; shared renderAndSend + bearer helpers
   sources.ts           generic POST /v1/hooks/<id> engine; Sellf preset in docs/sources/sellf.json
   turnstile.ts         Turnstile siteverify (injectable)
@@ -624,6 +637,14 @@ src/
   core/store/          Kysely D1/SQLite drivers, migrations, audit and backup
   core/logging/        policy resolution, projection and delivery logging
   core/retention.ts    expiry cleanup and stale-send reconciliation
+  core/jobs.ts         leased, budgeted background jobs and queue drain
+  core/events.ts       durable event fanout, cursors and gap retention
+  core/erase.ts        bounded erasure job with fixed scope
+  core/offsite.ts      independent B2 erasure register and verification
+  core/access.ts       Access JWT verification for internal HTTPS
+  core/panel.ts        shared token/assertion-v2 authorization
+  core/transit.ts      one-use transit envelope verification
+  core/capabilities.ts protocol, features, limits and backup window
   adapters/            SMTP sender and ntfy notifier
   ratelimit.ts         store-backed fixed-window limiter
   cors.ts              origin allowlist + CORS headers
@@ -641,7 +662,8 @@ npm install
 npm run typecheck   # tsc --noEmit
 npm run test        # vitest run
 npm run dev         # npx wrangler dev (needs .dev.vars + D1 preview id)
-npm run deploy      # guarded Wrangler deploy
+npm run release     # setup, shared remote schema upgrade, guarded deploy
+npm run deploy      # guarded deploy only; use release for remote install/upgrade
 ```
 
 ## TODO (infra/deploy)
@@ -727,7 +749,11 @@ Keys expire after 24 hours. The new `source:` namespace does not look up older
 reconcile outstanding deliveries when changing versions.
 
 Set optional `SES_CONFIGURATION_SET` in `.env` and run `npm run setup` to include it in
-Worker vars. For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends
+Worker vars. For the full B2 register settings, initialization and key permissions see
+[backup.md](docs/backup.md); for egress configuration and key boundaries see
+[architecture.md](docs/architecture.md#network-and-egress).
+
+For local `npx wrangler dev`, it may also be set in `.dev.vars`. Only sends
 with a message row include `ConfigurationSetName` and tags `ms_id` (message id),
 `ms_brand` (brand id). SES `MessageId` and the encrypted response body are recorded;
 response headers are excluded. No open/click tracking configuration is sent.

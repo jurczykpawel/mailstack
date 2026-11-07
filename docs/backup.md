@@ -99,7 +99,10 @@ Setup on the API (Worker secrets with `npx wrangler secret put`, Node `api.env`)
 On the owner's computer, choose an empty prefix and set the variables above.
 Generate an id once, for example `openssl rand -hex 16`, retain it, then explicitly
 initialize the register using an installation key with `listFiles`, `readFiles`
-and `writeFiles` on that prefix:
+and `writeFiles` on that prefix. Stackpilot runs this initialization with the
+register key referenced by `secrets.api`, so that key needs all three capabilities
+for the first install; afterwards it may be replaced with the runtime
+`readFiles`+`writeFiles` key. A manual install can use a separate installation key:
 
 ```bash
 node scripts/backup/init-register.mjs
@@ -163,7 +166,7 @@ target is touched.
    ```bash
    # new D1 database next to the one in use
    npx wrangler d1 create mailstack-restore-20261103
-   node scripts/backup/restore.mjs mailstack-20261103T030000Z.sql.age \
+   node scripts/backup/restore.mjs "<database-id>-20261103T030000Z.sql.age" \
      --identity mailstack-backup.key --d1 mailstack-restore-20261103
 
    # new SQLite file (Node); a D1 export can also be restored this way
@@ -184,7 +187,7 @@ target is touched.
    and the replay runs right after it), quarantine events and deliveries
    from before the restore point, reconcile `sending`/`unknown` messages, then check
    the list, content decryption in the browser, address search and the audit chain.
-4. Switch: Worker — set `MAILSTACK_D1_ID` to the new database, `npm run setup`,
-   deploy; Node — stop the API, point the data volume at the new file, start.
+4. Switch: Worker — set `MAILSTACK_D1_ID` to the new database, run `npm run release`
+   (shared schema upgrade, then deploy); Node — stop the API, point the data volume at the new file, start.
    Messages sent between the restore point and the switch stay in the old database
    and are exported to the owner's archive; they are not merged automatically.
