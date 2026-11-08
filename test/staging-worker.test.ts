@@ -49,6 +49,7 @@ if(path.endsWith('/query')){
 }
 if(path.endsWith('/workers/scripts/mailstack-staging')&&options.method==='PUT'){
  const m=JSON.parse(await options.body.get('metadata').text());
+ (await import('node:fs')).writeFileSync(${JSON.stringify(join(dir, 'uploaded-flags.json'))},JSON.stringify(m.compatibility_flags));
  const safe=m.bindings.map(b=>({name:b.name,type:b.type,...(b.type==='plain_text'?{text:b.text}:{})}));
  const fs=await import('node:fs');fs.writeFileSync(${JSON.stringify(join(dir, 'uploaded-bindings.json'))},JSON.stringify(safe));
 }
@@ -73,6 +74,7 @@ it('deploys workers.dev resources while reading the production account separatel
   expect(bindings.some((b: any) => b.name === 'INTERNAL_HOST')).toBe(false);
   expect(bindings).toContainEqual({ name: 'SES_CONFIGURATION_SET', type: 'plain_text', text: 'mailstack-staging-f3' });
   expect(JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8')).events.ses.topicArns).toEqual(['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-f3-events']);
+  expect(JSON.parse(readFileSync(join(dir, 'uploaded-flags.json'), 'utf8'))).toContain('global_fetch_strictly_public');
 });
 it('stops workers.dev deployment on a changed production fingerprint', () => {
   const { child, dir } = run('deploy', true, false, '', { MAILSTACK_STAGING_ROUTING: 'workers-dev' });

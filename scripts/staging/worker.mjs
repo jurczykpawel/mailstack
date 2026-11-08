@@ -269,7 +269,7 @@ export class Internal extends WorkerEntrypoint{fetch(req){return outcome.run({},
     if (!providerSecrets.SES_ACCESS_KEY_ID || !providerSecrets.SES_SECRET_ACCESS_KEY) throw new Error('Missing staging SES credentials');
     vars.SES_CONFIGURATION_SET = sesConfigurationSet;
   }
-  const metadata = { main_module: 'worker.mjs', compatibility_date: '2026-10-26', compatibility_flags: ['nodejs_compat'], bindings: [
+  const metadata = { main_module: 'worker.mjs', compatibility_date: '2026-10-26', compatibility_flags: ['nodejs_compat', ...workersDev ? ['global_fetch_strictly_public'] : []], bindings: [
     { name: 'DB', type: 'd1', id: database.uuid },
     ...Object.entries(vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
     ...Object.entries({ ...secrets, ...providerSecrets }).map(([name, text]) => ({ name, text, type: 'secret_text' })),
