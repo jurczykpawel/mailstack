@@ -45,5 +45,7 @@ docs {
   It returns `{ algorithm, challenge, salt, signature, maxnumber }`. The
   post-response script saves `challenge`, `salt`, `signature`, and `maxnumber`
   as collection vars for step 2, which brute-forces the PoW and submits the
-  form. Run this request immediately before "2. Solve PoW and submit contact".
+  form. The signed salt contains a ten-minute expiry. The solution is single-use,
+  even if delivery later fails; fetch a new challenge for each attempt.
+  This example assumes `requireNonce` is off. Run this request immediately before "2. Solve PoW and submit contact".
 }

@@ -40,9 +40,11 @@ docs {
   `purchase.completed` maps to the `payment` template: recipient is
   `data.customer.email`, name is firstName + lastName, amount is
   `order.amount / 100` ("49.99"), currency is upper-cased, item is
-  `product.name`, orderId is `order.paymentIntentId ?? order.sessionId`, and the
+  `product.name`, orderId is `order.orderId ?? order.paymentIntentId ?? order.sessionId`, and the
   date comes from the envelope `timestamp` (pl-PL). Subject:
   "Potwierdzenie płatności - cs_test_123".
 
-  The send is awaited: a real SES failure returns 502 so Sellf retries.
+  The send is awaited: provider failure returns 502. Identical retries are
+  deduplicated; successful duplicates return `idempotent:true`. Keep the same
+  event data for retries. Mailstack does not verify the payment business state.
 }

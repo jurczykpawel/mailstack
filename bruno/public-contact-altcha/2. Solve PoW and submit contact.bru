@@ -84,7 +84,9 @@ docs {
   `{algorithm, challenge, salt, number, signature}` and base64-encodes it into
   the `altchaPayload` var. The server (`verifyAltcha`) recomputes the same hash
   and re-checks the HMAC signature against `ALTCHA_HMAC_KEY`, so a forged
-  payload fails closed.
+  payload fails closed. The signed expiry must still be valid; the store
+  atomically consumes the solution before sending. Missing storage, reuse or
+  expiration returns 403. Fetch a fresh challenge after a failed send too.
 
   This is the Altcha equivalent of the Turnstile contact form: same public-mode
   gates, but the captcha is proof-of-work rather than a third-party widget.
