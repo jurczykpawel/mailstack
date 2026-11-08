@@ -17,7 +17,13 @@ const sesConfigurationSet = env.MAILSTACK_STAGING_SES_CONFIGURATION_SET;
 const sesRegion = env.MAILSTACK_STAGING_SES_REGION;
 const sesAccount = env.MAILSTACK_STAGING_AWS_ACCOUNT_ID;
 const sesFrom = env.MAILSTACK_STAGING_FROM;
-if (delivery === 'ses') for (const key of ['MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'MAILSTACK_STAGING_SES_REGION', 'MAILSTACK_STAGING_AWS_ACCOUNT_ID', 'MAILSTACK_STAGING_FROM']) required(env, key);
+if (delivery === 'ses') {
+  for (const key of ['MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'MAILSTACK_STAGING_SES_REGION', 'MAILSTACK_STAGING_AWS_ACCOUNT_ID', 'MAILSTACK_STAGING_FROM']) required(env, key);
+  if (!(env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY)) {
+    if (workersDev) throw Error('Supply isolated staging SES credentials');
+    required(env, 'MAILSTACK_STAGING_SES_TOKEN_ITEM');
+  }
+}
 const sesTopic = `arn:aws:sns:${sesRegion}:${sesAccount}:${sesConfigurationSet}-events`;
 const name = 'mailstack-staging';
 let hostname = workersDev ? undefined : required(env, 'MAILSTACK_STAGING_HOST');
@@ -274,7 +280,6 @@ export class Internal extends WorkerEntrypoint{fetch(req){return outcome.run({},
   const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, ...!workersDev ? { INTERNAL_HOST: internalHost, ...access } : {}, PANEL_AUDIENCE: internalHost } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, ...sesRegion ? { SES_REGION: sesRegion } : {} };
   const providerSecrets = {};
   if (delivery === 'ses') {
-    if (workersDev && !(env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY)) throw Error('Supply isolated staging SES credentials');
     const item = env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', required(env, 'MAILSTACK_STAGING_SES_TOKEN_ITEM')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
     providerSecrets.SES_ACCESS_KEY_ID = env.SES_ACCESS_KEY_ID ?? item?.login?.username;
     providerSecrets.SES_SECRET_ACCESS_KEY = env.SES_SECRET_ACCESS_KEY ?? item?.login?.password;

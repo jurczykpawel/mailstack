@@ -7,7 +7,7 @@ import { projectArchive } from '../src/core/logging/projection';
 import { getTemplate } from '../src/templates';
 import { parseTransitKeys } from '../src/core/keyring';
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -17,7 +17,7 @@ const dirs: string[] = [];
 // mutation-<ms>-<sequence>.json in write order (a lexical sort puts -10 before -9).
 const mutations = (dir: string) => readdirSync(dir).filter(value => value.startsWith('mutation-')).sort((a, b) => Number(a.split(/[-.]/)[2]) - Number(b.split(/[-.]/)[2]));
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function run(command: string, change = false, ses = false, tables = '', extra: Record<string, string> = {}) {
+function run(command: string, change = false, ses = false, tables = '', extra: Record<string, string | undefined> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-staging-')); dirs.push(dir);
   const preload = join(dir, 'mock.mjs');
   writeFileSync(preload, `import Database from ${JSON.stringify(new URL('../node_modules/better-sqlite3/lib/index.js', import.meta.url).pathname)};
@@ -247,4 +247,17 @@ it('enables resend replay and source for acme in the Pro staging composition', a
   expect((await resolvePolicy(cfg.logging, 'acme', 'license')).policy.resend).toBe('source');
   expect((await resolvePolicy(cfg.logging, 'demo', 'notice')).policy.resend).toBe('off');
   expect(script).toMatch(/id: 'st-source'[^\n]+resendCallback: \{ url: `https:\/\/\$\{hostname\}\/_staging\/receiver\/\$\{secrets\.STAGING_RECEIVER_TOKEN\}\/resend`, secretEnv: 'STAGING_RESEND_SECRET' \}/);
+});
+
+it.each(['MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'MAILSTACK_STAGING_SES_REGION', 'MAILSTACK_STAGING_AWS_ACCOUNT_ID', 'MAILSTACK_STAGING_FROM'])('refuses SES deployment before provider calls without %s', key => {
+  const { child, dir } = run('deploy', false, true, '', { [key]: undefined });
+  expect(child.status).not.toBe(0);
+  expect(child.stderr).toContain(key);
+  expect(existsSync(join(dir, 'requests.jsonl'))).toBe(false);
+});
+it('requires isolated SES credentials before contacting a workers.dev account', () => {
+  const { child, dir } = run('deploy', false, true, '', { MAILSTACK_STAGING_ROUTING: 'workers-dev', SES_ACCESS_KEY_ID: undefined, SES_SECRET_ACCESS_KEY: undefined });
+  expect(child.status).not.toBe(0);
+  expect(child.stderr).toContain('Supply isolated staging SES credentials');
+  expect(existsSync(join(dir, 'requests.jsonl'))).toBe(false);
 });
