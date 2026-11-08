@@ -1,3 +1,4 @@
+import {stagingEnv} from './fixtures/staging.ts';
 import { runInNewContext } from 'node:vm';
 import example from '../config/mailstack.example.json';
 import { parseConfig } from '../src/core/config/schema';
@@ -27,7 +28,7 @@ const response=result=>Response.json({success:true,result});
 globalThis.fetch=async(url,options={})=>{
 if(url instanceof Request){(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'b2.log'))},url.method+' '+new URL(url.url).pathname+'\\n');return new Response('<ListBucketResult></ListBucketResult>');}
 const path=new URL(url).pathname;
-if(new URL(url).hostname==='mailer.techskills.academy')return Response.json({ok:true});
+if(new URL(url).hostname==='production.example.com')return Response.json({ok:true});
 const production=path.includes('/accounts/prod-account/');
 if(path.endsWith('/mailstack/deployments')&&!production)throw Error('Wrong fingerprint account');
 if(path.startsWith('/client/v4/accounts/')){
@@ -55,9 +56,9 @@ if(path.endsWith('/workers/scripts/mailstack-staging')&&options.method==='PUT'){
 }
 writes++;return response({uuid:'staging-database'});
 };`);
-  if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', hostname: 'mailstack-test.techskills.academy', database: 'staging-database' }));
+  if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', hostname: 'staging.example.com', database: 'staging-database' }));
   const child = spawnSync(process.execPath, ['--import', preload, 'scripts/staging/worker.mjs', command], {
-    encoding: 'utf8', env: { ...process.env, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_PRODUCTION_ACCOUNT_ID: 'prod-account', MAILSTACK_PRODUCTION_API_TOKEN: 'synthetic-prod', MAILSTACK_STAGING_ROUTING: 'custom-domain', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), ...extra, MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
+    encoding: 'utf8', env: { ...process.env, ...stagingEnv, MAILSTACK_STAGING_OPERATOR: undefined, MAILSTACK_STAGING_ACCOUNT_ID: undefined, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_PRODUCTION_ACCOUNT_ID: 'prod-account', MAILSTACK_PRODUCTION_API_TOKEN: 'synthetic-prod', MAILSTACK_STAGING_ROUTING: 'custom-domain', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), ...extra, MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
   });
   return { child, dir };
 }
@@ -72,8 +73,8 @@ it('deploys workers.dev resources while reading the production account separatel
   expect(JSON.parse(readFileSync(join(dir, 'resources.json'), 'utf8')).hostname).toBe('mailstack-staging.fixture.workers.dev');
   const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
   expect(bindings.some((b: any) => b.name === 'INTERNAL_HOST')).toBe(false);
-  expect(bindings).toContainEqual({ name: 'SES_CONFIGURATION_SET', type: 'plain_text', text: 'mailstack-staging-f3' });
-  expect(JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8')).events.ses.topicArns).toEqual(['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-f3-events']);
+  expect(bindings).toContainEqual({ name: 'SES_CONFIGURATION_SET', type: 'plain_text', text: 'mailstack-staging' });
+  expect(JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8')).events.ses.topicArns).toEqual(['arn:aws:sns:eu-west-1:123456789012:mailstack-staging-events']);
   expect(JSON.parse(readFileSync(join(dir, 'uploaded-flags.json'), 'utf8'))).toContain('global_fetch_strictly_public');
 });
 it('stops workers.dev deployment on a changed production fingerprint', () => {
@@ -147,7 +148,7 @@ it('limits enabled SES delivery to simulator recipients and keeps credentials ou
   const { child, dir } = run('deploy', false, true);
   expect(child.status, child.stderr).toBe(0);
   const config = JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8'));
-  expect(config.events.ses).toEqual({ topicArns: ['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-events'], accountIds: ['207570392857'], allowSignatureV1: false });
+  expect(config.events.ses).toEqual({ topicArns: ['arn:aws:sns:eu-west-1:123456789012:mailstack-staging-events'], accountIds: ['123456789012'], allowSignatureV1: false });
   const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
   expect(bindings).toEqual(expect.arrayContaining([
     { name: 'SES_ACCESS_KEY_ID', type: 'secret_text' },
@@ -155,7 +156,7 @@ it('limits enabled SES delivery to simulator recipients and keeps credentials ou
     { name: 'SES_CONFIGURATION_SET', type: 'plain_text', text: 'mailstack-staging' },
   ]));
   for (const brand of Object.values(config.brands) as any[]) {
-    expect(brand.from).toBe('no-reply@mailstack-test.techskills.academy');
+    expect(brand.from).toBe('no-reply@staging.example.com');
     expect(brand.to).toEqual(['success@simulator.amazonses.com']);
     expect(brand.autoReply).toBe(false);
   }
@@ -223,8 +224,8 @@ it('configures and initializes the erasure register under the staging prefix', (
   expect(secrets.TOMBSTONE_REGISTRY_ID).toMatch(/^[a-f0-9]{32}$/);
   const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
   expect(bindings).toEqual(expect.arrayContaining([{ name: 'TOMBSTONE_REGISTRY_ID', type: 'secret_text' }, { name: 'B2_APP_KEY', type: 'secret_text' },
-    { name: 'TOMBSTONE_PREFIX', type: 'plain_text', text: 'staging-tombstones/' }, { name: 'B2_BUCKET', type: 'plain_text', text: 'mailstack-staging-backup-f3c750' }]));
-  expect(readFileSync(join(dir, 'b2.log'), 'utf8').trim().split('\n')).toEqual(['GET /mailstack-staging-backup-f3c750/', 'PUT /mailstack-staging-backup-f3c750/staging-tombstones/genesis', 'PUT /mailstack-staging-backup-f3c750/staging-tombstones/head']);
+    { name: 'TOMBSTONE_PREFIX', type: 'plain_text', text: 'staging-tombstones/' }, { name: 'B2_BUCKET', type: 'plain_text', text: 'staging-backup-fixture' }]));
+  expect(readFileSync(join(dir, 'b2.log'), 'utf8').trim().split('\n')).toEqual(['GET /staging-backup-fixture/', 'PUT /staging-backup-fixture/staging-tombstones/genesis', 'PUT /staging-backup-fixture/staging-tombstones/head']);
   expect(child.stdout + child.stderr).not.toContain('synthetic-b2-key');
 });
 it('N: without register inputs the deployment leaves the register unconfigured', () => {

@@ -1,7 +1,8 @@
 // Imported exclusively by staging compositions. Never by src/ or production builds.
 import type { SendDeps } from '../../src/types';
 type Query = (sql: string, values?: (string | number)[]) => Promise<unknown[]>;
-export function budgetSender(query: Query, sender: SendDeps['sendEmail'], limits = { day: 100, hour: 20 }, clock = Date.now): SendDeps['sendEmail'] {
+export function budgetSender(query: Query, sender: SendDeps['sendEmail'], allowedFrom: string, limits = { day: 100, hour: 20 }, clock = Date.now): SendDeps['sendEmail'] {
+  if (!allowedFrom?.trim()) throw new Error('Configure the staging sender address');
   if (![limits.day, limits.hour].every(n => Number.isSafeInteger(n) && n > 0) || limits.day > 100 || limits.hour > 20) throw new Error('Invalid staging SES limits');
   return async (env, params) => {
     const deny = async (reason: string, status: number) => {
@@ -15,7 +16,7 @@ export function budgetSender(query: Query, sender: SendDeps['sendEmail'], limits
       await query('CREATE INDEX IF NOT EXISTS st5_ses_budget_at ON st5_ses_budget(at)');
       await query('CREATE TABLE IF NOT EXISTS st5_rejections(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, reason TEXT NOT NULL)');
       const allowed = ['success', 'bounce', 'complaint', 'suppressionlist'].map(v => v + '@simulator.amazonses.com');
-      if (params.from !== 'no-reply@mailstack-test.techskills.academy' || !params.to.length || params.to.some(v => !allowed.includes(v))) return deny('staging_recipient_not_allowed', 403);
+      if (params.from !== allowedFrom || !params.to.length || params.to.some(v => !allowed.includes(v))) return deny('staging_recipient_not_allowed', 403);
       const now = clock(), units = params.to.length;
       const rows = await query(`INSERT INTO st5_ses_budget(id,at,units)
         SELECT ?,?,? WHERE

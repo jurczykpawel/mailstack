@@ -1808,7 +1808,8 @@ scripts/test-worker.sh status
 scripts/test-worker.sh destroy
 ```
 
-This script reads only the agent Vaultwarden item `CF Deploy - General API token`;
+This script reads the Vaultwarden item named by `MAILSTACK_PRODUCTION_TOKEN_ITEM`
+in the private operator configuration (see [staging](docs/staging.md));
 it never uses a token from repository `.env` files. It deploys only `mailstack-test`
 on `workers.dev`, with the existing `mailstack-preview` D1 and migration 0001.
 No custom domain or production route is configured. SES keys are randomly generated

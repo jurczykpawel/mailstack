@@ -11,20 +11,43 @@ import time
 import urllib.error
 import urllib.request
 
-ACCOUNT = '207570392857'
-REGION = 'eu-west-1'
-DOMAIN = 'mailstack-test.techskills.academy'
-CONFIG = os.environ.get('MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'mailstack-staging-f3')
+# Same private flat MAILSTACK_* configuration as the JavaScript compositions.
+operator_path = pathlib.Path(os.environ.get('MAILSTACK_STAGING_OPERATOR',
+    str(pathlib.Path.home() / '.config/mailstack-staging/operator.json')))
+operator = {}
+if operator_path.exists() or 'MAILSTACK_STAGING_OPERATOR' in os.environ:
+    try:
+        if operator_path.stat().st_mode & 0o077:
+            raise ValueError()
+        operator = json.loads(operator_path.read_text())
+        if not isinstance(operator, dict) or any(not k.startswith('MAILSTACK_') or not isinstance(v, str) for k, v in operator.items()):
+            raise ValueError()
+    except (OSError, ValueError):
+        raise RuntimeError('Operator configuration must be a readable 0600 JSON object of MAILSTACK_* strings') from None
+env = {**operator, **os.environ}
+def required(key):
+    value = env.get(key, '').strip()
+    if not value:
+        raise RuntimeError('Set ' + key + ' in the environment or private operator configuration')
+    return value
+
+ACCOUNT = required('MAILSTACK_STAGING_AWS_ACCOUNT_ID')
+REGION = required('MAILSTACK_STAGING_SES_REGION')
+DOMAIN = required('MAILSTACK_STAGING_SES_DOMAIN')
+CONFIG = required('MAILSTACK_STAGING_SES_CONFIGURATION_SET')
 TOPIC = f'{CONFIG}-events'
 TOPIC_ARN = f'arn:aws:sns:{REGION}:{ACCOUNT}:{TOPIC}'
 CONFIG_ARN = f'arn:aws:ses:{REGION}:{ACCOUNT}:configuration-set/{CONFIG}'
-ENDPOINT = os.environ.get('MAILSTACK_STAGING_EVENTS_URL',
-                          'https://mailstack-staging.pavveldev.workers.dev/v1/events/ses')
-CF_ACCOUNT = os.environ.get('MAILSTACK_PRODUCTION_ACCOUNT_ID', '92e7018cfc666807c755836278d19eaf')
+ENDPOINT = required('MAILSTACK_STAGING_EVENTS_URL')
+CF_ACCOUNT = required('MAILSTACK_PRODUCTION_ACCOUNT_ID')
+AWS_PROFILE = required('MAILSTACK_STAGING_AWS_PROFILE')
+CALLER_ARN = required('MAILSTACK_STAGING_AWS_CALLER_ARN')
+CF_TOKEN_ITEM = required('MAILSTACK_PRODUCTION_TOKEN_ITEM')
+ZONE = required('MAILSTACK_STAGING_ZONE')
 
 
 def aws(*args, missing=False):
-    result = subprocess.run(['aws', '--profile', 'default', '--region', REGION,
+    result = subprocess.run(['aws', '--profile', AWS_PROFILE, '--region', REGION,
                              '--output', 'json', '--no-cli-pager', *args],
                             capture_output=True, text=True, timeout=60)
     if result.returncode:
@@ -36,8 +59,8 @@ def aws(*args, missing=False):
 
 
 def check_caller():
-    if aws('sts', 'get-caller-identity').get('Arn') != f'arn:aws:iam::{ACCOUNT}:user/pavvel-cli':
-        raise RuntimeError('Expected default profile to be IAM user pavvel-cli')
+    if aws('sts', 'get-caller-identity').get('Arn') != CALLER_ARN:
+        raise RuntimeError('AWS caller differs from configured operator identity')
 
 
 def canonical(value):
@@ -68,14 +91,14 @@ def destination_matches(existing, desired):
 
 class Cloudflare:
     def __init__(self):
-        result = subprocess.run(['bw', 'get', 'password', 'CF Deploy - General API token'],
+        result = subprocess.run(['bw', 'get', 'password', CF_TOKEN_ITEM],
                                 capture_output=True, text=True, timeout=60)
         if result.returncode or not result.stdout.strip():
             raise RuntimeError('Agent Vaultwarden Cloudflare token unavailable')
         self.token = result.stdout.strip()
-        zones = self.list('/zones?name=techskills.academy')
+        zones = self.list('/zones?name=' + ZONE)
         if len(zones) != 1:
-            raise RuntimeError('Expected exactly one techskills.academy zone')
+            raise RuntimeError('Expected exactly one configured DNS zone')
         self.path = f"/zones/{zones[0]['id']}/dns_records"
 
     def request(self, path, method='GET', body=None):

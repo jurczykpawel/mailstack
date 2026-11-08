@@ -11,7 +11,7 @@ const sender = budgetSender(async (sql, values = []) => {
   database.pragma('busy_timeout=5000');
   const statement = database.prepare(sql);
   return statement.reader ? statement.all(...values) : (statement.run(...values), []);
-}, sendEmail, limits);
+}, sendEmail, process.env.MAILSTACK_STAGING_FROM!, limits);
 export const stagingSender: typeof sendEmail = async (env, params) => {
   const result = await sender(env, params);
   if (!result.ok && typeof result.response === 'string' && result.response.startsWith('staging_')) {

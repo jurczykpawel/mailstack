@@ -6,12 +6,12 @@
       "Effect": "Allow",
       "Action": ["ses:SendEmail", "ses:SendRawEmail"],
       "Resource": [
-        "arn:aws:ses:eu-west-1:207570392857:identity/mailstack-test.techskills.academy",
-        "arn:aws:ses:eu-west-1:207570392857:configuration-set/mailstack-staging"
+        "arn:aws:ses:eu-west-1:123456789012:identity/staging.example.com",
+        "arn:aws:ses:eu-west-1:123456789012:configuration-set/mailstack-staging"
       ],
       "Condition": {
         "StringEquals": {
-          "ses:FromAddress": "no-reply@mailstack-test.techskills.academy"
+          "ses:FromAddress": "no-reply@staging.example.com"
         },
         "ForAllValues:StringEquals": {
           "ses:Recipients": [

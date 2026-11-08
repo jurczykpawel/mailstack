@@ -2,11 +2,14 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync,renameSync,statSync} from 'node:fs';
 import {hostname} from 'node:os';
 import {changeHmac,verifyHmac,productionFingerprint} from './hmac.mjs';
-const command=process.argv[2], stack='/opt/stacks/mailstack-staging';
-if(!['hmac-swap','hmac-restore'].includes(command)||hostname()!=='piotr293') throw Error('Run hmac-swap|hmac-restore on piotr293 staging host');
-const envName=process.env.MAILSTACK_STAGING_HMAC_ENV ?? 'SELLF_STAGING_HMAC';
+import {operatorEnvironment,required} from './operator.mjs';
+const env=operatorEnvironment();
+const command=process.argv[2], stack=required(env,'MAILSTACK_STAGING_NODE_STACK'), host=required(env,'MAILSTACK_STAGING_NODE_HOST');
+if(!['hmac-swap','hmac-restore'].includes(command)||hostname()!==host) throw Error('Run hmac-swap|hmac-restore on the configured staging host');
+const productionAccount=required(env,'MAILSTACK_PRODUCTION_ACCOUNT_ID'), url=required(env,'MAILSTACK_STAGING_NODE_URL');
+const envName=env.MAILSTACK_STAGING_HMAC_ENV ?? 'SELLF_STAGING_HMAC';
 if(!/^[A-Z][A-Z0-9_]{1,63}$/.test(envName)) throw Error('Invalid HMAC environment name');
-const token=process.env.MAILSTACK_STAGING_HOOK_TOKEN, cfToken=process.env.CLOUDFLARE_API_TOKEN;
+const token=env.MAILSTACK_STAGING_HOOK_TOKEN, cfToken=env.CLOUDFLARE_API_TOKEN;
 if(!token||!cfToken) throw Error('Staging hook token and Cloudflare read token required in environment');
 process.umask(0o077);
 const docker=args=>execFileSync('docker',args,{cwd:stack,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -40,8 +43,8 @@ if(command==='hmac-swap'&&!container.Config.Env.includes(`${envName}=${original.
 const temporary=command==='hmac-swap'?readFileSync(0,'utf8').trim():undefined;
 if(temporary&&!/^[A-Za-z0-9_-]{16,256}$/.test(temporary)) throw Error('Invalid temporary HMAC format');
 await changeHmac(command,temporary,{
-  dir:stack+'/hmac-recovery',identity:'piotr293:'+stack+':'+envName,
-  fingerprint:()=>productionFingerprint('92e7018cfc666807c755836278d19eaf',cfToken),read:async()=>current().value,
+  dir:stack+'/hmac-recovery',identity:host+':'+stack+':'+envName,
+  fingerprint:()=>productionFingerprint(productionAccount,cfToken),read:async()=>current().value,
   apply:async value=>{
     const {text}=current();
     writeFileSync(path+'.hmac-next',text.replace(pattern,`${envName}=${value}`),{mode:statSync(path).mode&0o777});
@@ -49,6 +52,6 @@ await changeHmac(command,temporary,{
     docker(['compose','up','-d','--no-deps','--force-recreate','api']);
     if(!requireOne(inspect()).Config.Env.includes(`${envName}=${value}`)) throw Error('Compose must reference the staging HMAC environment entry');
   },
-  verify:(active,inactive)=>verifyHmac('https://mailstack-test.tojest.dev',token,active,inactive),
+  verify:(active,inactive)=>verifyHmac(url,token,active,inactive),
 });
 console.log(`${command}: verified; production IDENTICAL`);

@@ -6,31 +6,43 @@ import { randomBytes, generateKeyPairSync, createHash } from 'node:crypto';
 import { build } from 'esbuild';
 import { changeHmac, verifyHmac } from './hmac.mjs';
 import { stagingOptions } from './accounts.mjs';
+import { operatorEnvironment, required } from './operator.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const options = stagingOptions();
+const env = operatorEnvironment();
+const options = stagingOptions(env);
 const state = resolve(options.state), { account, productionAccount, routing } = options;
 const workersDev = routing === 'workers-dev';
-const sesConfigurationSet = process.env.MAILSTACK_STAGING_SES_CONFIGURATION_SET ?? (workersDev ? 'mailstack-staging-f3' : 'mailstack-staging');
-const sesTopic = `arn:aws:sns:eu-west-1:207570392857:${sesConfigurationSet}-events`;
+const delivery = env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
+const sesConfigurationSet = env.MAILSTACK_STAGING_SES_CONFIGURATION_SET;
+const sesRegion = env.MAILSTACK_STAGING_SES_REGION;
+const sesAccount = env.MAILSTACK_STAGING_AWS_ACCOUNT_ID;
+const sesFrom = env.MAILSTACK_STAGING_FROM;
+if (delivery === 'ses') for (const key of ['MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'MAILSTACK_STAGING_SES_REGION', 'MAILSTACK_STAGING_AWS_ACCOUNT_ID', 'MAILSTACK_STAGING_FROM']) required(env, key);
+const sesTopic = `arn:aws:sns:${sesRegion}:${sesAccount}:${sesConfigurationSet}-events`;
 const name = 'mailstack-staging';
-let hostname = 'mailstack-test.techskills.academy';
+let hostname = workersDev ? undefined : required(env, 'MAILSTACK_STAGING_HOST');
 // A Worker cannot fetch its own custom domain (522), so Pro reads the fixture license endpoints from a second Worker.
 const licenseName = 'mailstack-staging-license';
-let licenseHost = 'mailstack-license-test.techskills.academy';
+let licenseHost = workersDev ? undefined : required(env, 'MAILSTACK_STAGING_LICENSE_HOST');
 // With Pro the panel reads /internal/v2/* only on this host, which sits behind Cloudflare Access.
-const internalHost = workersDev ? 'mailstack-staging.internal' : 'mailstack-internal-test.techskills.academy';
+const internalHost = workersDev ? 'mailstack-staging.internal' : required(env, 'MAILSTACK_STAGING_INTERNAL_HOST');
 const command = process.argv[2] ?? 'status';
-const delivery = process.env.MAILSTACK_STAGING_DELIVERY ?? 'disabled';
+const productionHealth = required(env, 'MAILSTACK_PRODUCTION_HEALTH_URL');
+if (!workersDev && command === 'deploy') required(env, 'MAILSTACK_STAGING_ZONE');
+const savedSecrets = command === 'deploy' && existsSync(`${state}/secrets.json`) ? JSON.parse(readFileSync(`${state}/secrets.json`)) : {};
+if (command === 'deploy' && (savedSecrets.TOMBSTONE_REGISTRY_ID || env.MAILSTACK_STAGING_B2_KEY_ID && env.MAILSTACK_STAGING_B2_APP_KEY && env.MAILSTACK_STAGING_AGE_RECIPIENT)) {
+  required(env, 'MAILSTACK_STAGING_B2_ENDPOINT'); required(env, 'MAILSTACK_STAGING_B2_BUCKET');
+}
 // Optional Mailstack Pro checkout (clean tree); its commit is extracted like the core one.
-const pro = process.env.MAILSTACK_STAGING_PRO, branch = process.env.MAILSTACK_STAGING_BRANCH ?? 'main';
+const pro = env.MAILSTACK_STAGING_PRO, branch = env.MAILSTACK_STAGING_BRANCH ?? 'main';
 // MAILSTACK_STAGING_EGRESS_URL=https://<egress host> (with Pro): the egress service behind the staging Tunnel, a key-guarded
 // probe for the SSRF acceptance (A 3.6) and a webhook endpoint at the receiver (M8). The Access service token comes from
 // MAILSTACK_STAGING_EGRESS_ACCESS_ID/_SECRET on the first deploy; EGRESS_KEYS is generated into the state for the service.
-const egress = process.env.MAILSTACK_STAGING_EGRESS_URL?.trim();
+const egress = env.MAILSTACK_STAGING_EGRESS_URL?.trim();
 if (egress && !(pro && /^https:\/\/[a-z0-9.-]+$/.test(egress))) throw new Error('MAILSTACK_STAGING_EGRESS_URL needs MAILSTACK_STAGING_PRO and an https origin');
 if (!['disabled', 'ses'].includes(delivery)) throw new Error('Delivery must be disabled or ses');
 // The internal host needs the Access team host and the AUD tag of its Access application.
-const access = { ACCESS_TEAM_DOMAIN: process.env.MAILSTACK_ACCESS_TEAM_DOMAIN?.trim(), ACCESS_AUD: process.env.MAILSTACK_ACCESS_AUD?.trim() };
+const access = { ACCESS_TEAM_DOMAIN: env.MAILSTACK_ACCESS_TEAM_DOMAIN?.trim(), ACCESS_AUD: env.MAILSTACK_ACCESS_AUD?.trim() };
 if (command === 'deploy' && pro && !workersDev && !(access.ACCESS_TEAM_DOMAIN && access.ACCESS_AUD)) throw new Error('Set MAILSTACK_ACCESS_TEAM_DOMAIN and MAILSTACK_ACCESS_AUD for the internal host');
 if (!account || !['deploy', 'status', 'destroy', 'hmac-swap', 'hmac-restore'].includes(command)) throw new Error('Set CLOUDFLARE_ACCOUNT_ID; use deploy|status|destroy|hmac-swap|hmac-restore');
 if (state.startsWith(root + '/')) throw new Error('State must be outside the source directory');
@@ -47,8 +59,8 @@ const put = (file, value) => {
 const digest = value => createHash('sha256').update(value).digest('hex');
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
 const password = item => execFileSync('bw', ['get', 'password', item], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-const token = process.env.CLOUDFLARE_API_TOKEN ?? password(options.tokenItem);
-const productionToken = process.env.MAILSTACK_PRODUCTION_API_TOKEN ?? password('CF Deploy - General API token');
+const token = env.CLOUDFLARE_API_TOKEN ?? password(options.tokenItem);
+const productionToken = env.MAILSTACK_PRODUCTION_API_TOKEN ?? password(required(env, 'MAILSTACK_PRODUCTION_TOKEN_ITEM'));
 async function api(path, method = 'GET', body, credential = token) {
   const response = await fetch('https://api.cloudflare.com/client/v4' + path, {
     method, headers: { Authorization: `Bearer ${credential}`, ...(body && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
@@ -61,7 +73,7 @@ async function api(path, method = 'GET', body, credential = token) {
 const base = `/accounts/${account}`, script = `${base}/workers/scripts/${name}`;
 async function fingerprint() {
   const deployments = await api(`/accounts/${productionAccount}/workers/scripts/mailstack/deployments`, 'GET', undefined, productionToken);
-  const response = await fetch(process.env.MAILSTACK_PRODUCTION_HEALTH_URL ?? 'https://mailer.techskills.academy/health', { signal: AbortSignal.timeout(20000) });
+  const response = await fetch(productionHealth, { signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw Error('Production health unavailable');
   return digest(canonical({ deployments, health: await response.text() }));
 }
@@ -123,7 +135,7 @@ if (command.startsWith('hmac-')) {
   if (scripts.some(value => value.id === name)) await mutate('remove-worker', script, 'DELETE');
   if (database) await mutate('remove-database', `${base}/d1/database/${database.uuid}`, 'DELETE');
 } else {
-  const commit = process.env.MAILSTACK_STAGING_COMMIT ?? (existsSync(`${state}/resources.json`) ? JSON.parse(readFileSync(`${state}/resources.json`)).commit : execFileSync('git', ['rev-parse', branch], { cwd: root, encoding: 'utf8' }).trim());
+  const commit = env.MAILSTACK_STAGING_COMMIT ?? (existsSync(`${state}/resources.json`) ? JSON.parse(readFileSync(`${state}/resources.json`)).commit : execFileSync('git', ['rev-parse', branch], { cwd: root, encoding: 'utf8' }).trim());
   execFileSync('git', ['merge-base', '--is-ancestor', commit, branch], { cwd: root });
   const proCommit = pro && execFileSync('git', ['rev-parse', 'HEAD'], { cwd: pro, encoding: 'utf8' }).trim();
   if (pro && execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: pro, encoding: 'utf8' })) throw new Error('Pro checkout must be clean');
@@ -136,14 +148,14 @@ if (command.startsWith('hmac-')) {
   // No plan upgrades or subscription writes are performed by this script.
   if (!database) database = await mutate('create-database', `${base}/d1/database`, 'POST', { name });
   put('resources.json', { account, name, database: database.uuid, hostname, licenseHost, routing, commit });
-  const cfg = JSON.parse(readFileSync(process.env.MAILSTACK_STAGING_CONFIG ?? `${source}/config/mailstack.example.json`));
+  const cfg = JSON.parse(readFileSync(env.MAILSTACK_STAGING_CONFIG ?? `${source}/config/mailstack.example.json`));
   for (const brand of Object.values(cfg.brands)) { brand.captcha = 'altcha'; brand.autoReply = false; brand.allowedOrigins = [`https://${hostname}`]; }
   if (delivery === 'ses') {
     for (const brand of Object.values(cfg.brands)) {
-      brand.from = 'no-reply@mailstack-test.techskills.academy';
+      brand.from = sesFrom;
       brand.to = ['success@simulator.amazonses.com'];
     }
-    cfg.events = { ses: { topicArns: [sesTopic], accountIds: ['207570392857'], allowSignatureV1: false } };
+    cfg.events = { ses: { topicArns: [sesTopic], accountIds: [sesAccount], allowSignatureV1: false } };
   }
   cfg.sender = { type: 'ses' }; delete cfg.clients;
   // The full key carries the Sellf hook signature; Pro adds scoped clients with tokens in secrets.json.
@@ -163,12 +175,12 @@ if (command.startsWith('hmac-')) {
   secrets.STAGING_RECEIVER_TOKEN ??= randomBytes(32).toString('base64url');
   secrets.STAGING_RECEIVER_KEY ??= randomBytes(32).toString('base64url');
   // Erasure register (R5): a B2 key limited to the staging prefix and the owner's age recipient, given once; erasure stays off without them.
-  const b2 = { B2_KEY_ID: process.env.MAILSTACK_STAGING_B2_KEY_ID, B2_APP_KEY: process.env.MAILSTACK_STAGING_B2_APP_KEY, BACKUP_AGE_RECIPIENT: process.env.MAILSTACK_STAGING_AGE_RECIPIENT };
+  const b2 = { B2_KEY_ID: env.MAILSTACK_STAGING_B2_KEY_ID, B2_APP_KEY: env.MAILSTACK_STAGING_B2_APP_KEY, BACKUP_AGE_RECIPIENT: env.MAILSTACK_STAGING_AGE_RECIPIENT };
   const register = Object.values(b2).every(Boolean);
   if (register) Object.assign(secrets, b2, { TOMBSTONE_REGISTRY_ID: secrets.TOMBSTONE_REGISTRY_ID ?? randomBytes(16).toString('hex') });
-  const registerVars = secrets.TOMBSTONE_REGISTRY_ID ? { B2_ENDPOINT: 'https://s3.eu-central-003.backblazeb2.com', B2_BUCKET: 'mailstack-staging-backup-f3c750', TOMBSTONE_PREFIX: workersDev ? `staging-tombstones/${account}/` : 'staging-tombstones/' } : {};
+  const registerVars = secrets.TOMBSTONE_REGISTRY_ID ? { B2_ENDPOINT: required(env, 'MAILSTACK_STAGING_B2_ENDPOINT'), B2_BUCKET: required(env, 'MAILSTACK_STAGING_B2_BUCKET'), TOMBSTONE_PREFIX: workersDev ? `staging-tombstones/${account}/` : 'staging-tombstones/' } : {};
   if (pro) {
-    if (process.env.MAILSTACK_STAGING_LICENSE) secrets.MAILSTACK_LICENSE = process.env.MAILSTACK_STAGING_LICENSE;
+    if (env.MAILSTACK_STAGING_LICENSE) secrets.MAILSTACK_LICENSE = env.MAILSTACK_STAGING_LICENSE;
     if (!secrets.MAILSTACK_LICENSE) throw new Error('Set MAILSTACK_STAGING_LICENSE for the first Pro deploy');
     secrets.STAGING_SEND_TOKEN ??= `msk_st-send_${randomBytes(32).toString('base64url')}`;
     secrets.STAGING_HOOK_TOKEN ??= `msk_st-hook_${randomBytes(32).toString('base64url')}`;
@@ -194,8 +206,8 @@ if (command.startsWith('hmac-')) {
   }
   if (egress) {
     secrets.EGRESS_KEYS ??= JSON.stringify([{ kid: 'st-egress-1', key: randomBytes(32).toString('base64url') }]);
-    secrets.EGRESS_ACCESS_CLIENT_ID = process.env.MAILSTACK_STAGING_EGRESS_ACCESS_ID ?? secrets.EGRESS_ACCESS_CLIENT_ID;
-    secrets.EGRESS_ACCESS_CLIENT_SECRET = process.env.MAILSTACK_STAGING_EGRESS_ACCESS_SECRET ?? secrets.EGRESS_ACCESS_CLIENT_SECRET;
+    secrets.EGRESS_ACCESS_CLIENT_ID = env.MAILSTACK_STAGING_EGRESS_ACCESS_ID ?? secrets.EGRESS_ACCESS_CLIENT_ID;
+    secrets.EGRESS_ACCESS_CLIENT_SECRET = env.MAILSTACK_STAGING_EGRESS_ACCESS_SECRET ?? secrets.EGRESS_ACCESS_CLIENT_SECRET;
     if (!secrets.EGRESS_ACCESS_CLIENT_ID || !secrets.EGRESS_ACCESS_CLIENT_SECRET) throw new Error('Set MAILSTACK_STAGING_EGRESS_ACCESS_ID and _SECRET for the first egress deploy');
     secrets.PRO_WEBHOOK_KEYS ??= JSON.stringify([{ kid: 'st-webhook-1', key: randomBytes(32).toString('base64url') }]);
     secrets.STAGING_WEBHOOK_SECRET ??= randomBytes(32).toString('base64url');
@@ -210,7 +222,7 @@ if (command.startsWith('hmac-')) {
   const { VALIDATED_CONFIG, TEMPLATE_PLANS } = await import(pathToFileURL(`${state}/config.mjs`).href);
   // The staging composition restricts every enabled provider call to the simulator.
   const fixture = existsSync(`${state}/fixture-jwks.json`) ? JSON.parse(readFileSync(`${state}/fixture-jwks.json`)) : { keys: [] };
-  const limits = { day: Number(process.env.MAILSTACK_STAGING_SES_DAY ?? 50), hour: Number(process.env.MAILSTACK_STAGING_SES_HOUR ?? 10) };
+  const limits = { day: Number(env.MAILSTACK_STAGING_SES_DAY ?? 50), hour: Number(env.MAILSTACK_STAGING_SES_HOUR ?? 10) };
   if (![limits.day,limits.hour].every(n=>Number.isSafeInteger(n)&&n>0)||limits.day>50||limits.hour>10) throw Error('Invalid staging allocation');
   const contents = `import {AsyncLocalStorage} from 'node:async_hooks';
 import {WorkerEntrypoint} from 'cloudflare:workers';
@@ -227,7 +239,7 @@ const disabled=async()=>({ok:false,status:503,response:'staging_delivery_disable
 const outcome=new AsyncLocalStorage();
 const app=createApp({sendEmail:async(env,params)=>{
 const state=outcome.getStore();
-const sender=!state?.scheduled&&${JSON.stringify(delivery)}==='ses'?budgetSender(query(env),sendEmail,${JSON.stringify(limits)}):disabled;
+const sender=!state?.scheduled&&${JSON.stringify(delivery)}==='ses'?budgetSender(query(env),sendEmail,${JSON.stringify(sesFrom)},${JSON.stringify(limits)}):disabled;
 const r=await sender(env,params);if(state&&!r.ok&&typeof r.response==='string'&&r.response.startsWith('staging_'))state.reason=r.response;return r;}});
 async function serve(req,env,ctx,bound){
 const path=new URL(req.url).pathname;
@@ -259,13 +271,13 @@ export class Internal extends WorkerEntrypoint{fetch(req){return outcome.run({},
   try { await migrateWorker(store, proWorker || undefined, cfg.extensions?.[0]?.options); }
   finally { await store.db.destroy(); }
   if (register) { await (await import(pathToFileURL(`${root}/src/core/offsite.ts`).href)).initTombstoneRegistry({ ...secrets, ...registerVars }); console.log('Erasure register ready'); }
-  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, ...!workersDev ? { INTERNAL_HOST: internalHost, ...access } : {}, PANEL_AUDIENCE: internalHost } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, SES_REGION: 'eu-west-1' };
+  const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, ...!workersDev ? { INTERNAL_HOST: internalHost, ...access } : {}, PANEL_AUDIENCE: internalHost } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, ...sesRegion ? { SES_REGION: sesRegion } : {} };
   const providerSecrets = {};
   if (delivery === 'ses') {
-    if (workersDev && !(process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY)) throw Error('Supply isolated staging SES credentials');
-    const item = process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', 'f72c4222-7be5-4adf-93ee-fae403e2d9f2'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
-    providerSecrets.SES_ACCESS_KEY_ID = process.env.SES_ACCESS_KEY_ID ?? item?.login?.username;
-    providerSecrets.SES_SECRET_ACCESS_KEY = process.env.SES_SECRET_ACCESS_KEY ?? item?.login?.password;
+    if (workersDev && !(env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY)) throw Error('Supply isolated staging SES credentials');
+    const item = env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', required(env, 'MAILSTACK_STAGING_SES_TOKEN_ITEM')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+    providerSecrets.SES_ACCESS_KEY_ID = env.SES_ACCESS_KEY_ID ?? item?.login?.username;
+    providerSecrets.SES_SECRET_ACCESS_KEY = env.SES_SECRET_ACCESS_KEY ?? item?.login?.password;
     if (!providerSecrets.SES_ACCESS_KEY_ID || !providerSecrets.SES_SECRET_ACCESS_KEY) throw new Error('Missing staging SES credentials');
     vars.SES_CONFIGURATION_SET = sesConfigurationSet;
   }
@@ -279,7 +291,7 @@ export class Internal extends WorkerEntrypoint{fetch(req){return outcome.run({},
   await mutate('upload-worker', script, 'PUT', form);
   await mutate('set-cron', `${script}/schedules`, 'PUT', [{ cron: '* * * * *' }]);
   await mutate(workersDev ? 'enable-workers-dev' : 'disable-workers-dev', `${script}/subdomain`, 'POST', { enabled: workersDev, previews_enabled: false });
-  const zones = workersDev ? [] : await api('/zones?name=techskills.academy');
+  const zones = workersDev ? [] : await api('/zones?name=' + encodeURIComponent(required(env, 'MAILSTACK_STAGING_ZONE')));
   const zone = zones.find(value => value.account.id === account);
   if (!workersDev && !zone) throw new Error('Zone unavailable');
   if (!workersDev && !domain) await mutate('attach-domain', `${base}/workers/domains`, 'PUT', { hostname, service: name, environment: 'production', zone_id: zone.id });

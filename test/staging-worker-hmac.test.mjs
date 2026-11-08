@@ -1,3 +1,4 @@
+import {stagingEnv} from './fixtures/staging.ts';
 import {expect,it} from 'vitest';
 import {mkdtempSync,writeFileSync,readFileSync,rmSync,existsSync,readdirSync,statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -6,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 it.each(['complete', 'swap-partial', 'swap-interrupted', 'swap-rename', 'restore-partial', 'restore-interrupted', 'restore-rename'])('keeps the Worker secret copy recoverable: %s',scenario=>{
   const dir=mkdtempSync(join(tmpdir(),'worker-hmac-')),preload=join(dir,'mock.mjs');
   const original='original_secret_123456',temporary='temporary_secret_123456';
-  writeFileSync(join(dir,'resources.json'),JSON.stringify({account:'test',name:'mailstack-staging',hostname:'mailstack-test.techskills.academy',database:'dedicated'}));
+  writeFileSync(join(dir,'resources.json'),JSON.stringify({account:'test',name:'mailstack-staging',hostname:'staging.example.com',database:'dedicated'}));
   writeFileSync(join(dir,'secrets.json'),JSON.stringify({API_KEY:'full',SELLF_STAGING_HMAC:original,OTHER:'preserve'}));
   writeFileSync(join(dir,'live'),original);
   writeFileSync(preload,`import fs, {readFileSync,writeFileSync,appendFileSync} from 'node:fs';import {syncBuiltinESMExports} from 'node:module';import {createHmac} from 'node:crypto';
@@ -26,12 +27,12 @@ if(failure) {
  syncBuiltinESMExports();
 }
 globalThis.fetch=async(url,options={})=>{
- if(new URL(url).hostname==='mailer.techskills.academy')return Response.json({ok:true});
+ if(new URL(url).hostname==='production.example.com')return Response.json({ok:true});
  const path=new URL(url).pathname;
  const response=result=>Response.json({success:true,result});
  if(path.endsWith('/mailstack/deployments'))return response({id:'unchanged'});
  if(path.endsWith('/d1/database'))return response([{name:'mailstack-staging',uuid:'dedicated'}]);
- if(path.endsWith('/workers/domains'))return response([{hostname:'mailstack-test.techskills.academy',service:'mailstack-staging'}]);
+ if(path.endsWith('/workers/domains'))return response([{hostname:'staging.example.com',service:'mailstack-staging'}]);
  if(path.endsWith('/mailstack-staging/secrets')&&options.method==='PUT'){
    const value=JSON.parse(options.body);if(value.name!=='SELLF_STAGING_HMAC'||value.type!=='secret_text')throw Error('Unexpected binding');
    writeFileSync(dir+'/live',value.text);appendFileSync(dir+'/writes',value.name+'\\n');return response({});
@@ -45,7 +46,7 @@ globalThis.fetch=async(url,options={})=>{
  throw Error('Unexpected request');
 };`);
   const run=(command,failure='')=>spawnSync(process.execPath,['--import',preload,'scripts/staging/worker.mjs',command],{
-    encoding:'utf8',input:temporary,env:{...process.env,MAILSTACK_STAGING_STATE:dir,MAILSTACK_STAGING_ROUTING:'custom-domain',CLOUDFLARE_ACCOUNT_ID:'test',CLOUDFLARE_API_TOKEN:'local',MAILSTACK_PRODUCTION_API_TOKEN:'local-production',LOCAL_WRITE_FAILURE:failure}});
+    encoding:'utf8',input:temporary,env:{...process.env,...stagingEnv,MAILSTACK_STAGING_OPERATOR:undefined,MAILSTACK_STAGING_ACCOUNT_ID:undefined,MAILSTACK_STAGING_STATE:dir,MAILSTACK_STAGING_ROUTING:'custom-domain',CLOUDFLARE_ACCOUNT_ID:'test',CLOUDFLARE_API_TOKEN:'local',MAILSTACK_PRODUCTION_API_TOKEN:'local-production',LOCAL_WRITE_FAILURE:failure}});
   try {
     const [phase,failure]=scenario.split('-');
     if(phase==='swap') {

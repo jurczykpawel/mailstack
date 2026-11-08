@@ -4,16 +4,19 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, generateKeyPairSync, createHash } from 'node:crypto';
 import { build } from 'esbuild';
+import {operatorEnvironment,required} from '../staging/operator.mjs';
+const operator=operatorEnvironment();
+const productionAccount=required(operator,'MAILSTACK_PRODUCTION_ACCOUNT_ID');
 const root=resolve(dirname(fileURLToPath(import.meta.url)), '../..'), state='/private/tmp/mailstack-test-worker';
 const command=process.argv[2] ?? 'status';
 if(!['deploy','destroy','status'].includes(command)) throw new Error('Use deploy|destroy|status');
 process.umask(0o077); mkdirSync(state,{recursive:true,mode:0o700});
 const put=(p,v)=>writeFileSync(state+'/'+p,typeof v==='string'?v:JSON.stringify(v,null,2),{mode:0o600});
 let token;
-try { token=execFileSync('bw',['get','password','CF Deploy - General API token'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim(); }
+try { token=execFileSync('bw',['get','password',required(operator,'MAILSTACK_PRODUCTION_TOKEN_ITEM')],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim(); }
 catch { console.error('TEST-WORKER skipped: agent Vaultwarden token is unavailable. No Cloudflare mutations.'); process.exit(3); }
 if(!token) process.exit(3);
-const env={PATH:process.env.PATH,HOME:process.env.HOME,CLOUDFLARE_API_TOKEN:token,CLOUDFLARE_ACCOUNT_ID:'92e7018cfc666807c755836278d19eaf',WRANGLER_SEND_METRICS:'false',CI:'true',NO_COLOR:'1'};
+const env={PATH:process.env.PATH,HOME:process.env.HOME,CLOUDFLARE_API_TOKEN:token,CLOUDFLARE_ACCOUNT_ID:productionAccount,WRANGLER_SEND_METRICS:'false',CI:'true',NO_COLOR:'1'};
 const wr=(args)=>execFileSync(root+'/node_modules/.bin/wrangler',args,{cwd:state,env,encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
 const json=raw=>{const start=raw.search(/[\[{]/);return JSON.parse(raw.slice(start));};
 put('readonly.json',{name:'mailstack-test',compatibility_date:'2026-10-26',account_id:env.CLOUDFLARE_ACCOUNT_ID});

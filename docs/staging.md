@@ -5,72 +5,67 @@ keys and register prefix. Infrastructure addresses, account inventories, credent
 and live version records belong in private operator state, not this document.
 Do not infer a deployed version or available quota from a repository report.
 
+## Private operator configuration
+
+Staging/manual scripts require explicit installation identities. They read a flat
+JSON object of `MAILSTACK_*` strings from
+`~/.config/mailstack-staging/operator.json`, or `MAILSTACK_STAGING_OPERATOR`.
+Keep it outside the checkout with mode `0600`; environment variables override JSON.
+Without a file, supply the required variables directly. Missing values stop the
+script before contacting a provider. Keep tokens in protected environment/state
+or a password manager; the JSON only needs installation identities and item names.
+
+Create the directory with mode `0700`, then write your own values, for example:
+
+```json
+{
+  "MAILSTACK_STAGING_ACCOUNT_ID": "<staging-cloudflare-account-id>",
+  "MAILSTACK_PRODUCTION_ACCOUNT_ID": "<production-cloudflare-account-id>",
+  "MAILSTACK_STAGING_STATE": "/home/operator/.config/mailstack-staging/worker",
+  "MAILSTACK_STAGING_TOKEN_ITEM": "<your-staging-token-item>",
+  "MAILSTACK_PRODUCTION_TOKEN_ITEM": "<your-read-only-production-token-item>",
+  "MAILSTACK_PRODUCTION_HEALTH_URL": "https://mail.example.com/health"
+}
+```
+
+`CLOUDFLARE_API_TOKEN` and `MAILSTACK_PRODUCTION_API_TOKEN` override password-manager
+lookups. `CLOUDFLARE_ACCOUNT_ID` is a fallback for the staging account when
+`MAILSTACK_STAGING_ACCOUNT_ID` is absent. Never commit operator configuration,
+resource inventories, Access/Tunnel IDs, credentials or live version records.
+
 ## Worker account separation
 
-Worker API tests, bulk D1 tests, CPU measurements and the minute cron use the
-dedicated staging Cloudflare account. Its public endpoints are
-`https://mailstack-staging.pavveldev.workers.dev` and the fixture license endpoint
-`https://mailstack-staging-license.pavveldev.workers.dev`. Preview URLs stay off.
-The production account remains the source of the read-only production fingerprint.
+Create a dedicated Cloudflare account for Worker API tests, D1 tests, CPU
+measurements and the minute cron. Configure its workers.dev subdomain. The script
+uses `https://mailstack-staging.<your-subdomain>.workers.dev` and a separate
+`mailstack-staging-license` fixture Worker. Preview URLs stay off. The production
+account supplies only the read-only deployment fingerprint and health check.
 D1 quotas must be measured on the account hosting the database.
 
-Zero Trust is enabled on the staging account. The API's `/internal/*` paths
-on its workers.dev hostname have a separate Access application with a
-`non_identity` policy admitting only profile (b)'s dedicated service token.
-Profile (b) uses that origin, the matching API audience, scoped panel token and
-assertion keyring. Public send, health and SNS paths remain public. Profile (a)
-is `https://mailstack-panel-staging.pavveldev.workers.dev`, with its own D1 and
-an owner-only Access policy; it uses the API's `Internal` service binding and
-has no cron. Its new origin requires a fresh invitation and passkey enrollment.
-Do not expose internal routes or a panel without Access. Panel ingress for
-profiles (b)/(c) and the Tunnel on `piotr` keep the existing account's Access
-protection. The Node API and both Node panels use the new fixture license
-endpoint. The new API
-reaches `https://mailstack-egress-test.automagicznie.pl` using the existing account's
-egress service token and signing keys. No Tunnel or custom domain is needed on
-the staging account.
+Enable Zero Trust. Protect the API's `/internal/*` paths with an Access application
+and a `non_identity` policy admitting only profile (b)'s dedicated service token.
+Configure profile (b) with that origin, matching audience, scoped panel token and
+assertion keyring. Public send, health and SNS paths remain public. Profile (a)'s
+panel Worker needs its own D1 and operator-only Access policy, uses the API's
+`Internal` service binding and has no cron. A new panel origin needs a fresh
+invitation and passkey enrollment. Node panels also need Tunnel + Access.
 
-`scripts/staging/worker.sh` defaults to this staging account, workers.dev routing
-and protected state `~/.config/mailstack-staging/worker-f3`. Its credential is the
-Vaultwarden F3 staging token; the production fingerprint uses separate credentials.
-`MAILSTACK_STAGING_ACCOUNT_ID` (or `CLOUDFLARE_ACCOUNT_ID`),
-`CLOUDFLARE_API_TOKEN`, `MAILSTACK_STAGING_STATE` and
-`MAILSTACK_STAGING_TOKEN_ITEM` select another staging installation.
-`MAILSTACK_PRODUCTION_ACCOUNT_ID`, `MAILSTACK_PRODUCTION_API_TOKEN` and
-`MAILSTACK_PRODUCTION_HEALTH_URL` select the read-only production check.
-An existing state record must match the account, database and hostname.
-`MAILSTACK_STAGING_CONFIG` optionally supplies an external JSON configuration;
-the composition still applies its simulator recipients and delivery budgets.
-`scripts/staging/ses.sh` defaults SNS delivery to the new API; override with
-`MAILSTACK_STAGING_EVENTS_URL`. The script's isolated configuration set defaults to
-`mailstack-staging-f3` (`MAILSTACK_STAGING_SES_CONFIGURATION_SET` overrides it).
-The protected F3 launcher instead selects the existing `mailstack-staging` set
-and SNS topic, which the simulator-only sending key already permits. Its confirmed
-subscription targets the new API. The earlier F3-specific set/topic were removed.
-The existing SES identity, its verification DNS and production fingerprint remain
-on their original accounts. The shared topic fans out to Node and the new API;
-do not describe this installation as having isolated SNS delivery. The retired
-API's recorded subscription was removed; the shared topic and both active
-subscriptions are retained.
+Supply `MAILSTACK_STAGING_PRO`, `MAILSTACK_STAGING_CONFIG` and
+`MAILSTACK_STAGING_EGRESS_URL` as needed. Egress is a separate protected VPS
+service, for example `https://egress.staging.example.com`, with its own Access
+service token and signing keyring. See [architecture](architecture.md#network-and-egress).
+The generic Worker composition does not provision Access: retain an operator
+launcher that applies the internal host, audience and Access configuration before
+using the live installation. Keep its state and helpers outside the checkout.
 
-The protected F3 launcher lives at `~/.config/mailstack-staging/f3/worker.mjs`.
-It supplies Pro, configuration and egress settings without printing credentials,
-then reapplies the recorded internal host, audience and Access settings through
-the protected `clean1b/configure-internal.mjs` helper. Use this launcher for the
-live installation: the generic composition alone does not enable its public
-internal route. The protected `clean1b/panel-a.mjs` launcher records the panel's
-Access application, database, binding and deployment. Keep these helpers and
-their protected state together.
-For legacy custom-domain staging, explicitly set
-`MAILSTACK_STAGING_ROUTING=custom-domain`, its account and its original state path.
-Never point a new account at the legacy state or reset an SES ledger when moving
-databases. The old staging's three Workers, two D1 databases, custom domains,
-listed DNS records, Access applications, internal service token and API SNS
-subscription have been retired after profile (b)'s acceptance. Encrypted D1
-archives, offline keys, B2 registers and copies remain available for recovery.
-The private CLEAN1 report's CLEAN1B section records resource IDs, acceptance and
-cron counts. Keep the production fingerprint guard around every mutation on
-the production account.
+The default routing is `workers-dev`. For legacy custom-domain staging explicitly
+set `MAILSTACK_STAGING_ROUTING=custom-domain`, the original protected state path,
+`MAILSTACK_STAGING_HOST`, `MAILSTACK_STAGING_LICENSE_HOST`,
+`MAILSTACK_STAGING_INTERNAL_HOST` and `MAILSTACK_STAGING_ZONE` to your own hosts/zone.
+Set `MAILSTACK_ACCESS_TEAM_DOMAIN` and `MAILSTACK_ACCESS_AUD` when deploying Pro.
+An existing state record must match the account, database and hostname. Never
+point a new account at another installation's state or reset an SES ledger when
+moving databases. Keep the production fingerprint guard around every mutation.
 
 When moving a panel to a different API database, retain its SQLite backup and
 old audit checkpoints before accepting the new installation's checkpoint through
@@ -80,12 +75,11 @@ panel's API connection or integrity. Preserve every SES ledger reservation when
 moving consumers, and confirm a signed SNS delivery in the destination database.
 
 The receiver token is held only in protected operator state. After rotating it,
-update the saved `st-receiver` and `s1-receiver` endpoints as well as the configuration
-seeds, source callback and panel alert URLs. Existing panel endpoints are preserved
-by reconciliation and are not overwritten by a deployment. Check that the old URL
-returns 404 and the new authenticated GET returns 200; use a signed webhook ping
-to verify delivery without consuming an SES reservation. Never print receiver URLs
-containing the token in tool output, documentation or reports.
+update saved endpoints, configuration seeds, source callback and panel alert URLs.
+Existing endpoints are preserved by reconciliation, not overwritten by deployment.
+Check that the old URL returns 404 and the new authenticated GET returns 200;
+a signed webhook ping verifies delivery without consuming an SES reservation.
+Never print receiver URLs containing tokens.
 
 ## Local test composition
 
@@ -165,13 +159,13 @@ subject export contains no matching messages. Keep the cron running to finish
 work across invocation budgets; an accepted request alone proves no completion.
 See [background work](architecture.md#background-work-and-completion).
 
-## Existing maintainer scripts
+## Staging and manual scripts
 
 The committed `scripts/staging/worker.sh` (`status`, `deploy`, `destroy`),
 `scripts/staging/node.mjs`, `scripts/staging/ses.sh` and `scripts/test-worker.sh`
-are maintainer compositions with installation-specific defaults and credential
-lookups. They are not general-purpose installers. Read their selected identities
-and guards before use; use Stackpilot plans for a new installation. `destroy`
+are test compositions using the private operator configuration above.
+They refuse missing installation identities. Use Stackpilot plans for a new
+installation and retain the selected identities and guards. `destroy`
 removes data in the script's recorded scope. Keep the protected state needed for
 identity checks, restoration and key continuity.
 
@@ -183,6 +177,31 @@ SES staging. It uses invalid SES credentials and cannot prove real delivery.
 source context; configuration and secrets are supplied afterwards.
 
 ## SES and SNS testing
+
+The SES resource script requires `MAILSTACK_STAGING_AWS_ACCOUNT_ID`,
+`MAILSTACK_STAGING_SES_REGION`, `MAILSTACK_STAGING_SES_DOMAIN`,
+`MAILSTACK_STAGING_SES_CONFIGURATION_SET`, `MAILSTACK_STAGING_EVENTS_URL`,
+`MAILSTACK_STAGING_AWS_PROFILE`, `MAILSTACK_STAGING_AWS_CALLER_ARN`,
+`MAILSTACK_STAGING_ZONE` and the production account/token-item settings above.
+The caller ARN is checked before any mutation. Use your API's `/v1/events/ses`
+URL; shared topics fan out to all subscribers and do not isolate delivery.
+`scripts/staging/ses-policy.json` is an example: replace its account, region,
+domain, sender and configuration-set with your own exact values before use.
+
+Worker SES delivery (`MAILSTACK_STAGING_DELIVERY=ses`) requires the account, region,
+configuration-set and `MAILSTACK_STAGING_FROM` sender. Supply isolated SES keys in
+the environment; legacy custom-domain mode can instead use
+`MAILSTACK_STAGING_SES_TOKEN_ITEM`. Set `MAILSTACK_STAGING_FROM` in the Node API
+container environment too. This exact sender and the simulator recipient list
+remain enforced by the budget adapter. Optional erasure-register setup also needs
+`MAILSTACK_STAGING_B2_ENDPOINT` and `MAILSTACK_STAGING_B2_BUCKET`, in addition to its
+existing B2 credentials and age recipient. Keep ledgers and keyrings intact.
+
+Node HMAC maintenance requires `MAILSTACK_STAGING_NODE_HOST`,
+`MAILSTACK_STAGING_NODE_STACK` and `MAILSTACK_STAGING_NODE_URL`. It verifies the
+local hostname and Compose labels before operating. Hook/read tokens remain in
+the environment. The manual Worker harness uses the configured production account
+and token item for its fingerprint and isolated preview resources.
 
 Use a dedicated SES identity, configuration set, signing key and IAM sending user
 limited to the exact simulator addresses. Keep application delivery disabled until

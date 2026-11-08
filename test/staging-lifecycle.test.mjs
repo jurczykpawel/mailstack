@@ -10,7 +10,7 @@ it('shares the staging application and isolates delivery outcomes across entrypo
 const script = readFileSync('scripts/staging/worker.mjs', 'utf8');
 const start = script.indexOf('const contents = ') + 'const contents = '.length;
 const literal = script.slice(start, script.indexOf(';\n  await build({ stdin: { contents', start));
-const entry = new Function('resolve', 'root', 'egress', 'fixture', 'delivery', 'limits', `return ${literal}`)(resolve, '/staging', false, {}, 'ses', {day:50,hour:10});
+const entry = new Function('resolve', 'root', 'egress', 'fixture', 'delivery', 'limits', 'sesFrom', `return ${literal}`)(resolve, '/staging', false, {}, 'ses', {day:50,hour:10}, 'no-reply@staging.example.com');
 let constructions = 0, scheduled = 0;
 const seen = [];
 const context = vm.createContext({
