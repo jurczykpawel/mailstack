@@ -171,8 +171,9 @@ identity checks, restoration and key continuity.
 
 `scripts/test-worker.sh status` is local and reads only its status record. It
 reports `RECORDED_NOT_LIVE_VERIFIED`; a missing record is a setup requirement,
-not permission to deploy. The disposable Worker harness is separate from permanent
-SES staging. It uses invalid SES credentials and cannot prove real delivery.
+not permission to deploy. The disposable Worker harness runs on the staging
+account with its own `mailstack-manual-test` D1 (removed by `destroy`) and is separate
+from permanent SES staging. It uses invalid SES credentials and cannot prove real delivery.
 `scripts/staging/node-context.mjs <core> <pro> <new-context>` prepares an explicit
 source context; configuration and secrets are supplied afterwards.
 

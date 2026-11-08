@@ -1837,22 +1837,21 @@ scripts/test-worker.sh status
 scripts/test-worker.sh destroy
 ```
 
-This script reads the Vaultwarden item named by `MAILSTACK_PRODUCTION_TOKEN_ITEM`
+This script reads the Vaultwarden item named by `MAILSTACK_STAGING_TOKEN_ITEM`
 in the private operator configuration (see [staging](docs/staging.md));
-it never uses a token from repository `.env` files. It deploys only `mailstack-test`
-on `workers.dev`, with the existing `mailstack-preview` D1 and migration 0001.
-No custom domain or production route is configured. SES keys are randomly generated
-invalid credentials: accepted requests end in `502 send_failed`, with logging, and
-cannot send mail. ALTCHA and the nonce challenge work independently of SES.
+it never uses a token from repository `.env` files and has no access to the
+production account. It deploys only `mailstack-test` on `workers.dev` in the staging
+account, with its own D1 `mailstack-manual-test` (created by `deploy` when missing,
+migration 0001). No custom domain or production route is configured. SES keys are
+randomly generated invalid credentials: accepted requests end in `502 send_failed`,
+with logging, and cannot send mail. ALTCHA and the nonce challenge work independently of SES.
 
-Before and after each operation it compares the production Worker's deployment JSON;
-an unavailable initial fingerprint prevents any mutation. Evidence and the test URL /
-token are in `/private/tmp/mailstack-test-worker` (0600 files). The Worker is left
-available for coordinator tests. `destroy` removes only that Worker and local test
-credentials; the existing preview database and its synthetic rows are retained.
-The script does not delete or recreate D1 databases. A missing permission is reported
-without preventing local tests. Never run the normal production deploy command for
-this sandbox. [Wrangler command reference](https://developers.cloudflare.com/workers/wrangler/commands/).
+Evidence and the test URL / token are in `/private/tmp/mailstack-test-worker`
+(0600 files). The Worker is left available for coordinator tests. `destroy` removes
+the Worker, the `mailstack-manual-test` database (test-only) and local test credentials.
+A missing permission is reported without preventing local tests. Never run the normal
+production deploy command for this sandbox.
+[Wrangler command reference](https://developers.cloudflare.com/workers/wrangler/commands/).
 
 ### Staging and release checks
 
