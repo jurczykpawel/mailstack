@@ -14,13 +14,18 @@ dedicated staging Cloudflare account. Its public endpoints are
 The production account remains the source of the read-only production fingerprint.
 D1 quotas must be measured on the account hosting the database.
 
-Zero Trust is not enabled on the new account and its agent token cannot create
-the organization. Retirement of the old staging is blocked until profile (b)
-can reach the new API through Access. Its panel still targets the old internal
-host; profile (a)'s old panel is retained pending cleanup. Do not expose internal
-routes or a panel without Access. Panel ingress for profiles (b)/(c) and the
-Tunnel on `piotr` keep the existing account's Access protection. The Node API and
-both Node panels use the new fixture license endpoint. The new API
+Zero Trust is enabled on the staging account. The API's `/internal/*` paths
+on its workers.dev hostname have a separate Access application with a
+`non_identity` policy admitting only profile (b)'s dedicated service token.
+Profile (b) uses that origin, the matching API audience, scoped panel token and
+assertion keyring. Public send, health and SNS paths remain public. Profile (a)
+is `https://mailstack-panel-staging.pavveldev.workers.dev`, with its own D1 and
+an owner-only Access policy; it uses the API's `Internal` service binding and
+has no cron. Its new origin requires a fresh invitation and passkey enrollment.
+Do not expose internal routes or a panel without Access. Panel ingress for
+profiles (b)/(c) and the Tunnel on `piotr` keep the existing account's Access
+protection. The Node API and both Node panels use the new fixture license
+endpoint. The new API
 reaches `https://mailstack-egress-test.automagicznie.pl` using the existing account's
 egress service token and signing keys. No Tunnel or custom domain is needed on
 the staging account.
@@ -42,21 +47,37 @@ the composition still applies its simulator recipients and delivery budgets.
 The protected F3 launcher instead selects the existing `mailstack-staging` set
 and SNS topic, which the simulator-only sending key already permits. Its confirmed
 subscription targets the new API. The earlier F3-specific set/topic were removed.
-The existing SES identity, DNS and production fingerprint remain on their original
-accounts. The shared topic still fans out to Node and the old API; do not describe
-this installation as having isolated SNS delivery. Remove only the old API's
-recorded subscription after its consumers have moved.
+The existing SES identity, its verification DNS and production fingerprint remain
+on their original accounts. The shared topic fans out to Node and the new API;
+do not describe this installation as having isolated SNS delivery. The retired
+API's recorded subscription was removed; the shared topic and both active
+subscriptions are retained.
 
 The protected F3 launcher lives at `~/.config/mailstack-staging/f3/worker.mjs`.
-It supplies Pro, configuration and egress settings without printing credentials.
+It supplies Pro, configuration and egress settings without printing credentials,
+then reapplies the recorded internal host, audience and Access settings through
+the protected `clean1b/configure-internal.mjs` helper. Use this launcher for the
+live installation: the generic composition alone does not enable its public
+internal route. The protected `clean1b/panel-a.mjs` launcher records the panel's
+Access application, database, binding and deployment. Keep these helpers and
+their protected state together.
 For legacy custom-domain staging, explicitly set
 `MAILSTACK_STAGING_ROUTING=custom-domain`, its account and its original state path.
 Never point a new account at the legacy state or reset an SES ledger when moving
-databases. POST1 is finished, but the old staging must remain intact until profile
-(b)'s internal connection has moved and passed acceptance. The private F3 report
-contains the exact cleanup inventory; CLEAN1 records the remaining Access blocker
-and encrypted D1 archives. Keep the production fingerprint guard around every
-mutation on the production account.
+databases. The old staging's three Workers, two D1 databases, custom domains,
+listed DNS records, Access applications, internal service token and API SNS
+subscription have been retired after profile (b)'s acceptance. Encrypted D1
+archives, offline keys, B2 registers and copies remain available for recovery.
+The private CLEAN1 report's CLEAN1B section records resource IDs, acceptance and
+cron counts. Keep the production fingerprint guard around every mutation on
+the production account.
+
+When moving a panel to a different API database, retain its SQLite backup and
+old audit checkpoints before accepting the new installation's checkpoint through
+the panel's `integrity accept` CLI with an explicit migration reason. Verify
+`verified` afterward; health and an Access redirect alone do not verify the
+panel's API connection or integrity. Preserve every SES ledger reservation when
+moving consumers, and confirm a signed SNS delivery in the destination database.
 
 The receiver token is held only in protected operator state. After rotating it,
 update the saved `st-receiver` and `s1-receiver` endpoints as well as the configuration
