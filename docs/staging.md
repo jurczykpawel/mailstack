@@ -5,6 +5,49 @@ keys and register prefix. Infrastructure addresses, account inventories, credent
 and live version records belong in private operator state, not this document.
 Do not infer a deployed version or available quota from a repository report.
 
+## Worker account separation
+
+Worker API tests, bulk D1 tests, CPU measurements and the minute cron use the
+dedicated staging Cloudflare account. Its public endpoints are
+`https://mailstack-staging.pavveldev.workers.dev` and the fixture license endpoint
+`https://mailstack-staging-license.pavveldev.workers.dev`. Preview URLs stay off.
+The production account remains the source of the read-only production fingerprint.
+D1 quotas must be measured on the account hosting the database.
+
+Zero Trust is not enabled on the new account and its agent token cannot create
+the organization. Profile (a)'s panel stays on the existing account behind Access;
+it still targets the old API. Do not expose a panel without Access. Profiles
+(b)/(c) and the Tunnel on `piotr` also remain on the existing account. The new API
+reaches `https://mailstack-egress-test.automagicznie.pl` using the existing account's
+egress service token and signing keys. No Tunnel or custom domain is needed on
+the staging account.
+
+`scripts/staging/worker.sh` defaults to this staging account, workers.dev routing
+and protected state `~/.config/mailstack-staging/worker-f3`. Its credential is the
+Vaultwarden F3 staging token; the production fingerprint uses separate credentials.
+`MAILSTACK_STAGING_ACCOUNT_ID` (or `CLOUDFLARE_ACCOUNT_ID`),
+`CLOUDFLARE_API_TOKEN`, `MAILSTACK_STAGING_STATE` and
+`MAILSTACK_STAGING_TOKEN_ITEM` select another staging installation.
+`MAILSTACK_PRODUCTION_ACCOUNT_ID`, `MAILSTACK_PRODUCTION_API_TOKEN` and
+`MAILSTACK_PRODUCTION_HEALTH_URL` select the read-only production check.
+An existing state record must match the account, database and hostname.
+`MAILSTACK_STAGING_CONFIG` optionally supplies an external JSON configuration;
+the composition still applies its simulator recipients and delivery budgets.
+`scripts/staging/ses.sh` defaults SNS delivery to the new API; override with
+`MAILSTACK_STAGING_EVENTS_URL`. The isolated configuration set defaults to
+`mailstack-staging-f3` (`MAILSTACK_STAGING_SES_CONFIGURATION_SET` overrides it), with
+its own SNS topic and simulator sender credentials supplied at deployment.
+The existing SES identity, DNS and production fingerprint remain on their original
+accounts. Separate SNS delivery avoids event-status writes in the old staging D1.
+
+The protected F3 launcher lives at `~/.config/mailstack-staging/f3/worker.mjs`.
+It supplies Pro, configuration and egress settings without printing credentials.
+For legacy custom-domain staging, explicitly set
+`MAILSTACK_STAGING_ROUTING=custom-domain`, its account and its original state path.
+Never point a new account at the legacy state or reset an SES ledger when moving
+databases. Keep the old staging intact until the coordinator confirms POST1 is
+finished; the private F3 report contains the deferred cleanup inventory.
+
 ## Local test composition
 
 Requirements: Node 24+, Docker Compose, OpenSSL and a sibling Pro checkout with
@@ -87,8 +130,8 @@ See [background work](architecture.md#background-work-and-completion).
 
 The committed `scripts/staging/worker.sh` (`status`, `deploy`, `destroy`),
 `scripts/staging/node.mjs`, `scripts/staging/ses.sh` and `scripts/test-worker.sh`
-are maintainer compositions with installation-specific constants and credential
-lookups. They are not general-purpose installers. Read their pinned identities
+are maintainer compositions with installation-specific defaults and credential
+lookups. They are not general-purpose installers. Read their selected identities
 and guards before use; use Stackpilot plans for a new installation. `destroy`
 removes data in the script's recorded scope. Keep the protected state needed for
 identity checks, restoration and key continuity.

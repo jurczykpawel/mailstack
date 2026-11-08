@@ -1,5 +1,6 @@
 """Offline checks for the staging resource boundary."""
 import pathlib
+import os
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -13,6 +14,18 @@ class StagingSesTests(unittest.TestCase):
         scope = {'__name__': 'test'}
         exec(compile(source, str(SCRIPT), 'exec'), scope)
         return scope
+
+    def test_worker_events_use_staging_while_dns_guard_uses_production(self):
+        with patch.dict(os.environ, {}, clear=True):
+            scope = self.load()
+            self.assertEqual(scope['ENDPOINT'], 'https://mailstack-staging.pavveldev.workers.dev/v1/events/ses')
+            self.assertEqual(scope['CF_ACCOUNT'], '92e7018cfc666807c755836278d19eaf')
+            self.assertEqual(scope['CONFIG'], 'mailstack-staging-f3')
+            self.assertEqual(scope['TOPIC'], 'mailstack-staging-f3-events')
+        with patch.dict(os.environ, {'MAILSTACK_STAGING_EVENTS_URL': 'https://other.example/v1/events/ses', 'MAILSTACK_PRODUCTION_ACCOUNT_ID': 'production-fixture'}):
+            scope = self.load()
+            self.assertEqual(scope['ENDPOINT'], 'https://other.example/v1/events/ses')
+            self.assertEqual(scope['CF_ACCOUNT'], 'production-fixture')
 
     def test_wrong_caller_stops_before_mutations(self):
         scope = self.load()

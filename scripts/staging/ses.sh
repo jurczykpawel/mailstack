@@ -14,12 +14,13 @@ import urllib.request
 ACCOUNT = '207570392857'
 REGION = 'eu-west-1'
 DOMAIN = 'mailstack-test.techskills.academy'
-CONFIG = 'mailstack-staging'
-TOPIC = 'mailstack-staging-events'
+CONFIG = os.environ.get('MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'mailstack-staging-f3')
+TOPIC = f'{CONFIG}-events'
 TOPIC_ARN = f'arn:aws:sns:{REGION}:{ACCOUNT}:{TOPIC}'
 CONFIG_ARN = f'arn:aws:ses:{REGION}:{ACCOUNT}:configuration-set/{CONFIG}'
-ENDPOINT = f'https://{DOMAIN}/v1/events/ses'
-CF_ACCOUNT = '92e7018cfc666807c755836278d19eaf'
+ENDPOINT = os.environ.get('MAILSTACK_STAGING_EVENTS_URL',
+                          'https://mailstack-staging.pavveldev.workers.dev/v1/events/ses')
+CF_ACCOUNT = os.environ.get('MAILSTACK_PRODUCTION_ACCOUNT_ID', '92e7018cfc666807c755836278d19eaf')
 
 
 def aws(*args, missing=False):
@@ -200,7 +201,7 @@ def main():
             save('identity', identity)
             # Run create again after ST1 has configured the exact topic allowlist and keys.
             try:
-                with urllib.request.urlopen(f'https://{DOMAIN}/health', timeout=10) as response:
+                with urllib.request.urlopen(ENDPOINT.rsplit('/', 3)[0] + '/health', timeout=10) as response:
                     healthy = response.status == 200 and json.load(response).get('service') == 'mailstack'
             except (OSError, ValueError):
                 healthy = False
