@@ -1330,6 +1330,35 @@ and do not follow redirects.
 
 Alerts are best-effort: an ntfy failure at event time does not retry the alert; the message remains visible in the log.
 
+### SES key rotation
+
+`node scripts/rotate-ses-key.ts` rotates the SES access keys stored as Worker secrets.
+Run it weekly (for example from a systemd timer) on a host outside the Worker. Targets
+come from the JSON file named by `SES_ROTATION_CONFIG`; see
+`config/ses-rotation.example.json`. Each target names its IAM sending user, SES region
+and sender, Cloudflare account/Worker, API URL, test brand and the environment variables
+holding its Cloudflare token and trusted send token. `recipient` is sent as `to` for
+clients allowed to override it; omit it when the brand already sends to the simulator.
+
+For every target, inactive keys unused for `inactiveDays` (default 7) are deleted. When
+the youngest active key is at least `ageDays` old (default 75), the tool creates a key,
+sends directly through SES to `success@simulator.amazonses.com`, replaces
+`SES_ACCESS_KEY_ID`/`SES_SECRET_ACCESS_KEY` in one secret update, sends a `notice` through
+the Worker's `/v1/send`, deactivates the old key and sends again. A failed step deletes
+the new key, restores the previously deployed Worker version (its secrets included) and
+reactivates the old key. Two remaining keys (the IAM limit) stop the target with an alarm.
+Targets run in order; after a failure later targets are not attempted, so list staging
+first. `--force --only <name>` rotates one target regardless of age.
+
+Environment: `ROTATOR_AWS_ACCESS_KEY_ID` and `ROTATOR_AWS_SECRET_ACCESS_KEY` for an IAM
+user limited to `iam:CreateAccessKey`, `UpdateAccessKey`, `DeleteAccessKey`,
+`ListAccessKeys` and `GetAccessKeyLastUsed` on the sending users; never grant these to
+the sending user itself. Cloudflare tokens need Workers Scripts Edit on the target
+account. The optional `ntfyUrlEnv` names a variable with the ntfy topic URL; a message
+is posted only after a rotation or a failure. Output never includes secret values. The
+new secret is not printed or stored elsewhere: a lost key is replaced by rotating.
+Redeploying a Worker with an older copy of the SES secrets reverts the rotation.
+
 ### Extension resend contract
 
 Extensions (Node and the Worker build) opt in with `capabilities: ["resend"]`. The runtime passes

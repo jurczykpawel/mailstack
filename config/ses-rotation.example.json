@@ -1,0 +1,28 @@
+{
+  "ageDays": 75,
+  "inactiveDays": 7,
+  "ntfyUrlEnv": "NTFY_URL",
+  "targets": [
+    {
+      "name": "staging",
+      "iamUser": "mailstack-staging-ses",
+      "region": "eu-west-1",
+      "from": "no-reply@staging.example.com",
+      "apiUrl": "https://mailstack-staging.example.workers.dev",
+      "brand": "acme",
+      "sendTokenEnv": "STAGING_SEND_TOKEN",
+      "cloudflare": { "accountId": "<staging-account-id>", "worker": "mailstack-staging", "tokenEnv": "STAGING_CF_TOKEN" }
+    },
+    {
+      "name": "production",
+      "iamUser": "mailstack-ses",
+      "region": "eu-west-1",
+      "from": "noreply@example.com",
+      "apiUrl": "https://mail.example.com",
+      "brand": "acme",
+      "recipient": "success@simulator.amazonses.com",
+      "sendTokenEnv": "PRODUCTION_SEND_TOKEN",
+      "cloudflare": { "accountId": "<production-account-id>", "worker": "mailstack", "tokenEnv": "PRODUCTION_CF_TOKEN" }
+    }
+  ]
+}

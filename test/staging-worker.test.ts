@@ -255,9 +255,10 @@ it.each(['MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'MAILSTACK_STAGING_SES_REGIO
   expect(child.stderr).toContain(key);
   expect(existsSync(join(dir, 'requests.jsonl'))).toBe(false);
 });
-it('requires isolated SES credentials before contacting a workers.dev account', () => {
+it('keeps the current SES secrets on a workers.dev redeploy without supplied credentials', () => {
   const { child, dir } = run('deploy', false, true, '', { MAILSTACK_STAGING_ROUTING: 'workers-dev', SES_ACCESS_KEY_ID: undefined, SES_SECRET_ACCESS_KEY: undefined });
-  expect(child.status).not.toBe(0);
-  expect(child.stderr).toContain('Supply isolated staging SES credentials');
-  expect(existsSync(join(dir, 'requests.jsonl'))).toBe(false);
+  expect(child.status, child.stderr).toBe(0);
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings).toEqual(expect.arrayContaining([{ name: 'SES_ACCESS_KEY_ID', type: 'inherit' }, { name: 'SES_SECRET_ACCESS_KEY', type: 'inherit' }]));
+  expect(bindings.filter((b: { name: string }) => b.name.startsWith('SES_ACCESS') || b.name === 'SES_SECRET_ACCESS_KEY')).toHaveLength(2);
 });

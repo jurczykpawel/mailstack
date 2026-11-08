@@ -19,10 +19,8 @@ const sesAccount = env.MAILSTACK_STAGING_AWS_ACCOUNT_ID;
 const sesFrom = env.MAILSTACK_STAGING_FROM;
 if (delivery === 'ses') {
   for (const key of ['MAILSTACK_STAGING_SES_CONFIGURATION_SET', 'MAILSTACK_STAGING_SES_REGION', 'MAILSTACK_STAGING_AWS_ACCOUNT_ID', 'MAILSTACK_STAGING_FROM']) required(env, key);
-  if (!(env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY)) {
-    if (workersDev) throw Error('Supply isolated staging SES credentials');
-    required(env, 'MAILSTACK_STAGING_SES_TOKEN_ITEM');
-  }
+  // Without supplied keys a workers.dev redeploy keeps the Worker's current SES secrets (rotated by scripts/rotate-ses-key.ts).
+  if (!(env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY) && !workersDev) required(env, 'MAILSTACK_STAGING_SES_TOKEN_ITEM');
 }
 const sesTopic = `arn:aws:sns:${sesRegion}:${sesAccount}:${sesConfigurationSet}-events`;
 const name = 'mailstack-staging';
@@ -278,8 +276,11 @@ export class Internal extends WorkerEntrypoint{fetch(req){return outcome.run({},
   finally { await store.db.destroy(); }
   if (register) { await (await import(pathToFileURL(`${root}/src/core/offsite.ts`).href)).initTombstoneRegistry({ ...secrets, ...registerVars }); console.log('Erasure register ready'); }
   const vars = { ...registerVars, ...pro ? { BUILD_PRO_COMMIT: proCommit, ...!workersDev ? { INTERNAL_HOST: internalHost, ...access } : {}, PANEL_AUDIENCE: internalHost } : {}, ...egress ? { EGRESS_URL: egress } : {}, BUILD_COMMIT: commit, BUILD_CONFIG_SHA: sha, ...sesRegion ? { SES_REGION: sesRegion } : {} };
-  const providerSecrets = {};
-  if (delivery === 'ses') {
+  const providerSecrets = {}, inherited = [];
+  if (delivery === 'ses' && workersDev && !(env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY)) {
+    inherited.push('SES_ACCESS_KEY_ID', 'SES_SECRET_ACCESS_KEY');
+    vars.SES_CONFIGURATION_SET = sesConfigurationSet;
+  } else if (delivery === 'ses') {
     const item = env.SES_ACCESS_KEY_ID && env.SES_SECRET_ACCESS_KEY ? undefined : JSON.parse(execFileSync('bw', ['get', 'item', required(env, 'MAILSTACK_STAGING_SES_TOKEN_ITEM')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
     providerSecrets.SES_ACCESS_KEY_ID = env.SES_ACCESS_KEY_ID ?? item?.login?.username;
     providerSecrets.SES_SECRET_ACCESS_KEY = env.SES_SECRET_ACCESS_KEY ?? item?.login?.password;
@@ -290,6 +291,7 @@ export class Internal extends WorkerEntrypoint{fetch(req){return outcome.run({},
     { name: 'DB', type: 'd1', id: database.uuid },
     ...Object.entries(vars).map(([name, text]) => ({ name, text, type: 'plain_text' })),
     ...Object.entries({ ...secrets, ...providerSecrets }).map(([name, text]) => ({ name, text, type: 'secret_text' })),
+    ...inherited.map(name => ({ name, type: 'inherit' })),
   ], observability: { enabled: false } };
   const form = new FormData(); form.set('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.set('worker.mjs', new Blob([readFileSync(`${state}/worker.mjs`)], { type: 'application/javascript+module' }), 'worker.mjs');
