@@ -15,9 +15,12 @@ The production account remains the source of the read-only production fingerprin
 D1 quotas must be measured on the account hosting the database.
 
 Zero Trust is not enabled on the new account and its agent token cannot create
-the organization. Profile (a)'s panel stays on the existing account behind Access;
-it still targets the old API. Do not expose a panel without Access. Profiles
-(b)/(c) and the Tunnel on `piotr` also remain on the existing account. The new API
+the organization. Retirement of the old staging is blocked until profile (b)
+can reach the new API through Access. Its panel still targets the old internal
+host; profile (a)'s old panel is retained pending cleanup. Do not expose internal
+routes or a panel without Access. Panel ingress for profiles (b)/(c) and the
+Tunnel on `piotr` keep the existing account's Access protection. The Node API and
+both Node panels use the new fixture license endpoint. The new API
 reaches `https://mailstack-egress-test.automagicznie.pl` using the existing account's
 egress service token and signing keys. No Tunnel or custom domain is needed on
 the staging account.
@@ -34,19 +37,34 @@ An existing state record must match the account, database and hostname.
 `MAILSTACK_STAGING_CONFIG` optionally supplies an external JSON configuration;
 the composition still applies its simulator recipients and delivery budgets.
 `scripts/staging/ses.sh` defaults SNS delivery to the new API; override with
-`MAILSTACK_STAGING_EVENTS_URL`. The isolated configuration set defaults to
-`mailstack-staging-f3` (`MAILSTACK_STAGING_SES_CONFIGURATION_SET` overrides it), with
-its own SNS topic and simulator sender credentials supplied at deployment.
+`MAILSTACK_STAGING_EVENTS_URL`. The script's isolated configuration set defaults to
+`mailstack-staging-f3` (`MAILSTACK_STAGING_SES_CONFIGURATION_SET` overrides it).
+The protected F3 launcher instead selects the existing `mailstack-staging` set
+and SNS topic, which the simulator-only sending key already permits. Its confirmed
+subscription targets the new API. The earlier F3-specific set/topic were removed.
 The existing SES identity, DNS and production fingerprint remain on their original
-accounts. Separate SNS delivery avoids event-status writes in the old staging D1.
+accounts. The shared topic still fans out to Node and the old API; do not describe
+this installation as having isolated SNS delivery. Remove only the old API's
+recorded subscription after its consumers have moved.
 
 The protected F3 launcher lives at `~/.config/mailstack-staging/f3/worker.mjs`.
 It supplies Pro, configuration and egress settings without printing credentials.
 For legacy custom-domain staging, explicitly set
 `MAILSTACK_STAGING_ROUTING=custom-domain`, its account and its original state path.
 Never point a new account at the legacy state or reset an SES ledger when moving
-databases. Keep the old staging intact until the coordinator confirms POST1 is
-finished; the private F3 report contains the deferred cleanup inventory.
+databases. POST1 is finished, but the old staging must remain intact until profile
+(b)'s internal connection has moved and passed acceptance. The private F3 report
+contains the exact cleanup inventory; CLEAN1 records the remaining Access blocker
+and encrypted D1 archives. Keep the production fingerprint guard around every
+mutation on the production account.
+
+The receiver token is held only in protected operator state. After rotating it,
+update the saved `st-receiver` and `s1-receiver` endpoints as well as the configuration
+seeds, source callback and panel alert URLs. Existing panel endpoints are preserved
+by reconciliation and are not overwritten by a deployment. Check that the old URL
+returns 404 and the new authenticated GET returns 200; use a signed webhook ping
+to verify delivery without consuming an SES reservation. Never print receiver URLs
+containing the token in tool output, documentation or reports.
 
 ## Local test composition
 
