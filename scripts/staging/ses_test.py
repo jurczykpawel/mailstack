@@ -12,7 +12,19 @@ SCRIPT = pathlib.Path(__file__).with_name('ses.sh')
 
 class StagingSesTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = {'MAILSTACK_STAGING_ACCOUNT_ID': 'test-account', 'MAILSTACK_PRODUCTION_ACCOUNT_ID': 'prod-account', 'MAILSTACK_STAGING_TOKEN_ITEM': 'staging-token-fixture', 'MAILSTACK_PRODUCTION_TOKEN_ITEM': 'production-token-fixture', 'MAILSTACK_PRODUCTION_HEALTH_URL': 'https://production.example.com/health', 'MAILSTACK_STAGING_HOST': 'staging.example.com', 'MAILSTACK_STAGING_LICENSE_HOST': 'license.staging.example.com', 'MAILSTACK_STAGING_INTERNAL_HOST': 'internal.staging.example.com', 'MAILSTACK_STAGING_ZONE': 'example.com', 'MAILSTACK_STAGING_AWS_ACCOUNT_ID': '123456789012', 'MAILSTACK_STAGING_SES_REGION': 'eu-west-1', 'MAILSTACK_STAGING_SES_DOMAIN': 'staging.example.com', 'MAILSTACK_STAGING_FROM': 'no-reply@staging.example.com', 'MAILSTACK_STAGING_SES_CONFIGURATION_SET': 'mailstack-staging', 'MAILSTACK_STAGING_EVENTS_URL': 'https://mailstack-staging.fixture.workers.dev/v1/events/ses', 'MAILSTACK_STAGING_AWS_PROFILE': 'fixture', 'MAILSTACK_STAGING_AWS_CALLER_ARN': 'arn:aws:iam::123456789012:user/staging-operator', 'MAILSTACK_STAGING_B2_BUCKET': 'staging-backup-fixture', 'MAILSTACK_STAGING_B2_ENDPOINT': 'https://s3.eu-central-003.backblazeb2.com', 'MAILSTACK_STAGING_NODE_HOST': 'staging-host', 'MAILSTACK_STAGING_NODE_STACK': '/opt/stacks/mailstack-staging', 'MAILSTACK_STAGING_NODE_URL': 'https://node.staging.example.com', 'HOME': '/nonexistent-mailstack-staging-fixture'}
+        self.fixture = {
+            "MAILSTACK_PRODUCTION_ACCOUNT_ID": "prod-account",
+            "MAILSTACK_PRODUCTION_TOKEN_ITEM": "production-token-fixture",
+            "MAILSTACK_STAGING_ZONE": "example.com",
+            "MAILSTACK_STAGING_AWS_ACCOUNT_ID": "123456789012",
+            "MAILSTACK_STAGING_SES_REGION": "eu-west-1",
+            "MAILSTACK_STAGING_SES_DOMAIN": "staging.example.com",
+            "MAILSTACK_STAGING_SES_CONFIGURATION_SET": "mailstack-staging",
+            "MAILSTACK_STAGING_EVENTS_URL": "https://mailstack-staging.fixture.workers.dev/v1/events/ses",
+            "MAILSTACK_STAGING_AWS_PROFILE": "fixture",
+            "MAILSTACK_STAGING_AWS_CALLER_ARN": "arn:aws:iam::123456789012:user/staging-operator",
+            "HOME": "/nonexistent-mailstack-staging-fixture"
+        }
         self.environment = patch.dict(os.environ, self.fixture, clear=True)
         self.environment.start()
         self.addCleanup(self.environment.stop)
