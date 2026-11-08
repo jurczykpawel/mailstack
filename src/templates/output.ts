@@ -3,9 +3,7 @@ export const parts = (value: Content): readonly string[] => typeof value === "st
 export const length = (value: Content) => parts(value).reduce((sum, part) => sum + part.length, 0);
 export function utf8Size(value: string): number {
   if (/^[\x00-\x7f]*$/.test(value)) return value.length;
-  let bytes = 0;
-  for (const char of value) { const n = char.codePointAt(0)!; bytes += n < 128 ? 1 : n < 2048 ? 2 : n < 65536 ? 3 : 4; }
-  return bytes;
+  return new TextEncoder().encode(value).byteLength;
 }
 export class WorkBudget {
   remaining: number;
