@@ -2,6 +2,11 @@
 
 All notable changes to mailstack are documented here.
 
+## [1.1.2] - 2026-11-08
+
+- Reduce template and archive byte measurement cost while preserving rendered output and size limits.
+- Update development dependencies and pinned CI actions.
+
 ## [1.1.1] - 2026-11-07
 
 ### Fixed

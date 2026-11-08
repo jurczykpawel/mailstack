@@ -27,6 +27,15 @@ const response=result=>Response.json({success:true,result});
 globalThis.fetch=async(url,options={})=>{
 if(url instanceof Request){(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'b2.log'))},url.method+' '+new URL(url.url).pathname+'\\n');return new Response('<ListBucketResult></ListBucketResult>');}
 const path=new URL(url).pathname;
+if(new URL(url).hostname==='mailer.techskills.academy')return Response.json({ok:true});
+const production=path.includes('/accounts/prod-account/');
+if(path.endsWith('/mailstack/deployments')&&!production)throw Error('Wrong fingerprint account');
+if(path.startsWith('/client/v4/accounts/')){
+ if(options.headers.Authorization!=='Bearer '+(production?'synthetic-prod':'synthetic'))throw Error('Wrong account credential');
+ if(production&&!path.endsWith('/mailstack/deployments'))throw Error('Unexpected production request');
+ (await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'requests.jsonl'))},JSON.stringify({path,method:options.method??'GET',...options.body&&!(options.body instanceof FormData)?{body:JSON.parse(options.body)}:{}})+'\\n');
+}
+if(path.endsWith('/workers/subdomain'))return response({subdomain:'fixture'});
 if(path.endsWith('/query'))(await import('node:fs')).appendFileSync(${JSON.stringify(join(dir, 'queries.jsonl'))},JSON.stringify(JSON.parse(options.body))+'\\n');
 if(path.endsWith('/mailstack/deployments'))return response({id:${change ? "writes ? 'changed' : 'initial'" : "'initial'"}});
 if(path.endsWith('/d1/database')&&(!options.method||options.method==='GET'))return response([]);
@@ -45,12 +54,38 @@ if(path.endsWith('/workers/scripts/mailstack-staging')&&options.method==='PUT'){
 }
 writes++;return response({uuid:'staging-database'});
 };`);
-  if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', database: 'staging-database' }));
+  if (command === 'destroy') writeFileSync(join(dir, 'resources.json'), JSON.stringify({ account: 'test-account', name: 'mailstack-staging', hostname: 'mailstack-test.techskills.academy', database: 'staging-database' }));
   const child = spawnSync(process.execPath, ['--import', preload, 'scripts/staging/worker.mjs', command], {
-    encoding: 'utf8', env: { ...process.env, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), ...extra, MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
+    encoding: 'utf8', env: { ...process.env, MS_TABLES: tables, CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'synthetic', MAILSTACK_PRODUCTION_ACCOUNT_ID: 'prod-account', MAILSTACK_PRODUCTION_API_TOKEN: 'synthetic-prod', MAILSTACK_STAGING_ROUTING: 'custom-domain', MAILSTACK_STAGING_STATE: dir, ...(ses ? { MAILSTACK_STAGING_DELIVERY: 'ses', SES_ACCESS_KEY_ID: 'synthetic-ses-id', SES_SECRET_ACCESS_KEY: 'synthetic-ses-secret' } : {}), ...extra, MAILSTACK_STAGING_BRANCH: 'HEAD', MAILSTACK_STAGING_COMMIT: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() },
   });
   return { child, dir };
 }
+it('deploys workers.dev resources while reading the production account separately', () => {
+  const { child, dir } = run('deploy', false, true, '', { MAILSTACK_STAGING_ROUTING: 'workers-dev' });
+  expect(child.status, child.stderr).toBe(0);
+  const requests = readFileSync(join(dir, 'requests.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  expect(requests.some(r => r.path.includes('/prod-account/workers/scripts/mailstack/deployments'))).toBe(true);
+  expect(requests.filter(r => r.method !== 'GET').every(r => r.path.includes('/test-account/'))).toBe(true);
+  expect(requests.some(r => r.path.includes('/workers/domains'))).toBe(false);
+  expect(requests.find(r => r.path.endsWith('/mailstack-staging/subdomain'))?.body).toEqual({ enabled: true, previews_enabled: false });
+  expect(JSON.parse(readFileSync(join(dir, 'resources.json'), 'utf8')).hostname).toBe('mailstack-staging.fixture.workers.dev');
+  const bindings = JSON.parse(readFileSync(join(dir, 'uploaded-bindings.json'), 'utf8'));
+  expect(bindings.some((b: any) => b.name === 'INTERNAL_HOST')).toBe(false);
+  expect(bindings).toContainEqual({ name: 'SES_CONFIGURATION_SET', type: 'plain_text', text: 'mailstack-staging-f3' });
+  expect(JSON.parse(readFileSync(join(dir, 'mailstack.json'), 'utf8')).events.ses.topicArns).toEqual(['arn:aws:sns:eu-west-1:207570392857:mailstack-staging-f3-events']);
+});
+it('stops workers.dev deployment on a changed production fingerprint', () => {
+  const { child, dir } = run('deploy', true, false, '', { MAILSTACK_STAGING_ROUTING: 'workers-dev' });
+  expect(child.status).not.toBe(0);
+  expect(child.stderr).toContain('Production fingerprint changed');
+  expect(mutations(dir)).toHaveLength(1);
+});
+it('refuses a state record for a different hostname before any write', () => {
+  const { child, dir } = run('destroy', false, false, '', { MAILSTACK_STAGING_ROUTING: 'workers-dev' });
+  expect(child.status).not.toBe(0);
+  expect(child.stderr).toContain('Staging resource identity differs');
+  expect(mutations(dir)).toHaveLength(0);
+});
 it('stops deployment after the first changed production fingerprint', () => {
   const { child, dir } = run('deploy', true);
   expect(child.status).not.toBe(0);

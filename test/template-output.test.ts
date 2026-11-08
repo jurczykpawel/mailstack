@@ -112,3 +112,15 @@ it('measures JSON strings exactly across repeated escapes and Unicode boundaries
     expect(measureJson(value, size)).toBe(size); expect(measureJson(value, size + 1)).toBe(size);
   }
 });
+
+it('counts mixed UTF-8 content exactly at the output limit', () => {
+  const encoder = new TextEncoder();
+  for (const content of ['Zażółć gęślą jaźń 😀', '\ud800', '\udc00', '\ud83d\ude00', 'a\ud800b', '\u0080\u07ff\u0800\uffff']) {
+    const value = content + '&quot;'.repeat(28500);
+    const bytes = encoder.encode(value).length;
+    expect(utf8Size(value)).toBe(bytes);
+    const output = new Output(bytes); output.raw(value);
+    expect(output.bytes).toBe(bytes); expect(output.result()).toBe(value);
+    expect(() => new Output(bytes - 1).raw(value)).toThrow('template_output_limit');
+  }
+});
