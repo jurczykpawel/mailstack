@@ -75,15 +75,20 @@ export function measureJson(value: unknown, limit: number): number {
     if (typeof item === "string") {
       let bytes = strings.get(item);
       if (bytes === undefined) {
-        bytes = 2;
-        for (let i = 0; i < item.length; i++) {
-          const code = item.charCodeAt(i);
-          if (code < 32) bytes += [8, 9, 10, 12, 13].includes(code) ? 2 : 6;
-          else if (code === 34 || code === 92) bytes += 2;
+        if (output.bytes + item.length + 2 > limit) throw new RangeError("template_output_limit");
+        bytes = item.length + 2;
+        const expression = /["\\]+|[\u0000-\u001f\u0080-\uffff]/g;
+        let match: RegExpExecArray | null;
+        while ((match = expression.exec(item)) !== null) {
+          const code = match[0].charCodeAt(0);
+          if (code === 34 || code === 92) bytes += match[0].length;
+          else if (code < 32) bytes += [8, 9, 10, 12, 13].includes(code) ? 1 : 5;
+          else if (code < 2048) bytes++;
           else if (code >= 0xd800 && code <= 0xdfff) {
-            if (code <= 0xdbff && i + 1 < item.length && item.charCodeAt(i + 1) >= 0xdc00 && item.charCodeAt(i + 1) <= 0xdfff) { bytes += 4; i++; }
-            else bytes += 6;
-          } else bytes += code < 128 ? 1 : code < 2048 ? 2 : 3;
+            const next = item.charCodeAt(expression.lastIndex);
+            if (code <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) { bytes += 2; expression.lastIndex++; }
+            else bytes += 5;
+          } else bytes += 2;
           if (output.bytes + bytes > limit) throw new RangeError("template_output_limit");
         }
         strings.set(item, bytes);
