@@ -6,6 +6,9 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+
 jobs:
   auto-merge:
     if: >-
