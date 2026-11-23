@@ -33,9 +33,9 @@ export function rowCells(value: string): string[] {
   try { const rows: unknown = JSON.parse(value); return Array.isArray(rows) ? rows.flatMap(row => Object.values(row as object).map(String)) : []; } catch { return []; }
 }
 
-// Plans are bundled as JSON, so compile to exactly what a JSON round trip preserves.
-const plain = (tokens: Token[]): Token[] => JSON.parse(JSON.stringify(tokens));
-export function compileMarkdown(source: string): MarkdownPlan {
+/** `bundled` plans are stored as JSON, so they keep exactly what a JSON round trip preserves. */
+export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
+  const plain = (tokens: Token[]): Token[] => bundled ? JSON.parse(JSON.stringify(tokens)) : tokens;
   const chunks: Chunk[] = [], buffer: string[] = [], partial = new Set<string>();
   const flush = () => { if (buffer.length) chunks.push({ kind: "markdown", tokens: plain(Lexer.lex(buffer.join("\n"), { gfm: true })) }); buffer.length = 0; };
   const href = (raw: string) => { if (!WHOLE.test(raw.trim())) fieldNames(raw).forEach(field => partial.add(field)); };

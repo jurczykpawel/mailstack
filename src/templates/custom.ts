@@ -98,7 +98,7 @@ export function requestContent(value: unknown): RequestContent | { status: numbe
   const content = raw as Record<string, string>;
   if (Object.values(content).some(text => utf8Size(text) > MAX_CONTENT_BYTES)) return { status: 413, code: "content_too_large" };
   try {
-    return { raw: content, body: content.markdown !== undefined ? { markdown: compileMarkdown(content.markdown) }
+    return { raw: content, body: content.markdown !== undefined ? { markdown: compileMarkdown(content.markdown, false) }
       : { html: compileHtml(content.html), ...(content.text !== undefined ? { text: content.text } : {}) } };
   } catch { return invalid; }
 }
