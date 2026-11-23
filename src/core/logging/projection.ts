@@ -65,10 +65,12 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
   const replacements = fields
     .filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
-    .flatMap(([field, value]) => (secretFields.has(field) ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value)).map((representation) => ({
-      representation, replacement: secretFields.has(field) ? partial(value) : "[ukryte]",
-      secret: secretFields.has(field), short: !secretFields.has(field) && policy.level === "masked" && Array.from(value).length < 3,
-    })));
+    .flatMap(([field, value]) => {
+      const secret = secretFields.has(field), replacement = secret ? partial(value) : "[ukryte]";
+      const short = !secret && policy.level === "masked" && Array.from(value).length < 3;
+      return (secret ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value))
+        .map(representation => ({ representation, replacement, secret, short }));
+    });
   if (policy.level === "masked") replacements.sort((a, b) => b.representation.length - a.representation.length);
   const secretReplacements = replacements.filter(({ secret }) => secret);
   const mask = (value: string, html = false, values = replacements): string => {
