@@ -87,6 +87,7 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `ref` | trusted correlation string (1-128 characters) |
 | `resendOf` | trusted: approved source jobs only with an enabled extension; otherwise `400 not_supported`; public: ignored |
 | `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
+| `content` | trusted client with `rawContent: true`: `{markdown}` or `{html, text?}` (16 KiB each) replacing the template body; public: ignored. See [request content](docs/templates.md#request-content) |
 | `markup` | trusted JSON-LD directives; ignored in public mode |
 | `nonce`, `product` | controls only for public brands with `requireNonce: true`; otherwise content |
 | `_meta` | reserved, ignored as content |
@@ -187,7 +188,8 @@ interface Brand {
   to: string[];            // fixed public recipient(s)
   allowedOrigins: string[];
   subjectPrefix: string;
-  theme: { accent: string; accent2?: string; logoUrl?: string; siteUrl: string; address?: string; phone?: string; };
+  theme: { accent: string; accent2?: string; logoUrl?: string; siteUrl: string; address?: string; phone?: string;
+    background?: string; headingFont?: "sans" | "serif"; buttonRadius?: number; labelColor?: string; };
   captcha?: "turnstile" | "altcha";
   turnstileAction?: string;
   requireNonce?: boolean;
@@ -211,7 +213,7 @@ precedence, `secretFields`, `subjectRoles` and policy constraints are described 
 
 The free core (`src/clients.ts`) authenticates ONE full key: `API_KEY` / `legacyApiKey`
 (scope `send` plus `hook:<id>` for sources with `legacyKey: true`, all brands/templates, `to` override allowed). Free options:
-`enabled`, `env`, `attachments`, `signatureSecretEnv` (Sellf signature on the full key).
+`enabled`, `env`, `attachments`, `rawContent`, `signatureSecretEnv` (Sellf signature on the full key).
 Restricting `scopes`/`brands`/`templates`/`recipientOverride` fails validation
 (`additional or restricted API keys require Mailstack Pro`).
 
@@ -261,6 +263,14 @@ product matching, errors and the scope of the `nonce`/`product` control fields.
 ## Templates
 
 Template copy, form kinds, languages, source overlays and rollback are documented in [README](README.md#template-copy-and-optional-languages). Presentation is configuration data; renderers do not recognize brand or source system names.
+
+Besides the eight types, configuration may define **named templates** (`mailTemplates.custom.<id>`,
+global or per brand) with a Markdown body and `[[button]]`, `[[fields]]`, `[[code]]`, `[[note]]`,
+`[[items]]`, `[[totals]]` components, or an HTML body reduced to an allow list by parse5
+(`layout: "none"` sends a complete document). Built-in bodies accept a `markdown` block.
+Clients with `rawContent: true` may send their own body in `content`. Fields are escaped
+for text, attributes and URLs; amounts arrive formatted, nothing is calculated. Syntax,
+limits and examples: [docs/templates.md](docs/templates.md#named-templates).
 
 mailstack can send different **kinds** of email, all sharing one per-brand look. The
 chrome (header band with logo/accent + footer with address/phone/site) lives in a single
@@ -493,6 +503,12 @@ curl -X POST "https://mail.example.com/v1/hooks/sellf?brand=acme" \
   recording remains fail-closed and returns 403 when storage is unavailable.
 - **Bearer compare:** trusted-mode token is compared in constant time.
 - **Output escaping:** every field value is HTML-escaped before rendering (no stored/reflected XSS).
+- **Template markup:** Markdown is rendered by our renderer from `marked` tokens (HTML in
+  Markdown is shown as text); HTML from configuration or `content` is parsed by parse5 and
+  only allowed elements/attributes are serialized; URLs from fields must be http(s), fields
+  inside literal URLs are percent-encoded. `content` needs `rawContent: true`, is capped at
+  16 KiB, archived as a placeholder below `full` and never replayed. The panel shows archived
+  HTML in an empty-sandbox iframe behind `default-src 'none'`.
 - **Markup safety:** JSON-LD is embedded via a JSON-safe serializer that escapes `<` (neutralizes
   a `</script>` breakout) and U+2028/U+2029; action URLs must be http(s); markup is trusted-mode
   only and capped in count/size (never injectable by public requests).
@@ -628,6 +644,9 @@ src/
     types/license.ts   standalone license delivery
     types/refund.ts    refund confirmation
     types/bank-transfer.ts bank transfer instructions/reminder
+    markdown.ts        Markdown and component renderer, order rows
+    html.ts            parse5 allow list, HTML field holes, generated text
+    custom.ts          named templates, request content
   markup/              schema.org email markup (JSON-LD)
     builders.ts        typed builders (viewAction, discountOffer, ...) + generic schema()/raw()
     serialize.ts       safe JSON-in-<script> serialization (neutralizes </script>) + head assembly
