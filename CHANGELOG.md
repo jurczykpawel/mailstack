@@ -4,6 +4,8 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-23
+
 - Named templates (`mailTemplates.custom`) written in Markdown with button, field,
   code, note, order-row and totals components, or in HTML reduced to an allow list;
   `layout: "none"` for complete HTML documents from configuration.
