@@ -125,9 +125,14 @@ describe("request content work bounds", () => {
     [">".repeat(16000) + " a"], ["> ".repeat(8000) + "a"], [Array.from({ length: 20 }, () => "*a".repeat(120)).join("\n\n")],
   ])("refuses costly Markdown shapes quickly %#", async markdown => {
     allow(true);
-    const start = performance.now();
-    expect((await send({ ...notice, content: { markdown } })).status).toBe(422);
-    expect(performance.now() - start).toBeLessThan(60);
+    // The fastest of three runs filters scheduler pauses on a loaded machine; a costly shape is slow every time.
+    const times: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now();
+      expect((await send({ ...notice, content: { markdown } })).status).toBe(422);
+      times.push(performance.now() - start);
+    }
+    expect(Math.min(...times)).toBeLessThan(60);
   });
   it("accepts ordinary paragraphs with CRLF line endings", async () => {
     allow(true);

@@ -29,7 +29,7 @@ import { checkRateLimit } from "./ratelimit";
 import { getTemplate } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
 import { buildBlocks } from "./markup";
-import { normalizeRows } from "./templates/markdown.ts";
+import { normalizeRows } from "./templates/rows.ts";
 import { contentPlaceholder, requestContent, type RequestContent } from "./templates/custom.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;

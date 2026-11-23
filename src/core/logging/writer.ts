@@ -1,6 +1,7 @@
 import { measureJson } from "../../templates/output.ts";
 import type { WorkBudget } from "../../templates/output.ts";
 import { MAX_OPENED } from "../transit.ts";
+import { resendData } from "../resend-contract.ts";
 import type { ArchiveProjection, ProjectionInput, ArchiveMetadata } from "./projection.ts";
 import type { attachmentSummary } from '../../attachments';
 import type { Config } from '../config/schema';
@@ -73,12 +74,13 @@ export function prepareRecord(input: RecordInput, policy: Config['logging']['def
     ...(input.explicitSubject !== undefined ? { subjectOverride: input.explicitSubject } : {}),
     ...(input.localeInput ? { locale: input.localeInput } : {}),
     template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
-  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
+  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject, explicitSubject: input.explicitSubject !== undefined,
     budget: input.budget, render: input.render, metadata: { clientId: input.clientId, status: 'sending', createdAt: new Date(0).toISOString(),
       ...(input.renderMetadata ? { render: input.renderMetadata } : {}) } });
   measureJson(archive, 2 * 1024 * 1024);
   if (canReplay) { try { measureJson(replay, MAX_OPENED); } catch { throw new RangeError('replay_payload_limit'); } }
-  return { archive, ...(canReplay ? { replay } : {}) };
+  // Only data the resend contract accepts is stored for replay.
+  return { archive, ...(canReplay && resendData.safeParse(replay.data).success ? { replay } : {}) };
 }
 
 export async function recordIntent(deps: RecordDeps, input: RecordInput): Promise<{ id: string | undefined }> {

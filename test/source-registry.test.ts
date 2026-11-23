@@ -58,4 +58,5 @@ it('migrates the prior full-key selection and aliases offline', () => {
       [{ ...old, clients: [{ scopes: ['hook:sellf', 'hook:other'], sellfSignatureSecretEnv: 'SIGN' }] }, {}, '$.clients.0.signatureSecretEnv'],
     ] as const) { const bad = run(change, deployment); expect(bad.status).toBe(1); expect(bad.stderr).toContain(path); expect(bad.stdout).toBe(''); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+  // Eight CLI processes; the default 5 s is too short on a loaded machine.
+}, 30000);

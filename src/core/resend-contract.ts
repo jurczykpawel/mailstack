@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import type { SendResult } from '../types';
+import { isCanonicalRows } from '../templates/rows.ts';
 
+// Order rows are canonical JSON and may exceed the per-field limit of other values.
+export const resendData = z.record(z.string().max(128), z.string().refine(v => v.length <= 5000 || isCanonicalRows(v))).refine(v => Object.keys(v).length <= 43);
 export const resendPayload = z.strictObject({
   to: z.array(z.email().max(320)).min(1).max(5),
   locale: z.string().regex(/^[a-z]{2}(?:-[A-Z]{2})?$/).optional(),
   template: z.string().min(1).max(128),
-  data: z.record(z.string().max(128), z.string().max(5000)).refine(v => Object.keys(v).length <= 43),
+  data: resendData,
   replyTo: z.email().max(320).optional(), subjectOverride: z.string().max(5000).optional(),
   markup: z.array(z.record(z.string(), z.unknown())).max(5).optional(),
 });

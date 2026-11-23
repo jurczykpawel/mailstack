@@ -151,6 +151,8 @@ export interface TemplateDef {
   publicAllowed?: boolean;
   subject(brand: Brand, data: TemplateData, recipe?: Recipe): string;
   render(brand: Brand, data: TemplateData, recipe?: Recipe): RenderedBody;
+  /** Everything except the body, for a body replaced by request content. */
+  headers?(brand: Brand, data: TemplateData, recipe?: Recipe): Omit<RenderedBody, "bodyHtml" | "bodyText">;
 }
 
 /** Result of a send attempt. */

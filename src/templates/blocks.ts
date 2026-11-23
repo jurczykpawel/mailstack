@@ -4,7 +4,7 @@ import { httpUrl } from "./config-schema.ts";
 import type { TemplatePlans } from "./config.ts";
 import { own } from "./config.ts";
 import { tokenize } from "./tokens.ts";
-import { compileMarkdown, renderMarkdown } from "./markdown.ts";
+import { compileMarkdown, renderBudget, renderMarkdown } from "./markdown.ts";
 import { Output, length, parts, type Content, type Emit } from "./output.ts";
 import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout, humanizeLabel } from "./layout.ts";
 
@@ -20,7 +20,7 @@ export function expandText(text: Presentation["subject"], brand: Brand, data: Te
 }
 export type Pair = { html: Emit; text: Emit };
 export function configuredBody(brand: Brand, patch: TemplatePatch, plans: TemplatePlans, data: TemplateData, locale?: string | null): Pair {
-  const blocks: Pair[] = [];
+  const blocks: Pair[] = [], budget = renderBudget();
   const label = (key: string) => labelFor(patch.labels, key, humanizeLabel(key, locale));
   for (const block of patch.body?.blocks ?? []) {
     const value = "field" in block ? own(data, block.field) ?? "" : "";
@@ -42,7 +42,7 @@ export function configuredBody(brand: Brand, patch: TemplatePatch, plans: Templa
         value: (own(data, `_${key}`) ?? "").trim() ? data[`_${key}`] : "-" }));
       if (items.length) blocks.push({ html: out => metadataBlock(items, out), text: out => metadataBlock(items, out, true) });
     } else if (block.kind === "markdown") {
-      const rendered = renderMarkdown(own(plans.markdown, block.markdown) ?? compileMarkdown(block.markdown), brand, data);
+      const rendered = renderMarkdown(own(plans.markdown, block.markdown) ?? compileMarkdown(block.markdown), brand, data, budget);
       if (rendered.html) blocks.push({ html: out => out.raw(rendered.html), text: out => out.raw(rendered.text) });
     } else if (block.kind === "cta") {
       const url = "literal" in block.url ? block.url.literal : (own(data, block.url.field) ?? "").trim();
