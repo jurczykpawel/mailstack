@@ -2,7 +2,7 @@ import { parse, parseFragment, type DefaultTreeAdapterTypes as T } from "parse5"
 import type { Brand, TemplateData } from "../types.ts";
 import { escapeHtml as e } from "./layout.ts";
 import { httpUrl } from "./config-schema.ts";
-import { encodeValue, fieldValue } from "./markdown.ts";
+import { encodeValue, fieldValue, renderBudget } from "./markdown.ts";
 
 type Hole = { field: string; fallback: string; context: "text" | "attr" | "url" | "part"; space?: " " };
 export type Part = string | Hole;
@@ -72,13 +72,14 @@ export function compileHtml(source: string, options: { document?: boolean; secre
   return { parts: merged, fields: [...fields], urlFields: [...urls], partialUrlFields: [...partial], ...(options.document ? { document: true as const } : {}) };
 }
 
-export function renderHtml(plan: HtmlPlan, data: TemplateData, brand?: Brand): string {
+export function renderHtml(plan: HtmlPlan, data: TemplateData, brand?: Brand, budget = renderBudget()): string {
   return plan.parts.map(part => {
     if (typeof part === "string") return part;
     const value = (brand ? fieldValue(brand, data, part.field) : (Object.hasOwn(data, part.field) ? data[part.field] : "").trim()) || part.fallback.trim();
-    if (part.context === "url") return httpUrl(value) ? e(value) : "#";
-    if (part.context === "part") return e(encodeValue(value));
-    return part.context === "attr" ? e(value) : value ? (part.space ?? "") + e(value).replace(/\n/g, "<br>") : "";
+    const out = part.context === "url" ? httpUrl(value) ? e(value) : "#" : part.context === "part" ? e(encodeValue(value))
+      : part.context === "attr" ? e(value) : value ? (part.space ?? "") + e(value).replace(/\n/g, "<br>") : "";
+    budget.spend(out.length);
+    return out;
   }).join("");
 }
 

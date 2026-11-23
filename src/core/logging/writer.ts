@@ -1,6 +1,7 @@
 import { measureJson } from "../../templates/output.ts";
 import type { WorkBudget } from "../../templates/output.ts";
 import { MAX_OPENED } from "../transit.ts";
+import { resendData } from "../resend-contract.ts";
 import type { ArchiveProjection, ProjectionInput, ArchiveMetadata } from "./projection.ts";
 import type { attachmentSummary } from '../../attachments';
 import type { Config } from '../config/schema';
@@ -78,7 +79,8 @@ export function prepareRecord(input: RecordInput, policy: Config['logging']['def
       ...(input.renderMetadata ? { render: input.renderMetadata } : {}) } });
   measureJson(archive, 2 * 1024 * 1024);
   if (canReplay) { try { measureJson(replay, MAX_OPENED); } catch { throw new RangeError('replay_payload_limit'); } }
-  return { archive, ...(canReplay ? { replay } : {}) };
+  // Only data the resend contract accepts is stored for replay.
+  return { archive, ...(canReplay && resendData.safeParse(replay.data).success ? { replay } : {}) };
 }
 
 export async function recordIntent(deps: RecordDeps, input: RecordInput): Promise<{ id: string | undefined }> {

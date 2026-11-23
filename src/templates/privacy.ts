@@ -1,10 +1,14 @@
 import type { TemplateData, TemplateDef } from '../types.ts';
 import { escapeHtml } from './layout.ts';
 import { WorkBudget } from './output.ts';
-import { encodeValue, rowCells } from './markdown.ts';
+import { encodeValue } from './markdown.ts';
+import { rowCells } from './rows.ts';
 const parts = (template: TemplateDef, field: string, value: string) =>
   [value, ...(template.rowFields?.includes(field) ? rowCells(value).filter(cell => cell.trim().length >= 3) : [])];
 /** Forms in which a value can appear in output: raw, row cells, HTML-escaped and percent-encoded. */
+/** Row cells shorter than three characters; they are masked only as whole words. */
+export const shortCells = (template: TemplateDef, field: string, value: string) => template.rowFields?.includes(field)
+  ? [...new Set(rowCells(value).map(cell => cell.trim()).filter(cell => cell && cell.length < 3))] : [];
 export const representations = (template: TemplateDef, field: string, value: string) => [...new Set(parts(template, field, value)
   .flatMap(item => [item, escapeHtml(item), encodeValue(item), escapeHtml(encodeValue(item))]))];
 export const normalizeHeader = (value: string) => value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ');

@@ -92,7 +92,14 @@ contains a Markdown licence, an order with rows and an HTML invitation.
 | `fields` | Optional kinds; `{"kind": "rows"}` marks an order row field |
 | `secretFields`, `requiredFields` | Classification as for built-in types; required fields give source deliveries 422 when empty |
 | `layout: "none"` | HTML only: the body is a complete document sent without the brand header and footer |
-| `locales.<tag>` | `subject`, `heading`, `previewText`, `markdown`/`html`, `text` for brands with languages |
+| `locales.<tag>` | `subject`, `heading`, `previewText`, `markdown`/`html`, `text` for brands with languages; a `text` alone replaces the alternative of the inherited HTML |
+
+A brand definition replaces a global one with the same name for that brand only;
+logging policies are checked against the definition each brand resolves, and a
+source mapping must cover the required fields of every definition it can select.
+A named template used as `autoReplyTemplate` may personalise its heading and body
+with `name` and `summary`, but its subject (and every locale subject) must be
+literal single-line text, as for built-in confirmations.
 
 File paths are relative to `mailstack.json` and stay inside its directory. The
 Node loader and Worker setup read them at boot/build, so `BUILD_CONFIG_SHA` covers
@@ -117,7 +124,9 @@ Paragraphs, `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, links (http, htt
 mailto), ordered and bulleted lists, quotes (drawn as a note), `---`, code blocks and
 GFM tables. `#`/`##` give a subheading and `###` a section label in `theme.labelColor`.
 Images show their alternative text. HTML written in Markdown is shown as text;
-`\{` writes a literal brace. One-line components:
+`\{` writes a literal brace. All tables of one body may have at most 1000 cells
+(header width times rows, including the header). One-line components, each on its
+own line outside fenced code blocks:
 
 | Component | Output, omitted when empty |
 | --- | --- |
@@ -128,9 +137,11 @@ Images show their alternative text. HTML written in Markdown is shown as text;
 | `[[items: {items}]]` | Order rows: "qty × name", amount on the right, optional description |
 | `[[totals: Shipping={shipping\|Free}; **Total**={total}]]` | Summary rows; `**…**` makes a row bold |
 
-A row field accepts an array of up to 50 objects with `qty`, `name`, `amount` and
-`description` (strings or numbers, at most 500 characters); anything else returns
-`400 invalid_rows`. Sources map it with `{"path": "data.lines", "as": "rows"}`.
+A row field accepts an array of up to 50 objects with nonempty `qty`, `name` and
+`amount` and an optional `description` (strings or numbers, at most 500 characters);
+anything else returns `400 invalid_rows`, and an incomplete source row `422
+invalid_event_data`. A replay record may hold a row field longer than the
+5000-character limit of other fields. Sources map it with `{"path": "data.lines", "as": "rows"}`.
 Amounts arrive formatted: Mailstack does not calculate, convert or check totals.
 
 ### HTML
@@ -144,6 +155,9 @@ with `layout: "none"`). Attributes: `style`, `href`, `src`, `alt`, `width`, `hei
 `title`, `lang`, `dir`. `href` accepts http(s), `mailto:` and `#anchor`; `src` http(s).
 `style` cannot contain fields, `url(`, `expression(`, backslashes or comments.
 Anything else is a configuration error; comments are dropped. Use inline styles.
+Attribute values are always written back in double quotes, so an unquoted
+attribute (`<p title={label}>`) is accepted and rendered as `title="…"` with the
+field escaped like any quoted attribute.
 Generated text puts blocks on separate lines and links as "label (address)".
 
 ### Request content
@@ -227,6 +241,9 @@ All template sections and source copy overlays together are capped at 256 KiB.
 Compiled plans allow 1024 combinations and 8 MiB. Configured output limits are
 512 KiB HTML, 256 KiB text and 998 subject bytes. The runtime declines over-limit
 output before a delivery attempt; no language-specific table or D1 lookup is added.
+Field substitutions in one named or request body may produce at most 768 KiB of
+characters (HTML and text together); rendering stops with `422
+template_output_limit` as soon as that is exceeded.
 
 Archive reads show the bytes and actual language recorded when sent. Old archives
 may have no language metadata. Replay uses current presentation and the saved

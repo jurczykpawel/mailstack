@@ -3,8 +3,8 @@ import type { Brand, TemplateData, TemplateDef } from "../types.ts";
 import type { CustomVariantDefinition, Presentation } from "./config-schema.ts";
 import { own, type TemplatePlans } from "./config.ts";
 import { expandText } from "./blocks.ts";
-import { compileMarkdown, fieldNames, fill, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
-import { compileHtml, renderHtml, renderHtmlText, type HtmlPlan } from "./html.ts";
+import { compileMarkdown, fieldNames, fill, renderBudget, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
+import { compileHtml, htmlText, renderHtml, type HtmlPlan } from "./html.ts";
 import { MANIFEST } from "./manifest.ts";
 import { textFields } from "./tokens.ts";
 import { utf8Size } from "./output.ts";
@@ -23,15 +23,11 @@ function sections(config: Config) {
   return [["", config.mailTemplates?.custom, ["mailTemplates", "custom"]] as const,
     ...Object.entries(config.brands).map(([id, brand]) => [id, brand.mailTemplates?.custom, ["brands", id, "mailTemplates", "custom"]] as const)];
 }
-/** Secret and required fields of named templates, for source and policy validation. */
-export function customPolicies(config: Config): TemplatePolicies {
-  const result: TemplatePolicies = {};
-  for (const [, custom] of sections(config)) for (const [id, definition] of Object.entries(custom ?? {})) {
-    const known = result[id] ??= {};
-    known.secretFields = [...new Set([...known.secretFields ?? [], ...definition.secretFields ?? []])];
-    known.requiredFields = [...new Set([...known.requiredFields ?? [], ...definition.requiredFields ?? []])];
-  }
-  return result;
+/** Secret and required fields of the named templates one brand resolves (its own definition replaces the global one). */
+export function customPolicies(config: Config, brandId: string): TemplatePolicies {
+  const policies = (custom: Record<string, CustomVariantDefinition & { secretFields?: string[]; requiredFields?: string[] }> | undefined) =>
+    Object.fromEntries(Object.entries(custom ?? {}).map(([id, item]) => [id, { secretFields: item.secretFields ?? [], requiredFields: item.requiredFields ?? [] }]));
+  return { ...policies(config.mailTemplates?.custom), ...policies(own(config.brands, brandId)?.mailTemplates?.custom) };
 }
 
 function compileBody(value: CustomVariantDefinition, secrets: string[], document: boolean, path: Path, fail: (path: Path, message: string) => void): Body | undefined {
@@ -58,7 +54,7 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
       const secrets = definition.secretFields ?? [];
       const rowFields = Object.entries(definition.fields ?? {}).filter(([, field]) => field.kind === "rows").map(([key]) => key);
       const languages = owner ? config.brands[owner].mailTemplates?.languages : undefined;
-      const variant = (value: CustomVariantDefinition, at: Path, required: boolean): Variant => {
+      const variant = (value: CustomVariantDefinition, at: Path, inherited?: Body | null): Variant => {
         const headers: Variant = {};
         for (const key of HEADERS) if (value[key] !== undefined) {
           headers[key] = value[key];
@@ -67,13 +63,16 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
         if (value.subject !== undefined && !textFields(value.subject).length && !(typeof value.subject === "string" ? [value.subject] : value.subject)
           .some(part => typeof part === "string" && part.trim())) fail([...at, "subject"], "empty output");
         if (definition.layout && value.markdown !== undefined) fail([...at, "layout"], "layout none requires html");
-        const body = required || value.markdown !== undefined || value.html !== undefined ? compileBody(value, secrets, !!definition.layout, at, fail) : undefined;
+        let body = inherited === undefined || value.markdown !== undefined || value.html !== undefined ? compileBody(value, secrets, !!definition.layout, at, fail) : undefined;
+        if (!body && value.text !== undefined) {
+          if (inherited && "html" in inherited) body = { html: inherited.html, text: value.text }; else fail([...at, "text"], "text requires html");
+        }
         return { ...headers, ...(body ? { body } : {}) };
       };
-      const base = variant(definition, path, true);
+      const base = variant(definition, path);
       const locales = Object.fromEntries(Object.entries(definition.locales ?? {}).map(([tag, value]) => {
         if (owner && (!languages?.allowed.includes(tag) || tag === languages.default)) fail([...path, "locales", tag], "invalid brand locale");
-        return [tag, variant(value, [...path, "locales", tag], false)];
+        return [tag, variant(value, [...path, "locales", tag], base.body ?? null)];
       }));
       result[owner][id] = { ...base, subject: definition.subject, heading: definition.heading, body: base.body!, secretFields: secrets,
         requiredFields: definition.requiredFields ?? [], rowFields, ...(definition.layout ? { layout: definition.layout } : {}), locales };
@@ -84,11 +83,15 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
     if (id === undefined || Object.hasOwn(MANIFEST, id)) continue;
     const owner = own(result[brandId], id) ? brandId : "", plan = own(result[owner], id);
     if (!plan) { fail(["brands", brandId, "autoReplyTemplate"], "unknown confirmation template"); continue; }
-    const variants = [plan, ...Object.values(plan.locales)];
+    const variants = [plan, ...Object.values(plan.locales)], root = [...(owner ? ["brands", owner, "mailTemplates"] : ["mailTemplates"]), "custom", id];
+    // The submitter controls name and summary, so a public confirmation keeps the brand's own subject.
+    for (const [tag, item] of [["", plan] as const, ...Object.entries(plan.locales)]) if (item.subject !== undefined && (textFields(item.subject).length
+      || (typeof item.subject === "string" ? [item.subject] : item.subject).some(part => typeof part !== "string" || /[\u0000-\u001f\u007f-\u009f]/.test(part))))
+      fail([...root, ...(tag ? ["locales", tag] : []), "subject"], "literal single-line subject required");
     const used = variants.flatMap(item => [...HEADERS.flatMap(key => textFields(item[key])), ...item.body ? Object.values(item.body).flatMap(body => typeof body === "string" ? fieldNames(body) : body.fields) : []]);
     const urls = variants.flatMap(item => item.body ? Object.values(item.body).flatMap(body => [...body.urlFields ?? [], ...body.partialUrlFields ?? []]) : []);
     if (urls.length || used.some(field => !["name", "summary", "brand.id", "brand.name", "brand.subjectPrefix"].includes(field)))
-      fail([...(owner ? ["brands", owner, "mailTemplates"] : ["mailTemplates"]), "custom", id], "confirmation field unavailable");
+      fail(root, "confirmation field unavailable");
   }
   return result;
 }
@@ -97,8 +100,10 @@ export const customPlan = (plans: TemplatePlans | undefined, brand: string | und
   own(own(plans?.custom, brand ?? ""), id) ?? own(own(plans?.custom, ""), id);
 
 export function renderBody(body: Body, brand: Brand, data: TemplateData): { html: string; text: string } {
-  if ("markdown" in body) return renderMarkdown(body.markdown, brand, data);
-  return { html: renderHtml(body.html, data, brand), text: body.text !== undefined ? fill(body.text, brand, data) : renderHtmlText(body.html, data, brand) };
+  const budget = renderBudget();
+  if ("markdown" in body) return renderMarkdown(body.markdown, brand, data, budget);
+  const html = renderHtml(body.html, data, brand, budget);
+  return { html, text: body.text !== undefined ? fill(body.text, brand, data, false, budget) : htmlText(html, body.html.document) };
 }
 
 export interface RequestContent { raw: Record<string, string>; body: Body }
@@ -130,13 +135,17 @@ export function customTemplate(id: string, plan: CustomPlan, plans: TemplatePlan
   if (definition) return definition;
   const variant = (locale?: string | null): CustomPlan => ({ ...plan, ...own(plan.locales, locale?.split("-")[0] ?? ""), ...own(plan.locales, locale ?? "") });
   const text = (value: Text, brand: Brand, data: TemplateData) => expandText(value, brand, data, plans).join("");
+  const headers: TemplateDef["headers"] = (brand, data, recipe) => {
+    const selected = variant(recipe?.locale);
+    return { heading: text(selected.heading, brand, data), ...(plan.layout ? { document: true as const } : {}),
+      ...(selected.previewText !== undefined ? { previewText: text(selected.previewText, brand, data) } : {}) };
+  };
   definition = {
-    id, secretFields: plan.secretFields, requiredFields: plan.requiredFields, rowFields: plan.rowFields,
+    id, secretFields: plan.secretFields, requiredFields: plan.requiredFields, rowFields: plan.rowFields, headers,
     subject: (brand, data, recipe) => text(variant(recipe?.locale).subject, brand, data),
     render: (brand, data, recipe) => {
-      const selected = variant(recipe?.locale), body = renderBody(selected.body, brand, data);
-      return { heading: text(selected.heading, brand, data), bodyHtml: body.html, bodyText: body.text, ...(plan.layout ? { document: true as const } : {}),
-        ...(selected.previewText !== undefined ? { previewText: text(selected.previewText, brand, data) } : {}) };
+      const body = renderBody(variant(recipe?.locale).body, brand, data);
+      return { ...headers(brand, data, recipe), bodyHtml: body.html, bodyText: body.text };
     },
   };
   definitions.set(plan, definition);

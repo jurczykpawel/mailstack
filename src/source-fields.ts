@@ -1,7 +1,7 @@
 import type { SourceField } from "./core/config/sources.ts";
 import { WorkBudget } from "./templates/output.ts";
 import { tokenize } from "./templates/tokens.ts";
-import { normalizeRows } from "./templates/markdown.ts";
+import { normalizeRows } from "./templates/rows.ts";
 export function read(value: unknown, path: string): unknown {
   for (const part of path.split(".")) {
     if (!value || typeof value !== "object" || !Object.hasOwn(value, part)) return undefined;

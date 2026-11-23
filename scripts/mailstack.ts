@@ -7,7 +7,7 @@ import { parseConfig } from "../src/core/config/schema.ts";
 import { getTemplate } from "../src/templates/index.ts";
 import { prepareEmail } from "../src/templates/prepare.ts";
 import { renderHtmlText } from "../src/templates/html.ts";
-import { normalizeRows } from "../src/templates/markdown.ts";
+import { normalizeRows } from "../src/templates/rows.ts";
 
 try {
   const [command, action, file, ...extra] = process.argv.slice(2);

@@ -35,8 +35,8 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
   };
   const dry = new Recipe(definition, brand, data, options.plans, active, locale, template.id);
   const recipeSubject = template.subject(brand, data, dry);
-  // A replacement body doesn't need the recipe's body serialization.
-  const rendered = template.render(brand, data, dry);
+  // A replacement body doesn't need the template body.
+  const rendered = options.content && template.headers ? { ...template.headers(brand, data, dry), bodyHtml: '', bodyText: '' } : template.render(brand, data, dry);
   const templateSubject = definition.subject === undefined ? recipeSubject : header(definition.subject);
   const heading = definition.heading === undefined ? template.id === 'contact' && definition.subject !== undefined ? templateSubject : rendered.heading : header(definition.heading);
   const previewText = definition.previewText === undefined ? rendered.previewText : header(definition.previewText);

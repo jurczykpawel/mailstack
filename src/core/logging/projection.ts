@@ -1,4 +1,4 @@
-import { containsSecret, representations, secretCandidates } from "../../templates/privacy.ts";
+import { containsSecret, representations, secretCandidates, shortCells } from "../../templates/privacy.ts";
 import { WorkBudget } from "../../templates/output.ts";
 import type { Config, Policy } from "../config/schema.ts";
 import type { Brand, TemplateData, TemplateDef } from "../../types.ts";
@@ -68,8 +68,9 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     .flatMap(([field, value]) => {
       const secret = secretFields.has(field), replacement = secret ? partial(value) : "[ukryte]";
       const short = !secret && policy.level === "masked" && Array.from(value).length < 3;
-      return (secret ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value))
-        .map(representation => ({ representation, replacement, secret, short }));
+      return [...(secret ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value))
+        .map(representation => ({ representation, replacement, secret, short })),
+      ...shortCells(template, field, value).flatMap(cell => [cell, escapeHtml(cell)]).map(representation => ({ representation, replacement, secret, short: true }))];
     });
   if (policy.level === "masked") replacements.sort((a, b) => b.representation.length - a.representation.length);
   const secretReplacements = replacements.filter(({ secret }) => secret);
@@ -79,8 +80,9 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
       budget.spend(value.length);
       const masked = html ? escapeHtml(replacement) : replacement;
       if (short) {
-        const literal = representation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        value = value.replace(new RegExp(`(?<![\\p{L}\\p{N}])${literal}(?![\\p{L}\\p{N}])`, "gu"), () => masked);
+        const literal = representation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), word = new RegExp(`(?<![\\p{L}\\p{N}])${literal}(?![\\p{L}\\p{N}])`, "gu");
+        // In HTML only text between tags is matched, so a short value never rewrites markup.
+        value = html ? value.replace(/(<[^>]*>)|[^<]+/g, (part, tag?: string) => tag ?? part.replace(word, () => masked)) : value.replace(word, () => masked);
       } else value = value.split(representation).join(masked);
     }
     return maskPatterns(value, patterns, budget);
