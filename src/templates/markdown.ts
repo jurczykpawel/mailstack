@@ -38,7 +38,7 @@ export function rowCells(value: string): string[] {
 /** `bundled` plans are stored as JSON, so they keep exactly what a JSON round trip preserves. */
 export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
   const plain = (tokens: Token[]): Token[] => bundled ? JSON.parse(JSON.stringify(tokens)) : tokens;
-  const chunks: Chunk[] = [], buffer: string[] = [], partial = new Set<string>(), whole = new Set<string>();
+  const chunks: Chunk[] = [], buffer: string[] = [], partial = new Set<string>(), whole = new Set<string>(), keys = new Set<string>();
   const flush = () => { if (buffer.length) chunks.push({ kind: "markdown", tokens: plain(Lexer.lex(buffer.join("\n"), { gfm: true })) }); buffer.length = 0; };
   const href = (raw: string) => { const field = WHOLE.exec(raw.trim())?.[1]; if (field) whole.add(field); else fieldNames(raw).forEach(name => partial.add(name)); };
   for (const line of source.split("\n")) {
@@ -48,6 +48,7 @@ export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
     if (!COMPONENTS.includes(name) || name === "button" && parts.length !== 2 || name === "items" && !WHOLE.test(args.trim()))
       throw new Error(`invalid component ${name}`);
     if (name === "button") href(parts[1]);
+    if (name === "fields") split(args, ",").forEach(pair => keys.add(pair.split("=")[0].trim()));
     flush();
     chunks.push({ kind: "component", name, args, ...(name === "note" ? { tokens: plain(Lexer.lexInline(args, { gfm: true })) } : {}) });
   }
@@ -61,7 +62,7 @@ export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
     }
   };
   visit(chunks, 0);
-  return { chunks, fields: [...new Set(fieldNames(source))], urlFields: [...whole], partialUrlFields: [...partial] };
+  return { chunks, fields: [...new Set([...fieldNames(source), ...keys])], urlFields: [...whole], partialUrlFields: [...partial] };
 }
 
 export const fieldValue = (brand: Brand, data: TemplateData, key: string) => (key.startsWith("brand.") && ["brand.id", "brand.name", "brand.subjectPrefix"].includes(key)

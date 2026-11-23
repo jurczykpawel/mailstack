@@ -66,6 +66,10 @@ describe("custom template configuration", () => {
     ["a confirmation template with a field URL", value => {
       Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" }); customOf(value).thanks = { subject: "S", heading: "H", markdown: "[x]({summary})" };
     }, /thanks/],
+    ["a confirmation HTML text using other fields", value => {
+      Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" }); customOf(value).thanks = { subject: "S", heading: "H", html: "<p>Hi</p>", text: "Hi {email}" };
+    }, /thanks/],
+    ["an undeclared field in a fields component", value => { (value.mailTemplates as Record<string, unknown>).templates = { notice: { body: { blocks: [{ id: "m", kind: "markdown", markdown: "[[fields: undeclared=X]]" }] } } }; }, /notice/],
     ["an invalid theme colour", value => { (value.brands.acme.theme as Record<string, unknown>).background = "red;x:url(a)"; }, /theme\.background/],
   ])("rejects %s", (_name, mutate, message) => fails(mutate, message));
   it("allows a confirmation template limited to name and summary and falls back to the base locale", () => {

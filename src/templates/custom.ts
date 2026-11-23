@@ -3,7 +3,7 @@ import type { Brand, TemplateData, TemplateDef } from "../types.ts";
 import type { CustomVariantDefinition, Presentation } from "./config-schema.ts";
 import { own, type TemplatePlans } from "./config.ts";
 import { expandText } from "./blocks.ts";
-import { compileMarkdown, fill, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
+import { compileMarkdown, fieldNames, fill, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
 import { compileHtml, renderHtml, renderHtmlText, type HtmlPlan } from "./html.ts";
 import { MANIFEST } from "./manifest.ts";
 import { textFields } from "./tokens.ts";
@@ -85,7 +85,7 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
     const owner = own(result[brandId], id) ? brandId : "", plan = own(result[owner], id);
     if (!plan) { fail(["brands", brandId, "autoReplyTemplate"], "unknown confirmation template"); continue; }
     const variants = [plan, ...Object.values(plan.locales)];
-    const used = variants.flatMap(item => [...HEADERS.flatMap(key => textFields(item[key])), ...item.body ? Object.values(item.body).flatMap(body => body.fields ?? []) : []]);
+    const used = variants.flatMap(item => [...HEADERS.flatMap(key => textFields(item[key])), ...item.body ? Object.values(item.body).flatMap(body => typeof body === "string" ? fieldNames(body) : body.fields) : []]);
     const urls = variants.flatMap(item => item.body ? Object.values(item.body).flatMap(body => [...body.urlFields ?? [], ...body.partialUrlFields ?? []]) : []);
     if (urls.length || used.some(field => !["name", "summary", "brand.id", "brand.name", "brand.subjectPrefix"].includes(field)))
       fail([...(owner ? ["brands", owner, "mailTemplates"] : ["mailTemplates"]), "custom", id], "confirmation field unavailable");
@@ -112,8 +112,9 @@ export function requestContent(value: unknown): RequestContent | { status: numbe
     keys.includes("markdown") && keys.includes("text")) return invalid;
   const content = raw as Record<string, string>;
   if (Object.values(content).some(text => utf8Size(text) > MAX_CONTENT_BYTES)) return { status: 413, code: "content_too_large" };
-  // Dense delimiter runs make Markdown inline parsing quadratic; ordinary prose stays far below this per block.
-  if (content.markdown?.split(/\n[ \t]*\n/).some(block => (block.match(/[*_~`[]/g)?.length ?? 0) > 128)) return invalid;
+  // Dense delimiter or quote runs make Markdown parsing quadratic; ordinary prose stays far below these counts.
+  const counts = content.markdown?.replace(/\r\n?/g, "\n").split(/\n[ \t]*\n/).map(block => block.match(/[*_~`[>]/g)?.length ?? 0) ?? [];
+  if (counts.some(count => count > 128) || counts.reduce((sum, count) => sum + count, 0) > 2048) return invalid;
   try {
     return { raw: content, body: content.markdown !== undefined ? { markdown: compileMarkdown(content.markdown, false) }
       : { html: compileHtml(content.html), ...(content.text !== undefined ? { text: content.text } : {}) } };

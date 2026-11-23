@@ -119,3 +119,27 @@ describe("request content limits and compatibility", () => {
     expect((await send({ ...notice, content: { html: "<div>".repeat(100) + "x" } })).status).toBe(422);
   });
 });
+
+describe("request content work bounds", () => {
+  it.each([
+    [">".repeat(16000) + " a"], ["> ".repeat(8000) + "a"], [Array.from({ length: 20 }, () => "*a".repeat(120)).join("\n\n")],
+  ])("refuses costly Markdown shapes quickly %#", async markdown => {
+    allow(true);
+    const start = performance.now();
+    expect((await send({ ...notice, content: { markdown } })).status).toBe(422);
+    expect(performance.now() - start).toBeLessThan(60);
+  });
+  it("accepts ordinary paragraphs with CRLF line endings", async () => {
+    allow(true);
+    const text = Array.from({ length: 20 }, () => "A **bold** word, *emphasis* and a [link](https://a.example/x).").join("\r\n\r\n");
+    expect((await send({ ...notice, content: { markdown: text } })).status).toBe(200);
+  });
+  it("renders long runs of spaces in linear time", async () => {
+    const d = deps();
+    const fields = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`field${i}`, "a" + " ".repeat(4990) + "b"]));
+    const start = performance.now();
+    const res = await send({ brand: "acme", email: "jane@example.com", "cf-turnstile-response": "t", autoreply: "0", ...fields }, d, { origin: "https://acme.example" });
+    expect(res.status).toBe(200);
+    expect(performance.now() - start).toBeLessThan(60);
+  });
+});
