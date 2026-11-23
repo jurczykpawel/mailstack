@@ -61,14 +61,14 @@ export function compileMarkdown(source: string): MarkdownPlan {
   return { chunks, fields: [...new Set(fieldNames(source))], partialUrlFields: [...partial] };
 }
 
-const valueOf = (brand: Brand, data: TemplateData, key: string) => (key.startsWith("brand.") && ["brand.id", "brand.name", "brand.subjectPrefix"].includes(key)
+export const fieldValue = (brand: Brand, data: TemplateData, key: string) => (key.startsWith("brand.") && ["brand.id", "brand.name", "brand.subjectPrefix"].includes(key)
   ? String(brand[key.slice(6) as "id"]) : Object.hasOwn(data, key) ? data[key] : "").trim();
 /** Substitute `{field}` and `{field|fallback}`; an empty field also removes the space before it. */
 export function fill(text: string, brand: Brand, data: TemplateData, html = false): string {
   let out = "", last = 0;
   const literal = (value: string) => html ? e(value) : value;
   for (const m of text.matchAll(FIELD)) {
-    const value = valueOf(brand, data, m[2]) || (m[3] ?? "").trim();
+    const value = fieldValue(brand, data, m[2]) || (m[3] ?? "").trim();
     const shown = !html ? value : /^[^\s-]{1,24}(?:-[^\s-]{1,24}){1,3}$/.test(value) ? `<span style="white-space:nowrap;">${e(value)}</span>` : e(value).replace(/\n/g, "<br>");
     out += literal(text.slice(last, m.index)) + (value ? m[1] + shown : "");
     last = m.index + m[0].length;
@@ -77,7 +77,7 @@ export function fill(text: string, brand: Brand, data: TemplateData, html = fals
 }
 function url(raw: string, brand: Brand, data: TemplateData, mailto = true): string {
   const whole = WHOLE.exec(raw.trim());
-  const href = whole ? valueOf(brand, data, whole[1]) : raw.trim().replace(FIELD, (_, space: string, key: string) => space + encodeURIComponent(valueOf(brand, data, key)));
+  const href = whole ? fieldValue(brand, data, whole[1]) : raw.trim().replace(FIELD, (_, space: string, key: string) => space + encodeURIComponent(fieldValue(brand, data, key)));
   return httpUrl(href) || mailto && !whole && /^mailto:[^\s<>"'{}]+$/i.test(href) ? href : "";
 }
 
@@ -142,13 +142,13 @@ function component(c: Component, brand: Brand, data: TemplateData): Out {
     return value ? { html: (title ? `<p style="${P}margin-bottom:6px;font-weight:600;">${e(title)}</p>` : "") + codeBox(value), text: (title ? `${title}:\n` : "") + value } : EMPTY;
   }
   if (c.name === "fields") {
-    const rows = split(c.args, ",").map(pair => { const [key, label] = pair.split("=").map(s => s.trim()); return { label: label || key, value: valueOf(brand, data, key) }; }).filter(r => r.value);
+    const rows = split(c.args, ",").map(pair => { const [key, label] = pair.split("=").map(s => s.trim()); return { label: label || key, value: fieldValue(brand, data, key) }; }).filter(r => r.value);
     return rows.length ? { html: summaryTable(rows) + `<div style="height:14px"></div>`, text: rows.map(r => `${r.label}: ${r.value}`).join("\n") } : EMPTY;
   }
   if (c.name === "note") { const r = inline(c.tokens, brand, data); return r.text.trim() ? note(r, brand) : EMPTY; }
   if (c.name === "items") {
     let rows: Record<string, string>[] = [];
-    try { rows = JSON.parse(valueOf(brand, data, WHOLE.exec(c.args.trim())![1]) || "[]"); } catch { return EMPTY; }
+    try { rows = JSON.parse(fieldValue(brand, data, WHOLE.exec(c.args.trim())![1]) || "[]"); } catch { return EMPTY; }
     if (!Array.isArray(rows) || !rows.length) return EMPTY;
     const cell = (row: Record<string, string>, key: string) => typeof row?.[key] === "string" ? row[key] : "";
     const title = (row: Record<string, string>, times: string) => [cell(row, "qty") && `${cell(row, "qty")} ${times}`, cell(row, "name")].filter(Boolean).join(" ");

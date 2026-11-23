@@ -3,13 +3,14 @@ import type { Brand, TemplateData, TemplateDef } from "../types.ts";
 import type { CustomVariantDefinition, Presentation } from "./config-schema.ts";
 import { own, type TemplatePlans } from "./config.ts";
 import { expandText } from "./blocks.ts";
-import { compileMarkdown, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
+import { compileMarkdown, fill, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
+import { compileHtml, renderHtml, renderHtmlText, type HtmlPlan } from "./html.ts";
 import { MANIFEST } from "./manifest.ts";
 import { textFields } from "./tokens.ts";
 
 type Text = Presentation["subject"];
 type Path = (string | number)[];
-export type Body = { markdown: MarkdownPlan };
+export type Body = { markdown: MarkdownPlan } | { html: HtmlPlan; text?: string };
 interface Variant { subject?: Text; heading?: Text; previewText?: Text; body?: Body }
 export interface CustomPlan extends Variant {
   subject: Text; heading: Text; body: Body; secretFields: string[]; requiredFields: string[]; rowFields: string[];
@@ -32,8 +33,12 @@ export function customPolicies(config: Config): TemplatePolicies {
   return result;
 }
 
-function compileBody(value: CustomVariantDefinition, secrets: string[], path: Path, fail: (path: Path, message: string) => void): Body | undefined {
+function compileBody(value: CustomVariantDefinition, secrets: string[], document: boolean, path: Path, fail: (path: Path, message: string) => void): Body | undefined {
   if ((value.markdown === undefined) === (value.html === undefined)) { fail(path, "markdown or html required"); return undefined; }
+  if (value.html !== undefined) {
+    try { return { html: compileHtml(value.html, { document, secrets }), ...(value.text !== undefined ? { text: value.text } : {}) }; }
+    catch (error) { fail([...path, "html"], error instanceof Error ? error.message : "invalid body"); return undefined; }
+  }
   try {
     const plan = compileMarkdown(value.markdown!);
     if (value.text !== undefined) fail([...path, "text"], "text requires html");
@@ -60,7 +65,7 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
         }
         if (value.subject !== undefined && !textFields(value.subject).length && !(typeof value.subject === "string" ? [value.subject] : value.subject)
           .some(part => typeof part === "string" && part.trim())) fail([...at, "subject"], "empty output");
-        const body = required || value.markdown !== undefined || value.html !== undefined ? compileBody(value, secrets, at, fail) : undefined;
+        const body = required || value.markdown !== undefined || value.html !== undefined ? compileBody(value, secrets, !!definition.layout, at, fail) : undefined;
         return { ...headers, ...(body ? { body } : {}) };
       };
       const base = variant(definition, path, true);
@@ -76,7 +81,8 @@ export const customPlan = (plans: TemplatePlans | undefined, brand: string | und
   own(own(plans?.custom, brand ?? ""), id) ?? own(own(plans?.custom, ""), id);
 
 export function renderBody(body: Body, brand: Brand, data: TemplateData): { html: string; text: string } {
-  return renderMarkdown(body.markdown, brand, data);
+  if ("markdown" in body) return renderMarkdown(body.markdown, brand, data);
+  return { html: renderHtml(body.html, data, brand), text: body.text !== undefined ? fill(body.text, brand, data) : renderHtmlText(body.html, data, brand) };
 }
 
 const definitions = new WeakMap<CustomPlan, TemplateDef>();

@@ -56,6 +56,18 @@
           "",
           "[[button: View your order | {orderUrl}]]"
         ]
+      },
+      "webinar-invite": {
+        "subject": "Zaproszenie: {webinarTitle}",
+        "heading": "{webinarTitle}",
+        "previewText": "Bezpłatny webinar, {date}",
+        "html": [
+          "<p style=\"margin:0 0 16px;font-size:16px;line-height:1.6\">{name|Dzień dobry},</p>",
+          "<p style=\"margin:0 0 16px;font-size:16px;line-height:1.6\">zapraszamy na bezpłatny webinar <strong>{date}</strong>.</p>",
+          "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"background:#0064BC;border-radius:8px\">",
+          "<a href=\"{signupUrl}\" style=\"display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none\">Zapisuję się</a>",
+          "</td></tr></table>"
+        ]
       }
     }
   }
