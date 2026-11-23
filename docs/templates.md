@@ -125,8 +125,9 @@ mailto), ordered and bulleted lists, quotes (drawn as a note), `---`, code block
 GFM tables. `#`/`##` give a subheading and `###` a section label in `theme.labelColor`.
 Images show their alternative text. HTML written in Markdown is shown as text;
 `\{` writes a literal brace. All tables of one body may have at most 1000 cells
-(header width times rows, including the header). One-line components, each on its
-own line outside fenced code blocks:
+(header width times rows, including the header; a block with a valid delimiter row
+counts even if Markdown later declines it). One-line components, each on its own
+line indented at most three spaces and outside fenced code blocks:
 
 | Component | Output, omitted when empty |
 | --- | --- |
@@ -141,7 +142,9 @@ A row field accepts an array of up to 50 objects with nonempty `qty`, `name` and
 `amount` and an optional `description` (strings or numbers, at most 500 characters);
 anything else returns `400 invalid_rows`, and an incomplete source row `422
 invalid_event_data`. A replay record may hold a row field longer than the
-5000-character limit of other fields. Sources map it with `{"path": "data.lines", "as": "rows"}`.
+5000-character limit of other fields. In archives, a row cell shorter than three characters of a
+hidden or classified row field masks another field only when that field's whole
+value equals it. Sources map it with `{"path": "data.lines", "as": "rows"}`.
 Amounts arrive formatted: Mailstack does not calculate, convert or check totals.
 
 ### HTML

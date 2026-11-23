@@ -68,9 +68,8 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     .flatMap(([field, value]) => {
       const secret = secretFields.has(field), replacement = secret ? partial(value) : "[ukryte]";
       const short = !secret && policy.level === "masked" && Array.from(value).length < 3;
-      return [...(secret ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value))
-        .map(representation => ({ representation, replacement, secret, short })),
-      ...shortCells(template, field, value).flatMap(cell => [cell, escapeHtml(cell)]).map(representation => ({ representation, replacement, secret, short: true }))];
+      return (secret ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value))
+        .map(representation => ({ representation, replacement, secret, short }));
     });
   if (policy.level === "masked") replacements.sort((a, b) => b.representation.length - a.representation.length);
   const secretReplacements = replacements.filter(({ secret }) => secret);
@@ -80,16 +79,19 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
       budget.spend(value.length);
       const masked = html ? escapeHtml(replacement) : replacement;
       if (short) {
-        const literal = representation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), word = new RegExp(`(?<![\\p{L}\\p{N}])${literal}(?![\\p{L}\\p{N}])`, "gu");
-        // In HTML only text between tags is matched, so a short value never rewrites markup.
-        value = html ? value.replace(/(<[^>]*>)|[^<]+/g, (part, tag?: string) => tag ?? part.replace(word, () => masked)) : value.replace(word, () => masked);
+        const literal = representation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        value = value.replace(new RegExp(`(?<![\\p{L}\\p{N}])${literal}(?![\\p{L}\\p{N}])`, "gu"), () => masked);
       } else value = value.split(representation).join(masked);
     }
     return maskPatterns(value, patterns, budget);
   };
+  // A row cell shorter than three characters cannot be told apart from a fragment of other text, so only
+  // another field whose whole value equals it is masked.
+  const shortValues = new Map(includeSecrets ? [] : fields.filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
+    .flatMap(([field, value]) => shortCells(template, field, value).map(cell => [cell, secretFields.has(field) ? "••••" : "[ukryte]"] as const)));
   const projected = Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
     !includeSecrets && secretFields.has(key) ? partial(value)
-      : policy.level === "masked" && !show.has(key) ? "[ukryte]" : mask(value, false, secretReplacements),
+      : policy.level === "masked" && !show.has(key) ? "[ukryte]" : shortValues.get(value.trim()) ?? mask(value, false, secretReplacements),
   ]));
   const render = () => {
     if (input.render) return input.render(projected);

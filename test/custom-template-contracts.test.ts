@@ -10,6 +10,7 @@ import { compileMarkdown, renderMarkdown } from "../src/templates/markdown";
 import { normalizeRows } from "../src/templates/rows";
 import { requestContent, renderBody } from "../src/templates/custom";
 import { WorkBudget } from "../src/templates/output";
+import { configuredBody } from "../src/templates/blocks";
 import { prepareSend } from "../src/send";
 import type { SendDeps } from "../src/types";
 
@@ -33,6 +34,10 @@ describe("Markdown table size", () => {
     expect(requestContent({ markdown: `${table(10, 60)}\n\n${table(10, 60)}` })).toEqual({ status: 422, code: "content_invalid" });
     expect(performance.now() - started).toBeLessThan(200);
   });
+  it("does not count text that is not a table", () => {
+    const rows = "a | b\n" + "---\n" + "x\n".repeat(1200);
+    expect("body" in requestContent({ markdown: rows })).toBe(true);
+  });
   it("accepts tables up to the budget and renders every cell", () => {
     const result = requestContent({ markdown: table(10, 99) });
     expect("body" in result).toBe(true);
@@ -53,6 +58,13 @@ describe("rendering budget", () => {
     expect(() => renderBody((content as { body: Parameters<typeof renderBody>[0] }).body, brand, { a: big })).toThrow("template_output_limit");
     const html = requestContent({ html: "<p>{a}</p>".repeat(1600) });
     expect(() => renderBody((html as { body: Parameters<typeof renderBody>[0] }).body, brand, { a: big })).toThrow("template_output_limit");
+  });
+  it("shares one budget across the Markdown blocks of a built-in body", () => {
+    const blocks = Array.from({ length: 24 }, (_, i) => ({ id: `m${i}`, kind: "markdown" as const, markdown: "{p}".repeat(30) }));
+    let reads = 0;
+    const data = new Proxy({ p: "x".repeat(4000) } as Record<string, string>, { get: (target, key: string) => { if (key === "p") reads++; return target[key]; } });
+    expect(() => configuredBody(brand, { body: { blocks } } as never, templatePlans(parseConfig(example)), data)).toThrow("template_output_limit");
+    expect(reads).toBeLessThan(200);
   });
   it("reads each HTML field once when generating the text alternative", () => {
     const content = requestContent({ html: '<p>{a}</p><a href="{u}">x</a>' }) as { body: Parameters<typeof renderBody>[0] };
@@ -77,7 +89,7 @@ describe("short secret row cells", () => {
   const mutate = (value: Draft) => {
     const order = customOf(value)["order-received"];
     order.secretFields = ["items"];
-    order.markdown = [...order.markdown as string[], "", "Size: {size}"];
+    order.markdown = [...order.markdown as string[], "", "Size: {size}", "", "Note: {note}"];
   };
   const order = { firstName: "Anna", order: "DR-1042", total: "€49.00", size: "XL", items: JSON.stringify([{ qty: "1", name: "XL", amount: "€49.00" }]) };
   it.each<[Policy["level"], Partial<Policy>]>([["full", {}], ["masked", { show: ["size", "order", "firstName"] }]])("masks a copy in another field at the %s level", (level, extra) => {
@@ -88,6 +100,18 @@ describe("short secret row cells", () => {
     expect(archive.html).toContain("DR-1042");
     expect(archive.html).toContain("Size: ••••");
     expect(`${archive.html}\n${archive.text}`).not.toMatch(/(?<![\p{L}\p{N}])XL(?![\p{L}\p{N}])/u);
+  });
+  it.each<[Policy["level"], Partial<Policy>]>([["full", {}], ["masked", { show: ["size", "order", "note"] }]])("leaves numbers, entities and rules intact at the %s level", (level, extra) => {
+    const { plans } = compile(mutate);
+    const d = { templates: plans, logging: parseConfig(example).logging } as SendDeps;
+    const data = { order: "DR-1", total: "€1", size: "XL", note: "Tom's step 1", items: JSON.stringify([{ qty: "1", name: "XL", amount: "-" }, { qty: "39", name: "Poster", amount: "€1" }]) };
+    const archive = prepareSend(d, brand, getTemplate("order-received", plans, "acme")!, data, { to: ["anna@example.com"] }, policy(level, extra)).prepared!.archive!;
+    if (archive.level === "meta") throw new Error("expected content");
+    expect(archive.html).toContain("DR-1");
+    expect(archive.html).toContain("Tom&#39;s step 1");
+    expect(archive.html).toContain("Size: ••••<");
+    expect(archive.text).toContain("-".repeat(20));
+    expect(`${archive.html}\n${archive.text}`).not.toMatch(/••••[^<\s]/);
   });
 });
 
@@ -156,6 +180,11 @@ describe("components inside code blocks", () => {
     expect(html).toContain("[[example]]");
     expect(html).toContain("[[button: x]]");
     expect(() => compileMarkdown("[[example]]")).toThrow("invalid component");
+  });
+  it("keeps indented code and list-nested fences as code and needs a valid fence opening", () => {
+    expect(() => compileMarkdown("1. Step\n\n    ```\n    [[example]]\n    ```")).not.toThrow();
+    expect(() => compileMarkdown("Intro\n\n    [[example]]")).not.toThrow();
+    expect(() => compileMarkdown("``` a`b\n[[example]]")).toThrow("invalid component");
   });
 });
 

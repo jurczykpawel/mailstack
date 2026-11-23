@@ -27,8 +27,9 @@ class TableBudget extends Tokenizer {
   cells = 0;
   override table(src: string) {
     const cap = this.rules.block.table.exec(src), other = this.rules.other;
-    const rows = cap?.[3]?.trim() ? cap[3].replace(other.tableRowBlankLine, "").split("\n").length : 0;
-    if (cap && (this.cells += cap[2].replace(other.tableAlignChars, "").split("|").length * (1 + rows)) > MAX_TABLE_CELLS) throw new Error("markdown table limit");
+    const columns = cap && other.tableDelimiter.test(cap[2]) ? cap[2].replace(other.tableAlignChars, "").split("|").length : 0;
+    const rows = columns && cap![3]?.trim() ? cap![3].replace(other.tableRowBlankLine, "").split("\n").length : 0;
+    if ((this.cells += columns * (1 + rows)) > MAX_TABLE_CELLS) throw new Error("markdown table limit");
     return super.table(src);
   }
 }
@@ -42,9 +43,10 @@ export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
   const href = (raw: string) => { const field = WHOLE.exec(raw.trim())?.[1]; if (field) whole.add(field); else fieldNames(raw).forEach(name => partial.add(name)); };
   let fence = "";
   for (const line of source.split("\n")) {
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (fence ? marker?.startsWith(fence) && !line.trim().slice(marker.length) : marker) fence = fence ? "" : marker!;
-    const match = !fence && !marker && COMPONENT.exec(line.trim());
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1], info = marker ? line.trim().slice(marker.length) : "";
+    if (fence ? marker?.startsWith(fence) && !info.trim() : marker && !(marker[0] === "`" && info.includes("`"))) fence = fence ? "" : marker!;
+    // Lines indented four or more spaces belong to code (indented or nested in a list item).
+    const match = !fence && !marker && !/^(?: {4}|\t)/.test(line) && COMPONENT.exec(line.trim());
     if (!match) { buffer.push(line); continue; }
     const name = match[1], args = (match[2] ?? "").trim(), parts = split(args, "|");
     if (!COMPONENTS.includes(name) || name === "button" && parts.length !== 2 || name === "items" && !WHOLE.test(args.trim()))
