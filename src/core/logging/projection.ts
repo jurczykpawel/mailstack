@@ -99,7 +99,10 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     return { ...renderLayout(brand, body), subject: template.subject(brand, projected) };
   };
   const rendered = render();
-  const subject = input.subject ?? rendered.subject;
+  // The sent subject was rendered from the original data, so copies masked above by whole value are masked here too.
+  const subject = Object.entries(data).reduce((text, [key, value]) => shortValues.has(value.trim()) && projected[key] !== value
+    ? text.replace(new RegExp(`(?<![\\p{L}\\p{N}])${value.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "gu"), () => shortValues.get(value.trim())!)
+    : text, input.subject ?? rendered.subject);
   const post = (value: string, html = false, all = false) => {
     if (includeSecrets) return value;
     if (html) {

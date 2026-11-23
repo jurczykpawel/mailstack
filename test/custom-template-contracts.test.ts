@@ -101,6 +101,15 @@ describe("short secret row cells", () => {
     expect(archive.html).toContain("Size: ••••");
     expect(`${archive.html}\n${archive.text}`).not.toMatch(/(?<![\p{L}\p{N}])XL(?![\p{L}\p{N}])/u);
   });
+  it.each<[Policy["level"], Partial<Policy>]>([["full", {}], ["masked", { show: ["size", "order"] }]])("masks the copy in the sent subject at the %s level", (level, extra) => {
+    const { plans } = compile(value => { mutate(value); customOf(value)["order-received"].subject = "Your {size} order {order}"; });
+    const d = { templates: plans, logging: parseConfig(example).logging } as SendDeps;
+    const data = { order: "DR-7", total: "€1", size: "XL", items: JSON.stringify([{ qty: "1", name: "XL", amount: "€1" }]) };
+    const delivery = prepareSend(d, brand, getTemplate("order-received", plans, "acme")!, data, { to: ["anna@example.com"] }, policy(level, extra));
+    expect(delivery.params.subject).toBe("Your XL order DR-7");
+    const archive = delivery.prepared!.archive!;
+    expect(archive.level !== "meta" && archive.subject).toBe("Your •••• order DR-7");
+  });
   it.each<[Policy["level"], Partial<Policy>]>([["full", {}], ["masked", { show: ["size", "order", "note"] }]])("leaves numbers, entities and rules intact at the %s level", (level, extra) => {
     const { plans } = compile(mutate);
     const d = { templates: plans, logging: parseConfig(example).logging } as SendDeps;
