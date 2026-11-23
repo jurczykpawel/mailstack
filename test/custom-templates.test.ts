@@ -54,8 +54,30 @@ describe("custom template configuration", () => {
     ["a secret inside a URL", value => { customOf(value)["license-key"].markdown = "[x](https://a.example/?k={licenseKey})"; }, /license-key/],
     ["an unknown component", value => { customOf(value)["license-key"].markdown = "[[video: x]]"; }, /license-key/],
     ["a replay policy with secrets", value => { value.logging.brands.acme = { templates: { "license-key": { level: "masked", resend: "replay" } } }; }, /resend/],
+    ["a field URL in a public form block", value => { (value.mailTemplates as Record<string, unknown>).templates = { contact: { body: { blocks: [{ id: "m", kind: "markdown", markdown: "[[button: Go | {name}]]" }] } } }; }, /contact/],
+    ["a text field used as a whole URL", value => { (value.mailTemplates as Record<string, unknown>).templates = { notice: { body: { blocks: [{ id: "m", kind: "markdown", markdown: "[x]({heading})" }] } } }; }, /notice/],
+    ["a locale outside the brand languages", value => {
+      (value.brands.acme as Record<string, unknown>).mailTemplates = { languages: { default: "pl", allowed: ["pl", "en"] }, custom: { x: { subject: "S", heading: "H", markdown: "x", locales: { de: { heading: "D" } } } } };
+    }, /custom\.x\.locales\.de/],
+    ["layout none with a Markdown locale", value => { customOf(value).doc = { subject: "S", heading: "H", layout: "none", html: "<html><body><p>x</p></body></html>", locales: { en: { markdown: "x" } } }; }, /custom\.doc/],
+    ["a confirmation template using other fields", value => {
+      Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" }); customOf(value).thanks = { subject: "S", heading: "H", markdown: "Hi {name}, {email}" };
+    }, /thanks/],
+    ["a confirmation template with a field URL", value => {
+      Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" }); customOf(value).thanks = { subject: "S", heading: "H", markdown: "[x]({summary})" };
+    }, /thanks/],
     ["an invalid theme colour", value => { (value.brands.acme.theme as Record<string, unknown>).background = "red;x:url(a)"; }, /theme\.background/],
   ])("rejects %s", (_name, mutate, message) => fails(mutate, message));
+  it("allows a confirmation template limited to name and summary and falls back to the base locale", () => {
+    const { plans, value: configured } = compile(value => {
+      Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" });
+      (value.brands.acme as Record<string, unknown>).mailTemplates = { languages: { default: "pl", allowed: ["pl", "en", "en-GB"] },
+        custom: { thanks: { subject: "Dziękujemy", heading: "Cześć {name}", markdown: "Temat: {summary}", locales: { en: { subject: "Thanks", heading: "Hi {name}", markdown: "Topic: {summary}" }, "en-GB": { heading: "Hello {name}" } } } } };
+    });
+    const email = prepareEmail(configured.brands.acme, getTemplate("thanks", plans, "acme")!, { name: "Anna", summary: "Order" }, { plans, locale: "en-GB", confirmation: true });
+    expect([email.subject, email.heading, email.locale]).toEqual(["Thanks", "Hello Anna", "en-GB"]);
+    expect(email.text).toContain("Topic: Order");
+  });
   it("lets a source select a custom template and enforces its required fields", () => {
     const sources = (fields: Record<string, string>) => (value: Draft) => {
       value.sources = { shop: { signature: { scheme: "bearer-only" }, envelope: { event: "event", timestamp: "timestamp", data: "data" }, legacyKey: true,
@@ -86,6 +108,9 @@ describe("custom template configuration", () => {
       expect(prepareEmail(brand, getTemplate("license-key", plans, "acme")!, { productName: "P" }, { plans }).text).toContain("From file P");
       writeFileSync(join(dir, "escape.json"), JSON.stringify(draft(item => { customOf(item)["license-key"].markdown = { file: "../outside.md" }; })));
       expect(() => readConfigFile(join(dir, "escape.json"))).toThrow(/custom\.license-key\.markdown/);
+      writeFileSync(join(dir, "..dots.md"), "Dotted");
+      writeFileSync(join(dir, "dots.json"), JSON.stringify(draft(item => { customOf(item)["license-key"].markdown = { file: "..dots.md" }; })));
+      expect(readConfigFile(join(dir, "dots.json"))).toContain("Dotted");
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
@@ -141,6 +166,15 @@ describe("custom template delivery", () => {
       expect(missing.status).toBe(422);
       expect(await missing.json()).toMatchObject({ fields: ["items"] });
     } finally { config.sources = saved; }
+  });
+});
+
+describe("values with a lone surrogate", () => {
+  it("send and archive without an error", async () => {
+    const { plans } = compile();
+    const d = { templates: plans, logging: parseConfig(example).logging } as SendDeps;
+    for (const level of ["masked", "full"] as const) expect(() => prepareSend(d, brand, getTemplate("license-key", plans, "acme")!,
+      { productName: "P", licenseKey: "K\ud800EY", name: "a\udc00" }, { to: ["anna@example.com"] }, policy(level))).not.toThrow();
   });
 });
 

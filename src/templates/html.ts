@@ -2,11 +2,11 @@ import { parse, parseFragment, type DefaultTreeAdapterTypes as T } from "parse5"
 import type { Brand, TemplateData } from "../types.ts";
 import { escapeHtml as e } from "./layout.ts";
 import { httpUrl } from "./config-schema.ts";
-import { fieldValue } from "./markdown.ts";
+import { encodeValue, fieldValue } from "./markdown.ts";
 
 type Hole = { field: string; fallback: string; context: "text" | "attr" | "url" | "part"; space?: " " };
 export type Part = string | Hole;
-export interface HtmlPlan { parts: Part[]; fields: string[]; partialUrlFields: string[]; document?: true }
+export interface HtmlPlan { parts: Part[]; fields: string[]; urlFields: string[]; partialUrlFields: string[]; document?: true }
 
 const TAGS = new Set("p h1 h2 h3 h4 h5 h6 ul ol li table thead tbody tfoot tr td th a img span div strong em b i u s br hr".split(" "));
 const DOCUMENT_TAGS = new Set(["html", "head", "body", "title", "meta"]);
@@ -21,7 +21,7 @@ const attribute = (element: T.Element, name: string) => element.attrs.find(attr 
 
 /** Parses HTML into a tree and serializes only allowed elements and attributes, with fields as escaped holes. */
 export function compileHtml(source: string, options: { document?: boolean; secrets?: string[] } = {}): HtmlPlan {
-  const parts: Part[] = [], fields = new Set<string>(), partial = new Set<string>();
+  const parts: Part[] = [], fields = new Set<string>(), partial = new Set<string>(), urls = new Set<string>();
   const push = (text: string, context: Hole["context"]) => {
     let last = 0;
     for (const m of text.matchAll(FIELD)) {
@@ -35,14 +35,15 @@ export function compileHtml(source: string, options: { document?: boolean; secre
   };
   const url = (name: string, value: string) => {
     const whole = WHOLE.exec(value.trim());
-    if (whole) { parts.push({ field: whole[1], fallback: "", context: "url" }); fields.add(whole[1]); return; }
+    if (whole) { parts.push({ field: whole[1], fallback: "", context: "url" }); fields.add(whole[1]); urls.add(whole[1]); return; }
     const skeleton = value.trim().replace(FIELD, "$1x");
     if (!httpUrl(skeleton) && !(name === "href" && /^(?:mailto:[^\s<>"'{}]+|#[\w-]*)$/i.test(skeleton))) throw new Error(`html_url:${name}`);
     push(value.trim(), "part");
   };
-  const visit = (node: T.Node): void => {
+  const visit = (node: T.Node, depth = 0): void => {
+    if (depth > 48) throw new Error("html_nesting_limit");
     if (node.nodeName === "#document") parts.push("<!doctype html>");
-    if (node.nodeName === "#document" || node.nodeName === "#document-fragment") return (node as T.ParentNode).childNodes.forEach(visit);
+    if (node.nodeName === "#document" || node.nodeName === "#document-fragment") return (node as T.ParentNode).childNodes.forEach(child => visit(child, depth + 1));
     if (node.nodeName === "#documentType") return;
     if (node.nodeName === "#comment") { if (/[{}]/.test((node as T.CommentNode).data)) throw new Error("html_field_in_comment"); return; }
     if (node.nodeName === "#text") return push((node as T.TextNode).value, "text");
@@ -59,7 +60,7 @@ export function compileHtml(source: string, options: { document?: boolean; secre
     }
     parts.push(">");
     if (VOID.has(name)) return;
-    element.childNodes.forEach(visit);
+    element.childNodes.forEach(child => visit(child, depth + 1));
     parts.push(`</${name}>`);
   };
   visit(options.document ? parse(source) : parseFragment(source));
@@ -68,7 +69,7 @@ export function compileHtml(source: string, options: { document?: boolean; secre
     if (typeof part === "string" && typeof all.at(-1) === "string") all[all.length - 1] += part; else if (part !== "") all.push(part);
     return all;
   }, []);
-  return { parts: merged, fields: [...fields], partialUrlFields: [...partial], ...(options.document ? { document: true as const } : {}) };
+  return { parts: merged, fields: [...fields], urlFields: [...urls], partialUrlFields: [...partial], ...(options.document ? { document: true as const } : {}) };
 }
 
 export function renderHtml(plan: HtmlPlan, data: TemplateData, brand?: Brand): string {
@@ -76,7 +77,7 @@ export function renderHtml(plan: HtmlPlan, data: TemplateData, brand?: Brand): s
     if (typeof part === "string") return part;
     const value = (brand ? fieldValue(brand, data, part.field) : (Object.hasOwn(data, part.field) ? data[part.field] : "").trim()) || part.fallback.trim();
     if (part.context === "url") return httpUrl(value) ? e(value) : "#";
-    if (part.context === "part") return e(encodeURIComponent(value));
+    if (part.context === "part") return e(encodeValue(value));
     return part.context === "attr" ? e(value) : value ? (part.space ?? "") + e(value).replace(/\n/g, "<br>") : "";
   }).join("");
 }

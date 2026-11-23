@@ -77,3 +77,25 @@ describe("Markdown templates", () => {
     expect(plan.partialUrlFields.sort()).toEqual(["b", "d"]);
   });
 });
+
+describe("Markdown limits and source details", () => {
+  it("matches component lines in linear time", () => {
+    const start = performance.now();
+    expect(md("[[a:" + " ".repeat(16300) + "x").html).toContain("[[a:");
+    expect(performance.now() - start).toBeLessThan(40);
+  });
+  it("refuses deeply nested Markdown", () => {
+    expect(() => compileMarkdown(">".repeat(100) + " x")).toThrow();
+    expect(() => compileMarkdown(Array.from({ length: 80 }, (_, i) => " ".repeat(i * 2) + "- x").join("\n"))).toThrow();
+  });
+  it("keeps reference definitions out of the text and source entities intact", () => {
+    const { html, text } = md("[docs][r]\n\n[r]: https://a.example/d\n\nA&nbsp;B &copy; [q](https://a.example/?a=1&amp;b=2)");
+    expect(text).not.toContain("[r]:");
+    expect(html).toContain('href="https://a.example/d"');
+    expect(html).toContain("A&nbsp;B &copy;");
+    expect(html).toContain('href="https://a.example/?a=1&amp;b=2"');
+  });
+  it("encodes values with a lone surrogate inside URLs", () => {
+    expect(md("[t](https://a.example/?q={q})", { q: "a\ud800b" }).html).toContain("q=a%EF%BF%BDb");
+  });
+});

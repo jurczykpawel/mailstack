@@ -62,7 +62,6 @@ describe("request content", () => {
     ["both bodies", { markdown: "x", html: "<p>x</p>" }, 422, "content_invalid"],
     ["a layout option", { html: "<p>x</p>", layout: "none" }, 422, "content_invalid"],
     ["text with Markdown", { markdown: "x", text: "y" }, 422, "content_invalid"],
-    ["a non-object", "<p>x</p>", 422, "content_invalid"],
   ])("rejects %s", async (_name, content, status, code) => {
     allow(true);
     const d = deps();
@@ -93,5 +92,30 @@ describe("request content records", () => {
     const base = { clientId: "legacy", brand, template: getTemplate("notice")!, data: {}, recipients: [{ role: "to" as const, address: "anna@example.com" }] };
     expect(JSON.stringify(intentRequest({ ...base, content: { markdown: "a" } }))).not.toBe(JSON.stringify(intentRequest({ ...base, content: { markdown: "b" } })));
     expect(intentRequest(base)).not.toHaveProperty("content");
+  });
+});
+
+describe("request content limits and compatibility", () => {
+  it("keeps a string content value as an ordinary field", async () => {
+    allow(false);
+    const d = deps();
+    const res = await send({ brand: "acme", template: "notice", heading: "H", paragraphs: "{content}", content: "Plain field" }, d);
+    expect(res.status).toBe(200);
+  });
+  it.each(["_a", "*a", "**a", "[a", "`a", "~~a"])("refuses dense %s delimiter runs before parsing", async unit => {
+    allow(true);
+    const start = performance.now();
+    const res = await send({ ...notice, content: { markdown: unit.repeat(Math.floor(16000 / unit.length)) } });
+    expect(res.status).toBe(422);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+  it("still accepts ordinary long Markdown", async () => {
+    allow(true);
+    const paragraph = "A **bold** word, an *emphasis* and a [link](https://a.example/x) in a normal sentence.\n\n";
+    expect((await send({ ...notice, content: { markdown: paragraph.repeat(Math.floor(15000 / paragraph.length)) } })).status).toBe(200);
+  });
+  it("refuses deeply nested HTML", async () => {
+    allow(true);
+    expect((await send({ ...notice, content: { html: "<div>".repeat(100) + "x" } })).status).toBe(422);
   });
 });

@@ -93,6 +93,7 @@ function checkPatch(id: TemplateId, patch: TemplatePatch, fields: NonNullable<Te
       try {
         const plan = compileMarkdown(block.markdown);
         checkRefs(plan.fields, at); references += plan.fields.length;
+        if (plan.urlFields.some(field => eligible || fields[field]?.kind !== "url") || eligible && plan.partialUrlFields.length) fail(at, "literal or URL field required");
         if (plan.partialUrlFields.some(field => secrets.includes(field))) fail(at, "secret field inside URL");
       } catch (error) { fail(at, error instanceof Error ? error.message : "invalid markdown"); }
     }
@@ -170,7 +171,6 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
     }
     const confirmation = brand.autoReplyTemplate ?? "received";
     const eligible = new Set(["contact", "received", confirmation]);
-    if (!Object.hasOwn(MANIFEST, confirmation)) fail([...root, "templates"], "unknown confirmation template");
     const forms = local?.forms;
     if (forms) {
       if (Object.keys(forms.kinds).length > 16 || Object.keys(forms.selector.values).length > 64) fail([...root, "forms"], "form limit");

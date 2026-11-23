@@ -20,7 +20,7 @@ function inlineTemplateFiles(json: string, base: string): string {
       const path = `$.${root}.custom.${id}${at}.${key}`;
       try {
         const target = realpathSync(resolve(base, file)), inside = relative(realpathSync(base), target);
-        if (isAbsolute(file) || inside.startsWith("..") || isAbsolute(inside)) throw new Error();
+        if (isAbsolute(file) || inside === ".." || inside.startsWith("../") || isAbsolute(inside)) throw new Error();
         variant[key] = readFileSync(target, "utf8");
       } catch { throw new Error(`${path}: cannot read template file`); }
     }

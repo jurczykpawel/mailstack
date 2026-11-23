@@ -56,8 +56,9 @@ const RESERVED_KEYS = new Set([
   "ref",
   "resendOf",
   "attachments",
-  "content",
 ]);
+/** `content` is a control key only as an object ({markdown} or {html, text}); other values stay content fields. */
+const isContent = (value: unknown) => !!value && typeof value === "object" && !Array.isArray(value);
 
 const DEFAULT_AUTOREPLY_TEMPLATE = "received";
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
@@ -121,7 +122,7 @@ function extractData(body: Record<string, unknown>, publicNonce: boolean, langua
   const data: TemplateData = Object.create(null);
   let count = 0;
   for (const [key, raw] of Object.entries(body)) {
-    if (languages && key === "locale" || RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;
+    if (languages && key === "locale" || RESERVED_KEYS.has(key) || key === "content" && isContent(raw) || (publicNonce && (key === "nonce" || key === "product"))) continue;
     if (count >= MAX_FIELDS) break;
     data[key] = rows.includes(key) ? normalizeRows(raw) ?? "" : coerceValue(raw);
     count++;
@@ -254,7 +255,7 @@ export async function handleSend(
       ? body.template.trim()
       : DEFAULT_TEMPLATE
     : DEFAULT_TEMPLATE;
-  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments) || (Object.hasOwn(body, "content") && !client.rawContent))) {
+  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments) || (isContent(body.content) && !client.rawContent))) {
     return json({ success: false, message: "forbidden", code: "scope" }, { status: 403, cors: corsOrigin });
   }
   const plans = deps.templates ?? compiledTemplates;
@@ -268,14 +269,14 @@ export async function handleSend(
 
   const idempotencyKey = trusted ? req.headers.get("Idempotency-Key") ?? undefined : undefined;
   if (trusted) {
-    const code = Object.hasOwn(body, "resendOf") && (!deps.resendSource || Object.hasOwn(body, "content")) ? "not_supported"
+    const code = Object.hasOwn(body, "resendOf") && (!deps.resendSource || isContent(body.content)) ? "not_supported"
       : Object.hasOwn(body, "ref") && (typeof body.ref !== "string" || body.ref.length < 1 || body.ref.length > 128) ? "invalid_ref"
       : idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey) ? "invalid_idempotency_key" : undefined;
     if (code) return json({ success: false, message: code.replaceAll("_", " "), code }, { status: 400, cors: corsOrigin });
   }
 
   let content: RequestContent | undefined;
-  if (trusted && Object.hasOwn(body, "content")) {
+  if (trusted && isContent(body.content)) {
     const result = requestContent(body.content);
     if ("code" in result) return json({ success: false, message: result.code.replaceAll("_", " "), code: result.code }, { status: result.status, cors: corsOrigin });
     content = result;

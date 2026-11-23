@@ -57,7 +57,7 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
       if (Object.hasOwn(MANIFEST, id)) { fail(path, "built-in template name"); continue; }
       const secrets = definition.secretFields ?? [];
       const rowFields = Object.entries(definition.fields ?? {}).filter(([, field]) => field.kind === "rows").map(([key]) => key);
-      if (definition.layout && definition.markdown !== undefined) fail([...path, "layout"], "layout none requires html");
+      const languages = owner ? config.brands[owner].mailTemplates?.languages : undefined;
       const variant = (value: CustomVariantDefinition, at: Path, required: boolean): Variant => {
         const headers: Variant = {};
         for (const key of HEADERS) if (value[key] !== undefined) {
@@ -66,14 +66,29 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
         }
         if (value.subject !== undefined && !textFields(value.subject).length && !(typeof value.subject === "string" ? [value.subject] : value.subject)
           .some(part => typeof part === "string" && part.trim())) fail([...at, "subject"], "empty output");
+        if (definition.layout && value.markdown !== undefined) fail([...at, "layout"], "layout none requires html");
         const body = required || value.markdown !== undefined || value.html !== undefined ? compileBody(value, secrets, !!definition.layout, at, fail) : undefined;
         return { ...headers, ...(body ? { body } : {}) };
       };
       const base = variant(definition, path, true);
-      const locales = Object.fromEntries(Object.entries(definition.locales ?? {}).map(([tag, value]) => [tag, variant(value, [...path, "locales", tag], false)]));
+      const locales = Object.fromEntries(Object.entries(definition.locales ?? {}).map(([tag, value]) => {
+        if (owner && (!languages?.allowed.includes(tag) || tag === languages.default)) fail([...path, "locales", tag], "invalid brand locale");
+        return [tag, variant(value, [...path, "locales", tag], false)];
+      }));
       result[owner][id] = { ...base, subject: definition.subject, heading: definition.heading, body: base.body!, secretFields: secrets,
         requiredFields: definition.requiredFields ?? [], rowFields, ...(definition.layout ? { layout: definition.layout } : {}), locales };
     }
+  }
+  for (const [brandId, brand] of Object.entries(config.brands)) {
+    const id = brand.autoReplyTemplate;
+    if (id === undefined || Object.hasOwn(MANIFEST, id)) continue;
+    const owner = own(result[brandId], id) ? brandId : "", plan = own(result[owner], id);
+    if (!plan) { fail(["brands", brandId, "autoReplyTemplate"], "unknown confirmation template"); continue; }
+    const variants = [plan, ...Object.values(plan.locales)];
+    const used = variants.flatMap(item => [...HEADERS.flatMap(key => textFields(item[key])), ...item.body ? Object.values(item.body).flatMap(body => body.fields ?? []) : []]);
+    const urls = variants.flatMap(item => item.body ? Object.values(item.body).flatMap(body => [...body.urlFields ?? [], ...body.partialUrlFields ?? []]) : []);
+    if (urls.length || used.some(field => !["name", "summary", "brand.id", "brand.name", "brand.subjectPrefix"].includes(field)))
+      fail([...(owner ? ["brands", owner, "mailTemplates"] : ["mailTemplates"]), "custom", id], "confirmation field unavailable");
   }
   return result;
 }
@@ -97,6 +112,8 @@ export function requestContent(value: unknown): RequestContent | { status: numbe
     keys.includes("markdown") && keys.includes("text")) return invalid;
   const content = raw as Record<string, string>;
   if (Object.values(content).some(text => utf8Size(text) > MAX_CONTENT_BYTES)) return { status: 413, code: "content_too_large" };
+  // Dense delimiter runs make Markdown inline parsing quadratic; ordinary prose stays far below this per block.
+  if (content.markdown?.split(/\n[ \t]*\n/).some(block => (block.match(/[*_~`[]/g)?.length ?? 0) > 128)) return invalid;
   try {
     return { raw: content, body: content.markdown !== undefined ? { markdown: compileMarkdown(content.markdown, false) }
       : { html: compileHtml(content.html), ...(content.text !== undefined ? { text: content.text } : {}) } };
@@ -110,7 +127,7 @@ const definitions = new WeakMap<CustomPlan, TemplateDef>();
 export function customTemplate(id: string, plan: CustomPlan, plans: TemplatePlans): TemplateDef {
   let definition = definitions.get(plan);
   if (definition) return definition;
-  const variant = (locale?: string | null): CustomPlan => ({ ...plan, ...own(plan.locales, locale ?? "") });
+  const variant = (locale?: string | null): CustomPlan => ({ ...plan, ...own(plan.locales, locale?.split("-")[0] ?? ""), ...own(plan.locales, locale ?? "") });
   const text = (value: Text, brand: Brand, data: TemplateData) => expandText(value, brand, data, plans).join("");
   definition = {
     id, secretFields: plan.secretFields, requiredFields: plan.requiredFields, rowFields: plan.rowFields,

@@ -5,11 +5,11 @@ import { httpUrl } from "./config-schema.ts";
 
 type Component = { kind: "component"; name: string; args: string; tokens?: Token[] };
 export type Chunk = { kind: "markdown"; tokens: Token[] } | Component;
-export interface MarkdownPlan { chunks: Chunk[]; fields: string[]; partialUrlFields: string[] }
+export interface MarkdownPlan { chunks: Chunk[]; fields: string[]; urlFields: string[]; partialUrlFields: string[] }
 type Out = { html: string; text: string };
 
 const COMPONENTS = ["button", "code", "fields", "note", "items", "totals"];
-const COMPONENT = /^\[\[([a-z]+)(?::\s*(.*?))?\]\]$/;
+const COMPONENT = /^\[\[([a-z]+)(?::(.*))?\]\]$/;
 const FIELD = /( ?)\{([A-Za-z_][\w.-]{0,127})(?:\|([^{}]*))?\}/g;
 const WHOLE = /^\{([A-Za-z_][\w.-]{0,127})\}$/;
 const P = "margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;";
@@ -17,6 +17,8 @@ const RULE = "border-top:1px solid #e6e1d3;";
 const EMPTY: Out = { html: "", text: "" };
 const join = (outs: Out[], text = ""): Out => ({ html: outs.map(o => o.html).join(""), text: outs.map(o => o.text).join(text) });
 const split = (args: string, sep: string) => args.split(sep).map(s => s.trim()).filter(Boolean);
+/** Percent-encodes a value; a lone surrogate becomes U+FFFD instead of throwing. */
+export const encodeValue = (value: string) => encodeURIComponent(value.toWellFormed());
 export const fieldNames = (text: string) => [...text.matchAll(FIELD)].map(m => m[2]);
 const ROW_KEYS = ["qty", "name", "amount", "description"];
 
@@ -36,13 +38,13 @@ export function rowCells(value: string): string[] {
 /** `bundled` plans are stored as JSON, so they keep exactly what a JSON round trip preserves. */
 export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
   const plain = (tokens: Token[]): Token[] => bundled ? JSON.parse(JSON.stringify(tokens)) : tokens;
-  const chunks: Chunk[] = [], buffer: string[] = [], partial = new Set<string>();
+  const chunks: Chunk[] = [], buffer: string[] = [], partial = new Set<string>(), whole = new Set<string>();
   const flush = () => { if (buffer.length) chunks.push({ kind: "markdown", tokens: plain(Lexer.lex(buffer.join("\n"), { gfm: true })) }); buffer.length = 0; };
-  const href = (raw: string) => { if (!WHOLE.test(raw.trim())) fieldNames(raw).forEach(field => partial.add(field)); };
+  const href = (raw: string) => { const field = WHOLE.exec(raw.trim())?.[1]; if (field) whole.add(field); else fieldNames(raw).forEach(name => partial.add(name)); };
   for (const line of source.split("\n")) {
     const match = COMPONENT.exec(line.trim());
     if (!match) { buffer.push(line); continue; }
-    const [, name, args = ""] = match, parts = split(args, "|");
+    const name = match[1], args = (match[2] ?? "").trim(), parts = split(args, "|");
     if (!COMPONENTS.includes(name) || name === "button" && parts.length !== 2 || name === "items" && !WHOLE.test(args.trim()))
       throw new Error(`invalid component ${name}`);
     if (name === "button") href(parts[1]);
@@ -50,15 +52,16 @@ export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
     chunks.push({ kind: "component", name, args, ...(name === "note" ? { tokens: plain(Lexer.lexInline(args, { gfm: true })) } : {}) });
   }
   flush();
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) node.forEach(visit);
+  const visit = (node: unknown, depth: number): void => {
+    if (Array.isArray(node)) node.forEach(child => visit(child, depth));
     else if (node && typeof node === "object") {
+      if (depth > 24) throw new Error("markdown nesting limit");
       if ((node as Token).type === "link") href((node as Tokens.Link).href);
-      for (const key of ["tokens", "items", "header", "rows"]) visit((node as Record<string, unknown>)[key]);
+      for (const key of ["tokens", "items", "header", "rows"]) visit((node as Record<string, unknown>)[key], depth + 1);
     }
   };
-  visit(chunks);
-  return { chunks, fields: [...new Set(fieldNames(source))], partialUrlFields: [...partial] };
+  visit(chunks, 0);
+  return { chunks, fields: [...new Set(fieldNames(source))], urlFields: [...whole], partialUrlFields: [...partial] };
 }
 
 export const fieldValue = (brand: Brand, data: TemplateData, key: string) => (key.startsWith("brand.") && ["brand.id", "brand.name", "brand.subjectPrefix"].includes(key)
@@ -66,7 +69,7 @@ export const fieldValue = (brand: Brand, data: TemplateData, key: string) => (ke
 /** Substitute `{field}` and `{field|fallback}`; an empty field also removes the space before it. */
 export function fill(text: string, brand: Brand, data: TemplateData, html = false): string {
   let out = "", last = 0;
-  const literal = (value: string) => html ? e(value) : value;
+  const literal = (value: string) => html ? e(value).replace(/&amp;(#?[A-Za-z0-9]{1,32};)/g, "&$1") : value;
   for (const m of text.matchAll(FIELD)) {
     const value = fieldValue(brand, data, m[2]) || (m[3] ?? "").trim();
     const shown = !html ? value : /^[^\s-]{1,24}(?:-[^\s-]{1,24}){1,3}$/.test(value) ? `<span style="white-space:nowrap;">${e(value)}</span>` : e(value).replace(/\n/g, "<br>");
@@ -77,7 +80,7 @@ export function fill(text: string, brand: Brand, data: TemplateData, html = fals
 }
 function url(raw: string, brand: Brand, data: TemplateData, mailto = true): string {
   const whole = WHOLE.exec(raw.trim());
-  const href = whole ? fieldValue(brand, data, whole[1]) : raw.trim().replace(FIELD, (_, space: string, key: string) => space + encodeURIComponent(fieldValue(brand, data, key)));
+  const href = whole ? fieldValue(brand, data, whole[1]) : raw.trim().replace(/&amp;/g, "&").replace(FIELD, (_, space: string, key: string) => space + encodeValue(fieldValue(brand, data, key)));
   return httpUrl(href) || mailto && !whole && /^mailto:[^\s<>"'{}]+$/i.test(href) ? href : "";
 }
 
@@ -106,7 +109,7 @@ const note = (r: Out, brand: Brand): Out => ({ html: `<table role="presentation"
 function block(t: Token, brand: Brand, data: TemplateData): Out {
   const blocks = (tokens: Token[]) => join(tokens.map(c => c.type === "text" ? inline(c.tokens ?? [c], brand, data) : block(c, brand, data)), "\n");
   switch (t.type) {
-    case "space": return EMPTY;
+    case "space": case "def": return EMPTY;
     case "paragraph": { const r = inline(t.tokens, brand, data); return r.text.trim() ? { html: `<p style="${P}">${r.html}</p>`, text: r.text } : EMPTY; }
     case "heading": {
       const r = inline(t.tokens, brand, data);
