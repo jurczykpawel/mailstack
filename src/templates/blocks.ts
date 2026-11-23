@@ -4,6 +4,7 @@ import { httpUrl } from "./config-schema.ts";
 import type { TemplatePlans } from "./config.ts";
 import { own } from "./config.ts";
 import { tokenize } from "./tokens.ts";
+import { compileMarkdown, renderMarkdown } from "./markdown.ts";
 import { Output, length, parts, type Content, type Emit } from "./output.ts";
 import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout, humanizeLabel } from "./layout.ts";
 
@@ -40,6 +41,9 @@ export function configuredBody(brand: Brand, patch: TemplatePatch, plans: Templa
       const items = block.items.map(key => ({ label: patch.copy?.[`${key}Label`] === undefined ? [names[key]] : expandText(patch.copy[`${key}Label`], brand, data, plans),
         value: (own(data, `_${key}`) ?? "").trim() ? data[`_${key}`] : "-" }));
       if (items.length) blocks.push({ html: out => metadataBlock(items, out), text: out => metadataBlock(items, out, true) });
+    } else if (block.kind === "markdown") {
+      const rendered = renderMarkdown(own(plans.markdown, block.markdown) ?? compileMarkdown(block.markdown), brand, data);
+      if (rendered.html) blocks.push({ html: out => out.raw(rendered.html), text: out => out.raw(rendered.text) });
     } else if (block.kind === "cta") {
       const url = "literal" in block.url ? block.url.literal : (own(data, block.url.field) ?? "").trim();
       if (httpUrl(url)) blocks.push({ html: out => ctaButton(brand, url, block.label, out), text: out => out.raw([block.label, ": ", url]) });

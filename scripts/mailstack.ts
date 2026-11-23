@@ -4,11 +4,26 @@ import { pathToFileURL } from "node:url";
 import { readConfigFile } from "../src/core/config/node.ts";
 import { templatePlans } from "../src/templates/config.ts";
 import { parseConfig } from "../src/core/config/schema.ts";
+import { getTemplate } from "../src/templates/index.ts";
+import { prepareEmail } from "../src/templates/prepare.ts";
+import { renderHtmlText } from "../src/templates/html.ts";
+import { normalizeRows } from "../src/templates/markdown.ts";
 
 try {
   const [command, action, file, ...extra] = process.argv.slice(2);
   if (command === "client") {
     throw new Error("Scoped API clients require Mailstack Pro: run `node scripts/client.ts create` in mailstack-pro");
+  } else if (command === "template") {
+    const [, , , brandId, id, dataFile, ...rest] = process.argv.slice(2);
+    if (action !== "preview" || !file || !brandId || !id || rest.length) throw new Error("Usage: mailstack template preview <config> <brand> <template> [data.json]");
+    const config = parseConfig(JSON.parse(readConfigFile(file))), plans = templatePlans(config), brand = config.brands[brandId];
+    const template = brand && getTemplate(id, plans, brandId);
+    if (!template) throw new Error("unknown brand or template");
+    const input: Record<string, unknown> = dataFile ? JSON.parse(readConfigFile(dataFile)) : {};
+    const data = Object.fromEntries(Object.entries(input).map(([key, value]) => [key, template.rowFields?.includes(key) ? normalizeRows(value) ?? "" : String(value ?? "")]));
+    const email = prepareEmail(brand, template, data, { plans });
+    console.error(`Subject: ${email.subject}\n\n${email.text}`);
+    console.log(email.html);
   } else if (command === "log") {
     const { readLog } = await import("./log.ts");
     await readLog(process.argv.slice(3));
@@ -20,6 +35,12 @@ try {
       try { value = JSON.parse(readConfigFile(file)); } catch { throw new Error("$: invalid JSON or unreadable file"); }
       const config = parseConfig(value);
       for (const warning of templatePlans(config).warnings) console.warn(warning);
+      for (const templates of Object.values(templatePlans(config).custom ?? {})) for (const [id, plan] of Object.entries(templates)) {
+        if (!("html" in plan.body) || plan.body.text !== undefined) continue;
+        const sample = Object.fromEntries(plan.body.html.fields.map(field => [field, `{${field}}`]));
+        for (const part of plan.body.html.parts) if (typeof part !== "string" && part.context === "url") sample[part.field] = `https://example.com/{${part.field}}`;
+        console.log(`${id} (generated text):\n${renderHtmlText(plan.body.html, sample)}\n`);
+      }
       console.log("Configuration OK");
     } else {
       const result = spawnSync(process.execPath, ["--input-type=module", "-e", `

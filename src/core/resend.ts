@@ -43,7 +43,7 @@ export function createResendService(cfg: Config, store: KyselyStore, env: Env, d
     const m = await store.db.selectFrom('messages').selectAll().where('id', '=', id).executeTakeFirst();
     if (!m || m.meta_expires_at <= at() || m.created_at <= at() - cfg.logging.ceilings.metaDays * 86400000) return fail(404, 'not_found');
     if (panel && ((panel.brands !== '*' && !panel.brands.includes(m.brand)) || (panel.templates !== '*' && !panel.templates.includes(m.template)))) fail(403, 'scope');
-    const rawTemplate = getTemplate(m.template), brand = cfg.brands[m.brand];
+    const brand = cfg.brands[m.brand], rawTemplate = getTemplate(m.template, plans, m.brand);
     const template = rawTemplate && brand ? effectiveTemplate(rawTemplate, plans ? resolvePresentation(plans, brand, m.template).definition.secretFields : []) : undefined;
     const { policy } = await resolvePolicy(cfg.logging, m.brand, m.template, template);
     if (!template || !Object.hasOwn(cfg.brands, m.brand) || policy.resend === 'off' || policy.level === 'none') return fail(409, 'resend_disabled');

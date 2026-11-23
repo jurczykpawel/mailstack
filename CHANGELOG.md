@@ -2,6 +2,17 @@
 
 All notable changes to mailstack are documented here.
 
+## [Unreleased]
+
+- Named templates (`mailTemplates.custom`) written in Markdown with button, field,
+  code, note, order-row and totals components, or in HTML reduced to an allow list;
+  `layout: "none"` for complete HTML documents from configuration.
+- `markdown` body block for the built-in types and optional brand theme options
+  (`background`, `headingFont`, `buttonRadius`, `labelColor`).
+- Trusted clients with `rawContent: true` may send their own body in `content`
+  (an object; a string `content` stays an ordinary field).
+- Order rows (`kind: "rows"`) from `/v1/send` and source mappings (`as: "rows"`).
+
 ## [1.1.2] - 2026-11-08
 
 - Reduce template and archive byte measurement cost while preserving rendered output and size limits.
@@ -11,8 +22,6 @@ All notable changes to mailstack are documented here.
 
 ### Fixed
 - Test suite: the tombstone register test used a macOS-only temporary path and failed on Linux CI.
-
-## [Unreleased]
 
 ## [1.1.0] - 2026-11-07
 

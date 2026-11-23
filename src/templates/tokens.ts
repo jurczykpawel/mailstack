@@ -9,3 +9,7 @@ export function tokenize(value: string): Token[] {
   if (start < value.length) parts.push(value.slice(start));
   return parts;
 }
+type Text = string | readonly (string | { field: string })[] | undefined;
+/** Field names referenced by a configured text (placeholders and fragments). */
+export const textFields = (value: Text): string[] => value === undefined ? [] : (typeof value === "string" ? [value] : value)
+  .flatMap(part => typeof part === "string" ? tokenize(part).flatMap(token => typeof token === "string" ? [] : [token.field]) : [part.field]);

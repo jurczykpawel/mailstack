@@ -81,13 +81,14 @@ export function ctaButton(brand: Brand, url: string, label: string, sink?: Outpu
   const href = url.trim();
   if (!isHttpUrl(href)) return "";
   const accent = esc(brand.theme.accent);
+  const radius = String(brand.theme.buttonRadius ?? 8);
   const safeUrl = esc(href);
   const safeLabel = esc(label.trim() || "Otwórz");
   output.html`
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;max-width:100%;table-layout:fixed;">
               <tr>
-                <td style="border-radius:8px;background:${accent};">
-                  <a href="${safeUrl}" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">${safeLabel}</a>
+                <td style="border-radius:${radius}px;background:${accent};">
+                  <a href="${safeUrl}" style="display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:${radius}px;">${safeLabel}</a>
                 </td>
               </tr>
             </table>`;
@@ -153,6 +154,8 @@ export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: O
   const accent = esc(theme.accent);
   const safeName = esc(brand.name);
   const heading = esc(input.heading);
+  const background = esc(theme.background ?? "#f0f2f5");
+  const headingStyle = theme.headingFont === "serif" ? "font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1.3;color:#1a1a1a;font-weight:500;" : "font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;";
 
   const header = (out: Output) => theme.logoUrl
     ? out.html`<img src="${esc(theme.logoUrl)}" alt="${safeName}" height="36" style="height:36px;max-width:100%;object-fit:contain;display:block;border:0;">`
@@ -180,9 +183,9 @@ export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: O
     <title>${heading}</title>
     ${input.headHtml ?? ""}
   </head>
-  <body style="margin:0;padding:0;background:#f0f2f5;font-family:${FONT_STACK};overflow-wrap:anywhere;word-break:break-word;">
+  <body style="margin:0;padding:0;background:${background};font-family:${FONT_STACK};overflow-wrap:anywhere;word-break:break-word;">
     ${preview}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0;table-layout:fixed;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${background};padding:24px 0;table-layout:fixed;">
       <tr>
         <td align="center">
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;table-layout:fixed;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
@@ -191,7 +194,7 @@ export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: O
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
-                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">${heading}</h1>
+                <h1 style="margin:0;${headingStyle}">${heading}</h1>
               </td>
             </tr>
             <tr>

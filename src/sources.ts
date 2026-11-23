@@ -71,7 +71,7 @@ export async function handleSourceHook(req: Request, env: Env, deps: SendDeps, i
   if (!action || action.action === 'ignore') return json({ success: true, ignored: event });
   if (action.action === 'reject') return json({ success: false, code: 'unsupported_event', message: `Unsupported event: ${event}. Disable this event in the sender; retry will not help.` }, 422);
   if (!permits(client, `hook:${id}`, brandId, action.template)) return forbidden();
-  const template = getTemplate(action.template);
+  const template = getTemplate(action.template, deps.templates ?? compiledTemplates, brand.id);
   if (!template) return invalid(['template']);
   const budget = new WorkBudget(1024 * 1024);
   let mapped: TemplateData, base: TemplateData, ref = '', identity = '';

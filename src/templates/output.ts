@@ -35,7 +35,7 @@ export class Output {
   addBytes(bytes: number) { this.count(bytes); }
   private track(text: string, bytes: number, lines = false) {
     if (this.trimming) {
-      const tail = /\s*$/.exec(lines ? text.slice(text.lastIndexOf("\n") + 1) : text)![0];
+      const line = lines ? text.slice(text.lastIndexOf("\n") + 1) : text, tail = line.slice(line.trimEnd().length);
       this.tail = tail.length === text.length ? this.tail + utf8Size(tail) : utf8Size(tail);
     }
     const pair = this.high && /^[\udc00-\udfff]/.test(text);
