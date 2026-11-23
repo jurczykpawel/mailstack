@@ -20,6 +20,8 @@ export interface ProjectionInput {
   template: TemplateDef;
   data: TemplateData;
   subject?: string;
+  /** The subject was set by the request, not rendered by the template. */
+  explicitSubject?: boolean;
   metadata?: ArchiveMetadata;
   budget?: WorkBudget;
   render?: (data: TemplateData) => { html: string; text: string; subject: string };
@@ -99,10 +101,9 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     return { ...renderLayout(brand, body), subject: template.subject(brand, projected) };
   };
   const rendered = render();
-  // The sent subject was rendered from the original data, so copies masked above by whole value are masked here too.
-  const subject = Object.entries(data).reduce((text, [key, value]) => shortValues.has(value.trim()) && projected[key] !== value
-    ? text.replace(new RegExp(`(?<![\\p{L}\\p{N}])${value.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "gu"), () => shortValues.get(value.trim())!)
-    : text, input.subject ?? rendered.subject);
+  // A whole-value mask changes a field the template's own subject may contain, so that subject is taken from the masked render.
+  const wholeValueMasked = Object.entries(data).some(([key, value]) => shortValues.has(value.trim()) && projected[key] !== value);
+  const subject = input.subject === undefined || wholeValueMasked && !input.explicitSubject ? rendered.subject : input.subject;
   const post = (value: string, html = false, all = false) => {
     if (includeSecrets) return value;
     if (html) {

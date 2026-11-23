@@ -74,7 +74,7 @@ export function prepareRecord(input: RecordInput, policy: Config['logging']['def
     ...(input.explicitSubject !== undefined ? { subjectOverride: input.explicitSubject } : {}),
     ...(input.localeInput ? { locale: input.localeInput } : {}),
     template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
-  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
+  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject, explicitSubject: input.explicitSubject !== undefined,
     budget: input.budget, render: input.render, metadata: { clientId: input.clientId, status: 'sending', createdAt: new Date(0).toISOString(),
       ...(input.renderMetadata ? { render: input.renderMetadata } : {}) } });
   measureJson(archive, 2 * 1024 * 1024);
