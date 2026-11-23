@@ -42,7 +42,7 @@ const pattern = z.union([
 const full = (value: unknown) => z.unknown().refine((v) => JSON.stringify(v) === JSON.stringify(value), PRO_KEYS).optional();
 const secretEnv = z.string().regex(/^[A-Z_][A-Z0-9_]{0,127}$/i);
 const legacySchema = z.strictObject({
-  enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"), attachments: z.boolean().default(false),
+  enabled: z.boolean().default(true), env: z.string().min(1).default("API_KEY"), attachments: z.boolean().default(false), rawContent: z.boolean().default(false),
   signatureSecretEnv: secretEnv.optional(),
   brands: full("*"), templates: full("*"), recipientOverride: full(true),
 });

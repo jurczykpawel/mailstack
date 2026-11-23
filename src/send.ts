@@ -30,6 +30,7 @@ import { getTemplate } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
 import { buildBlocks } from "./markup";
 import { normalizeRows } from "./templates/markdown.ts";
+import { contentPlaceholder, requestContent, type RequestContent } from "./templates/custom.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_FIELDS = 40;
@@ -55,6 +56,7 @@ const RESERVED_KEYS = new Set([
   "ref",
   "resendOf",
   "attachments",
+  "content",
 ]);
 
 const DEFAULT_AUTOREPLY_TEMPLATE = "received";
@@ -252,7 +254,7 @@ export async function handleSend(
       ? body.template.trim()
       : DEFAULT_TEMPLATE
     : DEFAULT_TEMPLATE;
-  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments))) {
+  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments) || (Object.hasOwn(body, "content") && !client.rawContent))) {
     return json({ success: false, message: "forbidden", code: "scope" }, { status: 403, cors: corsOrigin });
   }
   const plans = deps.templates ?? compiledTemplates;
@@ -266,10 +268,17 @@ export async function handleSend(
 
   const idempotencyKey = trusted ? req.headers.get("Idempotency-Key") ?? undefined : undefined;
   if (trusted) {
-    const code = Object.hasOwn(body, "resendOf") && !deps.resendSource ? "not_supported"
+    const code = Object.hasOwn(body, "resendOf") && (!deps.resendSource || Object.hasOwn(body, "content")) ? "not_supported"
       : Object.hasOwn(body, "ref") && (typeof body.ref !== "string" || body.ref.length < 1 || body.ref.length > 128) ? "invalid_ref"
       : idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey) ? "invalid_idempotency_key" : undefined;
     if (code) return json({ success: false, message: code.replaceAll("_", " "), code }, { status: 400, cors: corsOrigin });
+  }
+
+  let content: RequestContent | undefined;
+  if (trusted && Object.hasOwn(body, "content")) {
+    const result = requestContent(body.content);
+    if ("code" in result) return json({ success: false, message: result.code.replaceAll("_", " "), code: result.code }, { status: result.status, cors: corsOrigin });
+    content = result;
   }
 
   let attachments: Attachment[] | undefined;
@@ -347,6 +356,7 @@ export async function handleSend(
     ref: trusted ? body.ref as string | undefined : undefined,
     idempotencyKey,
     attachments,
+    content,
     submitted: !trusted && template.id === 'contact',
   });
 
@@ -489,18 +499,19 @@ export async function renderAndSend(
 
 export function prepareSend(deps: SendDeps, brand: Brand, template: TemplateDef, data: TemplateData, params: RenderAndSendParams, policy: import("./core/config/schema.ts").Policy): PreparedDelivery {
   const plans = deps.templates ?? compiledTemplates;
-  const prepared = prepareEmail(brand, template, data, { ...params, plans });
+  const prepared = prepareEmail(brand, template, data, { ...params, content: params.content?.body, plans });
   const delivery: PreparedDelivery = {
     params: { from: brand.from, attachments: params.attachments, to: params.to, replyTo: params.replyTo, subject: prepared.subject, html: prepared.html, text: prepared.text },
     template: prepared.template, data: prepared.data,
     record: { budget: prepared.budget,
       renderMetadata: { ...(prepared.formKind ? { formKind: prepared.formKind } : {}), ...(prepared.locale ? { locale: prepared.locale } : {}) },
-      render: projected => prepareEmail(brand, template, projected, { ...params, plans, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget }),
+      render: projected => prepareEmail(brand, template, projected, { ...params, plans, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget,
+        content: params.content && (policy.level === "full" ? params.content.body : contentPlaceholder()) }),
     },
   };
   delivery.prepared = prepareRecord({ ...delivery.record, clientId: params.clientId ?? 'public', brand, template: delivery.template, data: delivery.data,
     recipients: params.to.map(address => ({ role: 'to', address })), subject: prepared.subject, explicitSubject: params.subject,
-    localeInput: prepared.localeInput, replyTo: params.replyTo, markup: params.explicitJsonLd }, policy, (deps.logging ?? config.logging).patterns);
+    localeInput: prepared.localeInput, replyTo: params.replyTo, markup: params.explicitJsonLd, content: params.content?.raw }, policy, (deps.logging ?? config.logging).patterns);
   delivery.params.to = freezePlans([...delivery.params.to]);
   Object.freeze(delivery.params); freezePlans(delivery.prepared);
   return Object.freeze(delivery);

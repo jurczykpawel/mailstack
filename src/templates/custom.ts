@@ -7,6 +7,7 @@ import { compileMarkdown, fill, renderMarkdown, type MarkdownPlan } from "./mark
 import { compileHtml, renderHtml, renderHtmlText, type HtmlPlan } from "./html.ts";
 import { MANIFEST } from "./manifest.ts";
 import { textFields } from "./tokens.ts";
+import { utf8Size } from "./output.ts";
 
 type Text = Presentation["subject"];
 type Path = (string | number)[];
@@ -84,6 +85,26 @@ export function renderBody(body: Body, brand: Brand, data: TemplateData): { html
   if ("markdown" in body) return renderMarkdown(body.markdown, brand, data);
   return { html: renderHtml(body.html, data, brand), text: body.text !== undefined ? fill(body.text, brand, data) : renderHtmlText(body.html, data, brand) };
 }
+
+export interface RequestContent { raw: Record<string, string>; body: Body }
+const MAX_CONTENT_BYTES = 16 * 1024;
+/** Validates trusted request `content` ({markdown} or {html, text?}) and compiles it with the same allow list. */
+export function requestContent(value: unknown): RequestContent | { status: number; code: string } {
+  const invalid = { status: 422, code: "content_invalid" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return invalid;
+  const raw = value as Record<string, unknown>, keys = Object.keys(raw);
+  if (keys.some(key => !["markdown", "html", "text"].includes(key) || typeof raw[key] !== "string") || keys.includes("markdown") === keys.includes("html") ||
+    keys.includes("markdown") && keys.includes("text")) return invalid;
+  const content = raw as Record<string, string>;
+  if (Object.values(content).some(text => utf8Size(text) > MAX_CONTENT_BYTES)) return { status: 413, code: "content_too_large" };
+  try {
+    return { raw: content, body: content.markdown !== undefined ? { markdown: compileMarkdown(content.markdown) }
+      : { html: compileHtml(content.html), ...(content.text !== undefined ? { text: content.text } : {}) } };
+  } catch { return invalid; }
+}
+let placeholder: Body | undefined;
+/** Archived instead of request content below the full logging level. */
+export const contentPlaceholder = () => placeholder ??= { markdown: compileMarkdown("\\[treść z żądania ukryta\\]") };
 
 const definitions = new WeakMap<CustomPlan, TemplateDef>();
 export function customTemplate(id: string, plan: CustomPlan, plans: TemplatePlans): TemplateDef {

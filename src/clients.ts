@@ -5,6 +5,8 @@ export type Scope = "send" | "panel" | "webhooks:write" | `hook:${string}`;
 export interface Client {
   id: string; scopes: Scope[]; brands: "*" | string[]; templates: "*" | string[];
   recipientOverride: boolean; attachments: boolean;
+  /** May send its own Markdown/HTML body in `content` (default false). */
+  rawContent?: boolean;
   signatureSecretEnv?: string;
   resendCallback?: { url: string; secretEnv: string };
 }
@@ -45,7 +47,7 @@ export async function authenticate(
   const secret = Reflect.get(env, legacy?.env ?? "API_KEY");
   if ((legacy?.enabled ?? true) && typeof secret === "string" && secret && await tokenMatches(token, await tokenSha256(secret))) {
     return { id: "legacy", scopes: ["send", ...Object.entries(config.sources ?? {}).filter(([, source]) => source.legacyKey).map(([id]) => `hook:${id}` as Scope)], brands: "*", templates: "*", recipientOverride: true,
-      attachments: legacy?.attachments ?? false, signatureSecretEnv: legacy?.signatureSecretEnv };
+      attachments: legacy?.attachments ?? false, rawContent: legacy?.rawContent ?? false, signatureSecretEnv: legacy?.signatureSecretEnv };
   }
   const result = keys ? await keys.authenticate(token, env, defer) : null;
   if (!result || !("denied" in result)) return result;
