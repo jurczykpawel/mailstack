@@ -5,8 +5,10 @@ import { TEMPLATES } from "../../templates/index.ts";
 import { PRO_KEYS } from "../../clients.ts";
 import { mailTemplatesSchema, brandMailTemplatesSchema } from "../../templates/config-schema.ts";
 import { compileTemplatePlans } from "../../templates/config.ts";
+import { customPolicies } from "../../templates/custom.ts";
 
 const strings = z.array(z.string());
+const color = z.string().regex(/^(?:#[0-9a-f]{3,8}|[a-z]{3,20}|rgba?\([0-9.,%\s]{5,40}\))$/i);
 const days = z.number().int().positive();
 const policy = z.strictObject({
   level: z.enum(["none", "meta", "masked", "full"]), contentDays: days, metaDays: days,
@@ -27,6 +29,7 @@ const brand = z.strictObject({
   theme: z.strictObject({
     accent: z.string(), accent2: z.string().optional(), logoUrl: z.string().optional(), siteUrl: z.string(),
     address: z.string().optional(), phone: z.string().optional(),
+    background: color.optional(), headingFont: z.enum(["sans", "serif"]).optional(), buttonRadius: z.number().int().min(0).max(999).optional(), labelColor: color.optional(),
   }),
 });
 const pattern = z.union([
@@ -88,6 +91,7 @@ export function effectivePolicies(config: Config, templates: TemplatePolicies = 
 function schemaWithTemplates(templates: TemplatePolicies) {
   return shape.superRefine((config, ctx) => {
     const fail = (path: string[], message: string) => ctx.addIssue({ code: "custom", path, message });
+    const known = { ...customPolicies(config), ...templates };
     for (const [id, source] of Object.entries(config.sources ?? {})) {
       if (source.defaultBrand && !Object.hasOwn(config.brands, source.defaultBrand))
         fail(["sources", id, "defaultBrand"], "unknown brand");
@@ -96,8 +100,8 @@ function schemaWithTemplates(templates: TemplatePolicies) {
       for (const [event, action] of Object.entries(source.events)) {
         if (action.action !== "send") continue;
         const path = ["sources", id, "events", event];
-        if (!Object.hasOwn(templates, action.template)) fail([...path, "template"], "unknown template");
-        else for (const field of templates[action.template]?.requiredFields ?? []) {
+        if (!Object.hasOwn(known, action.template)) fail([...path, "template"], "unknown template");
+        else for (const field of known[action.template]?.requiredFields ?? []) {
           if (!Object.hasOwn(action.fields, field)) fail([...path, "fields", field], "required template field");
         }
         for (const field of requiredSourceFields(action)) {
@@ -111,11 +115,11 @@ function schemaWithTemplates(templates: TemplatePolicies) {
     for (const id of Object.keys(config.logging.brands)) {
       if (!Object.hasOwn(config.brands, id)) fail(["logging", "brands", id], "unknown brand");
     }
-    for (const { templateId, policy: p, path } of effectivePolicies(config, templates)) {
+    for (const { templateId, policy: p, path } of effectivePolicies(config, known)) {
       if (p.contentDays > p.metaDays || p.contentDays > config.logging.ceilings.contentDays)
         fail(path("contentDays"), `exceeds $.${path("metaDays").join(".")} or ceiling`);
       if (p.metaDays > config.logging.ceilings.metaDays) fail(path("metaDays"), "exceeds ceiling");
-      if (p.resend === "replay" && Object.hasOwn(templates, templateId) && templates[templateId]?.secretFields?.length)
+      if (p.resend === "replay" && Object.hasOwn(known, templateId) && known[templateId]?.secretFields?.length)
         fail(path("resend"), "template requires source or off");
       if (p.resend === "replay" && p.level !== "masked" && p.level !== "full")
         fail(path("resend"), "replay requires masked or full");

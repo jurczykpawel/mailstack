@@ -14,6 +14,8 @@ import { noticeTemplate } from "./types/notice.ts";
 import { licenseTemplate } from "./types/license.ts";
 import { refundTemplate } from "./types/refund.ts";
 import { bankTransferTemplate } from "./types/bank-transfer.ts";
+import type { TemplatePlans } from "./config.ts";
+import { customPlan, customTemplate } from "./custom.ts";
 
 /** Registry of all email types, keyed by id. */
 export const TEMPLATES: Record<string, TemplateDef> = {
@@ -27,8 +29,11 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   'bank-transfer': bankTransferTemplate,
 };
 
-export function getTemplate(id: string): TemplateDef | undefined {
-  return Object.hasOwn(TEMPLATES, id) ? TEMPLATES[id] : undefined;
+/** A built-in type, or a named template configured globally or for the brand. */
+export function getTemplate(id: string, plans?: TemplatePlans, brand?: string): TemplateDef | undefined {
+  if (Object.hasOwn(TEMPLATES, id)) return TEMPLATES[id];
+  const plan = customPlan(plans, brand, id);
+  return plan && customTemplate(id, plan, plans!);
 }
 
 export function missingRequiredFields(template: TemplateDef, data: TemplateData): string[] {

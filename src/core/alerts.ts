@@ -12,7 +12,9 @@ export async function alertMessage(store: Store | undefined, notifier: Notifier 
   try {
     const message = await store.alertContext(id, pos);
     if (!message) return;
-    const template = effectiveTemplate(getTemplate(message.template)!, resolvePresentation(compiledTemplates, config.brands[message.brand], message.template).definition.secretFields);
+    const base = getTemplate(message.template, compiledTemplates, message.brand);
+    if (!base) return;
+    const template = effectiveTemplate(base, resolvePresentation(compiledTemplates, config.brands[message.brand], message.template).definition.secretFields);
     const { policy } = await resolvePolicy(logging, message.brand, message.template, template);
     if (!policy.alertOn.some(value => value === type)) return;
     if (!await store.consume('alert:' + id + ':' + type, now + (policy.metaDays ?? 7) * 86400000)) return;

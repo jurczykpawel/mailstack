@@ -29,6 +29,7 @@ import { checkRateLimit } from "./ratelimit";
 import { getTemplate } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
 import { buildBlocks } from "./markup";
+import { normalizeRows } from "./templates/markdown.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_FIELDS = 40;
@@ -114,13 +115,13 @@ function coerceValue(v: unknown): string {
 }
 
 /** Build the flat content map (non-reserved keys, coerced + capped). */
-function extractData(body: Record<string, unknown>, publicNonce: boolean, languages = false): TemplateData {
+function extractData(body: Record<string, unknown>, publicNonce: boolean, languages = false, rows: string[] = []): TemplateData {
   const data: TemplateData = Object.create(null);
   let count = 0;
   for (const [key, raw] of Object.entries(body)) {
     if (languages && key === "locale" || RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;
     if (count >= MAX_FIELDS) break;
-    data[key] = coerceValue(raw);
+    data[key] = rows.includes(key) ? normalizeRows(raw) ?? "" : coerceValue(raw);
     count++;
   }
   return data;
@@ -254,7 +255,8 @@ export async function handleSend(
   if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments))) {
     return json({ success: false, message: "forbidden", code: "scope" }, { status: 403, cors: corsOrigin });
   }
-  const template = getTemplate(templateId);
+  const plans = deps.templates ?? compiledTemplates;
+  const template = getTemplate(templateId, plans, brand.id);
   if (!template) {
     return json(
       { success: false, message: "unknown template" },
@@ -277,8 +279,11 @@ export async function handleSend(
     attachments = result.files;
   }
 
+  const rows = template.rowFields ?? [];
+  if (rows.some(key => Object.hasOwn(body, key) && normalizeRows(body[key]) === null))
+    return json({ success: false, message: "invalid rows", code: "invalid_rows" }, { status: 400, cors: corsOrigin });
   // Content fields (reserved keys stripped).
-  const data = extractData(body, !trusted && !!brand.requireNonce, !!brand.mailTemplates?.languages);
+  const data = extractData(body, !trusted && !!brand.requireNonce, !!brand.mailTemplates?.languages, rows);
   if (nonceProduct !== undefined) data.type = nonceProduct;
   // For the contact template, attach request-time meta (footer small print).
   if (template.id === "contact") {
@@ -336,7 +341,7 @@ export async function handleSend(
     replyTo,
     subject: subjectOverride,
     locale: body.locale,
-    legacyData: () => extractData(body, false),
+    legacyData: () => extractData(body, false, false, rows),
     explicitJsonLd,
     clientId: client?.id ?? "public",
     ref: trusted ? body.ref as string | undefined : undefined,
@@ -395,7 +400,7 @@ function maybeSendAutoReply(ctx: AutoReplyContext): void {
   const to = (data.email || "").trim();
   if (!EMAIL_RE.test(to)) return;
 
-  const template = getTemplate(brand.autoReplyTemplate ?? DEFAULT_AUTOREPLY_TEMPLATE);
+  const template = getTemplate(brand.autoReplyTemplate ?? DEFAULT_AUTOREPLY_TEMPLATE, deps.templates ?? compiledTemplates, brand.id);
   if (!template) return;
 
   // Build a small confirmation payload from the submission.

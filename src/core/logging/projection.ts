@@ -1,4 +1,4 @@
-import { containsSecret, secretCandidates } from "../../templates/privacy.ts";
+import { containsSecret, representations, secretCandidates } from "../../templates/privacy.ts";
 import { WorkBudget } from "../../templates/output.ts";
 import type { Config, Policy } from "../config/schema.ts";
 import type { Brand, TemplateData, TemplateDef } from "../../types.ts";
@@ -65,7 +65,7 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
   const replacements = fields
     .filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
-    .flatMap(([field, value]) => (secretFields.has(field) ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : [...new Set([value, escapeHtml(value)])]).map((representation) => ({
+    .flatMap(([field, value]) => (secretFields.has(field) ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value)).map((representation) => ({
       representation, replacement: secretFields.has(field) ? partial(value) : "[ukryte]",
       secret: secretFields.has(field), short: !secretFields.has(field) && policy.level === "masked" && Array.from(value).length < 3,
     })));

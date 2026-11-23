@@ -1,5 +1,7 @@
 import { SOURCE_COPY_FIELDS } from '../core/config/sources.ts';
-import { tokenize, type Token } from "./tokens.ts";
+import { textFields, tokenize, type Token } from "./tokens.ts";
+import { compileMarkdown, type MarkdownPlan } from "./markdown.ts";
+import { compileCustom, type CustomPlan } from "./custom.ts";
 import type { Config } from "../core/config/schema.ts";
 import { TEMPLATES } from "./index.ts";
 import { COMMON_SLOTS, CONTEXT_FIELDS, HEADER_FIELDS, MANIFEST, type TemplateId } from "./manifest.ts";
@@ -12,6 +14,9 @@ export interface TemplatePlans {
   texts: Record<string, Token[]>;
   routes: Record<string, Record<string, Record<string, Record<string, number[]>>>>;
   warnings: string[];
+  /** Named templates by owner: "" for global, otherwise the brand id. */
+  custom?: Record<string, Record<string, CustomPlan>>;
+  markdown?: Record<string, MarkdownPlan>;
 }
 const HEADER_SLOTS: Partial<Record<TemplateId, Record<string, string[]>>> = {
   received: { previewText: ["intro"] },
@@ -33,8 +38,7 @@ export function freezePlans<T>(value: T): T {
 }
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 export const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => map && Object.hasOwn(map, key) ? map[key] : undefined;
-const refs = (value: Presentation["subject"]): string[] => value === undefined ? [] : (typeof value === "string" ? [value] : value)
-  .flatMap(part => typeof part === "string" ? tokenize(part).flatMap(token => typeof token === "string" ? [] : [token.field]) : [part.field]);
+const refs = textFields;
 export const hasPresentation = (patch: TemplatePatch) => ["subject", "heading", "previewText", "body"].some(key => Object.hasOwn(patch, key)) ||
   [patch.copy, patch.labels, patch.ctaLabels].some(map => Object.keys(map ?? {}).length > 0);
 const dictionaries = ["copy", "labels", "ctaLabels", "fields"] as const;
@@ -85,6 +89,13 @@ function checkPatch(id: TemplateId, patch: TemplatePatch, fields: NonNullable<Te
       rows += block.allFields ? 43 : block.rows?.length ?? 0;
       checkRefs([...(block.rows ?? []).map(row => row.field), ...block.exclude ?? []], at);
     } else if (block.kind === "metadata") { if (id !== "contact") fail(at, "metadata requires contact"); }
+    else if (block.kind === "markdown") {
+      try {
+        const plan = compileMarkdown(block.markdown);
+        checkRefs(plan.fields, at); references += plan.fields.length;
+        if (plan.partialUrlFields.some(field => secrets.includes(field))) fail(at, "secret field inside URL");
+      } catch (error) { fail(at, error instanceof Error ? error.message : "invalid markdown"); }
+    }
     else if (block.kind === "cta") {
       if ("field" in block.url && (eligible || fields[block.url.field]?.kind !== "url")) fail(at, "literal or URL field required");
       if ("field" in block.url) checkRefs([block.url.field], at);
@@ -95,7 +106,7 @@ function checkPatch(id: TemplateId, patch: TemplatePatch, fields: NonNullable<Te
   if (texts.reduce((sum, value) => sum + refs(value).length, references) > 128 || bytes(mergeDefinitions([patch])) > 12 * 1024) fail(path, "effective definition limit");
 }
 export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans {
-  const plans: TemplatePlans = { fragments: [], texts: Object.create(null), routes: {}, warnings: [] };
+  const plans: TemplatePlans = { fragments: [], texts: Object.create(null), routes: {}, warnings: [], markdown: Object.create(null) };
   const global = config.mailTemplates;
   const layers = new Map<object, number>();
   const empty: TemplatePatch = {};
@@ -107,6 +118,9 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
     if (index === undefined) {
       index = plans.fragments.length; layers.set(patch, index); plans.fragments.push(patch);
       for (const text of [patch.subject, patch.heading, patch.previewText, ...Object.values(patch.copy ?? {}), ...patch.body?.blocks.flatMap(block => block.kind === "paragraph" ? [block.text] : []) ?? []]) collect(text);
+      for (const block of patch.body?.blocks ?? []) if (block.kind === "markdown" && !Object.hasOwn(plans.markdown!, block.markdown)) {
+        try { plans.markdown![block.markdown] = compileMarkdown(block.markdown); } catch { /* reported by checkPatch */ }
+      }
     }
     return index;
   };
@@ -224,6 +238,7 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
     for (const locale of reachable) if (locale && !own(action.fieldsByLocale, locale))
       plans.warnings.push(`$.sources.${id}.events.${event}.fields: base copy used for ${locale}`);
   }
+  plans.custom = compileCustom(config, fail);
   if (bytes(plans) > 8 * 1024 * 1024) fail(["mailTemplates"], "plan byte limit");
   cache.set(config, freezePlans(plans));
   return plans;

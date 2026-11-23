@@ -47,6 +47,10 @@ export interface BrandTheme {
   siteUrl: string;
   address?: string;
   phone?: string;
+  background?: string;
+  headingFont?: "sans" | "serif";
+  buttonRadius?: number;
+  labelColor?: string;
 }
 
 /** A single tenant: where mail goes, who may submit, and how it looks. */
@@ -114,6 +118,8 @@ export interface RenderedBody {
   previewText?: string;
   /** Optional schema.org markup the template derives from its own data. */
   jsonLd?: JsonLdBlock[];
+  /** The body is a complete HTML document sent without the brand layout. */
+  document?: true;
 }
 
 /** Inputs to the shared branded layout. */
@@ -137,6 +143,8 @@ export interface TemplateDef {
   maskedFields?: string[];
   secretFields?: string[];
   optionalSecretFields?: string[];
+  /** Fields holding order rows as canonical JSON (see `normalizeRows`). */
+  rowFields?: string[];
   subjectRoles?: string[];
   id: string;
   /** Whether public (browser) requests may select this type. Only 'contact' is true. */

@@ -1,0 +1,62 @@
+{
+  "mailTemplates": {
+    "version": 1,
+    "custom": {
+      "license-key": {
+        "subject": "Twój klucz licencji: {productName}",
+        "heading": "Twój klucz licencji",
+        "previewText": "Licencja {productName} jest gotowa",
+        "secretFields": [
+          "licenseKey",
+          "activationUrl"
+        ],
+        "requiredFields": [
+          "productName",
+          "licenseKey"
+        ],
+        "markdown": [
+          "Cześć {name},",
+          "",
+          "Twoja licencja **{productName}** jest gotowa. Zachowaj tego maila, klucz przyda się przy ponownej instalacji.",
+          "",
+          "[[fields: productName=Produkt, tier=Plan, domain=Domena]]",
+          "[[code: Klucz licencji | {licenseKey}]]",
+          "[[button: Aktywuj licencję | {activationUrl}]]",
+          "",
+          "Jeśli przycisk nie działa, wpisz klucz w panelu: *Ustawienia → Licencja*."
+        ]
+      },
+      "order-received": {
+        "subject": "We received your order {order}",
+        "heading": "Thank you for your order!",
+        "previewText": "Order {order}: we have your payment.",
+        "fields": {
+          "items": {
+            "kind": "rows"
+          }
+        },
+        "requiredFields": [
+          "order",
+          "items",
+          "total"
+        ],
+        "markdown": [
+          "Hi {firstName},",
+          "",
+          "We have your payment. Your order number is **{order}**.",
+          "",
+          "### Your order",
+          "",
+          "[[items: {items}]]",
+          "[[totals: Shipping={shipping|Free}; **Total**={total}]]",
+          "",
+          "### Shipping to",
+          "",
+          "[[note: {shipTo}]]",
+          "",
+          "[[button: View your order | {orderUrl}]]"
+        ]
+      }
+    }
+  }
+}

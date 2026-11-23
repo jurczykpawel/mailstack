@@ -8,6 +8,7 @@ import { effectiveTemplate, containsSecret, secretCandidates, normalizeHeader } 
 import { WorkBudget, Output } from './output.ts';
 import { renderLayout } from './layout.ts';
 import { serializeToHead } from '../markup/index.ts';
+import { MANIFEST } from './manifest.ts';
 
 export function selectKind(brand: Brand, template: string, data: TemplateData): string {
   const forms = brand.mailTemplates?.forms;
@@ -58,7 +59,8 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
         { html: new Output(512 * 1024, false), text: new Output(256 * 1024, false) });
     }
     const body = dry.measuring ? template.render(brand, data, new Recipe(definition, brand, data, options.plans, false, locale, template.id)) : rendered;
-    result = renderLayout(brand, { ...body, ...layout });
+    result = body.document ? { html: headHtml ? body.bodyHtml.replace(/<\/head>/i, `${headHtml}</head>`) : body.bodyHtml, text: body.bodyText } : renderLayout(brand, { ...body, ...layout });
   }
+  if (!Object.hasOwn(MANIFEST, template.id)) { new Output(512 * 1024, false).raw(result.html); new Output(256 * 1024, false).raw(result.text); }
   return { ...result, subject, heading, previewText, data, formKind, locale, localeInput, definition, template, budget };
 }
