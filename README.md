@@ -297,8 +297,7 @@ curl https://mail.example.com/health
 ```
 A core-only Worker with no `MAILSTACK_ROUTE` uses its default `workers.dev` URL;
 use that URL for the health check instead.
-The command fails if the deployed commit differs from HEAD. With no exported
-`MAILSTACK_HEALTH_URL`, it explicitly reports that verification was skipped.
+The command fails if the deployed commit differs from HEAD. `MAILSTACK_HEALTH_URL` may also be set in `.env`; without it the command explicitly reports that verification was skipped.
 
 Use `npm run release` for installation and updates (same guard and health
 check as `npm run deploy`): it runs setup with `MAILSTACK_CONFIG` (and `MAILSTACK_PRO_PATH` when the configuration

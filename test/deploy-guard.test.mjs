@@ -173,6 +173,15 @@ describe("deploy execution", () => {
     expect(opts.fetchHealth).not.toHaveBeenCalled();
     expect(opts.log).toHaveBeenCalledWith(expect.stringMatching(/MAILSTACK_HEALTH_URL.*skip/i));
   });
+  it("reads the health URL from .env when it is not exported", async () => {
+    const { healthUrl: _omit, ...opts } = options(), sha = git(cwd, "rev-parse", "HEAD");
+    writeFileSync(join(cwd, ".git", "info", "exclude"), ".env\n");
+    writeFileSync(join(cwd, ".env"), "MAILSTACK_HEALTH_URL=https://env.example.com/health\n");
+    opts.fetchHealth.mockResolvedValue(Response.json({ commit: sha }));
+    vi.stubEnv("MAILSTACK_HEALTH_URL", undefined);
+    try { await deploy(opts); } finally { vi.unstubAllEnvs(); }
+    expect(opts.fetchHealth).toHaveBeenCalledWith("https://env.example.com/health", expect.anything());
+  });
   it("requires a clean Pro checkout at origin/main and records its commit", async () => {
     const pro = join(root, "pro"); git(root, "clone", origin, pro); identity(pro);
     const opts = { ...options(), proPath: pro }, sha = git(cwd, "rev-parse", "HEAD");
