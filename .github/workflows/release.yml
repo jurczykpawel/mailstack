@@ -3,49 +3,96 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Builds and smoke-tests both platforms from any branch; only a v* tag publishes.
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  IMAGE: ghcr.io/jurczykpawel/mailstack
+  LABELS: |
+    org.opencontainers.image.source=https://github.com/jurczykpawel/mailstack
+    org.opencontainers.image.revision=${{ github.sha }}
+    org.opencontainers.image.version=${{ github.ref_name }}
+    org.opencontainers.image.licenses=MIT
 
 jobs:
   # The same checks as every push: tests, the Worker dry-run build and the image smoke test.
   validate:
     uses: ./.github/workflows/ci.yml
+  # One native runner per platform (QEMU emulation crashed npm ci on arm64); each smoke-tests its image,
+  # then pushes it by digest only. The publish job joins the digests under the release tags.
   image:
     needs: validate
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - {platform: linux/amd64, runner: ubuntu-24.04, arch: amd64}
+          - {platform: linux/arm64, runner: ubuntu-24.04-arm, arch: arm64}
+    runs-on: ${{ matrix.runner }}
     permissions: {contents: read, packages: write}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          outputs: type=oci,dest=/tmp/mailstack.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.source=https://github.com/jurczykpawel/mailstack
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.licenses=MIT
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+          labels: ${{ env.LABELS }}
+          load: true
+          tags: mailstack:smoke
       - name: Smoke
-        run: |
-          sudo apt-get update && sudo apt-get install -y skopeo
-          skopeo copy --override-arch amd64 oci-archive:/tmp/mailstack.tar docker-daemon:mailstack:smoke
-          jq '{version, brands: {demo: .brands.demo}, logging, sender: {type:"smtp"}}' config/mailstack.example.json > "$RUNNER_TEMP/mailstack.json"
-          trap 'docker logs smoke; docker rm -f smoke' EXIT
-          docker run -d --name smoke --read-only --tmpfs /data:uid=1000,gid=1000 --tmpfs /tmp -v "$RUNNER_TEMP/mailstack.json:/config/mailstack.json:ro" -e SMTP_HOST=localhost mailstack:smoke
-          timeout 60 bash -c "until [ \"\$(docker inspect -f '{{.State.Health.Status}}' smoke)\" = healthy ]; do sleep 2; done"
-          docker exec smoke node -e 'fetch("http://127.0.0.1:8080/health").then(async r=>{const h=await r.json();if(!r.ok||h.ok!==true||h.store!=="ok")process.exit(1)}).catch(()=>process.exit(1))'
-          docker stop smoke
+        run: .github/scripts/smoke-image.sh mailstack:smoke
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        env: {REGISTRY_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - id: push
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          labels: ${{ env.LABELS }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Record digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        env: {DIGEST: '${{ steps.push.outputs.digest }}'}
+        run: mkdir -p "$RUNNER_TEMP/digests" && touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions: {contents: read, packages: write}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Publish
         env: {REGISTRY_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
+        working-directory: ${{ runner.temp }}/digests
         run: |
-          printf '%s' "$REGISTRY_TOKEN" | skopeo login --username "$GITHUB_ACTOR" --password-stdin ghcr.io
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          sources=(); for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          [ "${#sources[@]}" -eq 2 ] || { echo "expected two platform digests" >&2; exit 1; }
           version="${GITHUB_REF_NAME#v}"
-          tags=("$version" "sha-$GITHUB_SHA")
-          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then tags+=(latest); fi
-          for tag in "${tags[@]}"; do skopeo copy --all oci-archive:/tmp/mailstack.tar "docker://ghcr.io/jurczykpawel/mailstack:$tag"; done
+          tags=(-t "$IMAGE:$version" -t "$IMAGE:sha-$GITHUB_SHA")
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then tags+=(-t "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:$version"

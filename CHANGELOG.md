@@ -7,7 +7,9 @@ All notable changes to mailstack are documented here.
 - Named template headers read only `{brand.id}`, `{brand.name}` and
   `{brand.subjectPrefix}`, like the body; other `{brand.*}` are request fields.
 - `npm run deploy` retries the post-deploy `/health` check for up to a minute
-  before rolling back.
+  before reporting a failure.
+- Release images build arm64 on a native runner instead of QEMU emulation;
+  both platforms are smoke-tested before publication.
 
 ## [1.2.1] - 2026-11-24
 

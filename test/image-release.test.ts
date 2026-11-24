@@ -1,59 +1,70 @@
-import { readFileSync, mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { readFileSync, mkdirSync, mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { expect, it } from 'vitest';
 
 const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+const SMOKE = '.github/scripts/smoke-image.sh';
 function script(name: string) {
   const block = workflow.split(`- name: ${name}\n`)[1];
   expect(block, `missing ${name} step`).toBeDefined();
   return block.split('run: |\n')[1].split(/\n      - /)[0].split('\n').map(line => line.slice(10)).join('\n');
 }
 
-it('gates publication on validation with scoped permissions and pinned actions', () => {
+it('builds each platform natively and gates publication on validation, smoke and a tag', () => {
   expect(workflow).toMatch(/image:\n    needs: validate/);
   expect(workflow).toContain('permissions: {contents: read, packages: write}');
   // Validation reuses CI from the same commit; every external action is pinned.
   expect(workflow).toMatch(/validate:\n    uses: \.\/\.github\/workflows\/ci\.yml\n/);
-  for (const action of workflow.matchAll(/uses: (.+)/g))
-    if (action[1] !== './.github/workflows/ci.yml') expect(action[1]).toMatch(/@[a-f0-9]{40} # v[0-9.]+$/);
-  expect(workflow).toContain('platforms: linux/amd64,linux/arm64');
-  expect(workflow).toContain('cache-from: type=gha');
-  expect(workflow).toContain('cache-to: type=gha,mode=max');
+  for (const file of [workflow, readFileSync('.github/workflows/ci.yml', 'utf8')]) {
+    for (const action of file.matchAll(/uses: (.+)/g))
+      if (action[1] !== './.github/workflows/ci.yml') expect(action[1]).toMatch(/@[a-f0-9]{40} # v[0-9.]+$/);
+    // QEMU emulation crashed npm ci on arm64: both platforms build on native runners.
+    expect(file).not.toContain('setup-qemu');
+    expect(file).toContain('{platform: linux/arm64, runner: ubuntu-24.04-arm');
+    expect(file).toContain('run: .github/scripts/smoke-image.sh mailstack:smoke');
+  }
+  expect(workflow).toContain('cache-to: type=gha,scope=${{ matrix.arch }},mode=max');
   for (const label of ['source', 'revision', 'version', 'licenses']) expect(workflow).toContain(`org.opencontainers.image.${label}=`);
   expect(workflow).toContain('org.opencontainers.image.licenses=MIT');
-  expect(workflow.indexOf('- name: Smoke')).toBeLessThan(workflow.indexOf('- name: Publish'));
+  expect(workflow).toContain('push-by-digest=true');
+  expect(workflow.indexOf('- name: Smoke')).toBeLessThan(workflow.indexOf('- id: push'));
+  expect(workflow).toMatch(/publish:\n    needs: image\n    if: startsWith\(github.ref, 'refs\/tags\/v'\)/);
+  const image = workflow.slice(workflow.indexOf('\n  image:'), workflow.indexOf('\n  publish:'));
+  for (const step of image.split(/\n      - /).filter(step => /docker login|id: push|digest/.test(step)))
+    expect(step).toContain("if: startsWith(github.ref, 'refs/tags/v')");
   expect(workflow).not.toMatch(/push: true/);
 });
 
 it.each([
-  ['v1.2.3', ['1.2.3', 'sha-abc123', 'latest']],
-  ['v1.2.3-rc.1', ['1.2.3-rc.1', 'sha-abc123']],
-])('publishes %s tags from the tested multi-platform archive', (ref, tags) => {
-  const dir = mkdtempSync(join(tmpdir(), 'mailstack-release-'));
+  ['v1.2.3', ['1.2.3', 'sha-abc123', 'latest'], 2, 0],
+  ['v1.2.3-rc.1', ['1.2.3-rc.1', 'sha-abc123'], 2, 0],
+  ['v1.2.3', [], 1, 1],
+])('publishes %s tags from both platform digests', (ref, tags, digests, status) => {
+  const dir = mkdtempSync(join(tmpdir(), 'mailstack-release-')), work = join(dir, 'digests');
   try {
-    const executable = join(dir, 'skopeo');
+    mkdirSync(work); for (let i = 0; i < digests; i++) writeFileSync(join(work, `${i}`.repeat(64)), '');
+    const executable = join(dir, 'docker');
     writeFileSync(executable, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n');
     chmodSync(executable, 0o755);
     const calls = join(dir, 'calls');
     const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script('Publish')], {
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, CALLS: calls, REGISTRY_TOKEN: 'example',
+      cwd: work, env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, CALLS: calls, REGISTRY_TOKEN: 'example', IMAGE: 'ghcr.io/jurczykpawel/mailstack',
         GITHUB_ACTOR: 'example', GITHUB_REF_NAME: ref, GITHUB_SHA: 'abc123' }, encoding: 'utf8',
     });
-    expect(result.stderr).toBe(''); expect(result.status).toBe(0);
+    expect(result.status).toBe(status);
     const commands = readFileSync(calls, 'utf8').trim().split('\n');
-    expect(commands).toHaveLength(tags.length + 1);
-    for (const [index, tag] of tags.entries()) {
-      expect(commands[index + 1]).toContain('copy --all');
-      expect(commands[index + 1]).toContain(`oci-archive:/tmp/mailstack.tar docker://ghcr.io/jurczykpawel/mailstack:${tag}`);
-    }
+    if (status) { expect(commands).toHaveLength(1); return; }
+    expect(commands).toHaveLength(3);
+    expect(commands[1]).toBe(['buildx imagetools create', ...tags.map(tag => `-t ghcr.io/jurczykpawel/mailstack:${tag}`),
+      ...['0', '1'].map(d => `ghcr.io/jurczykpawel/mailstack@sha256:${d.repeat(64)}`)].join(' '));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 it('checks both health fields with bounded retries and disposable read-only configuration', () => {
-  const smoke = script('Smoke');
-  expect(smoke).toContain('oci-archive:/tmp/mailstack.tar docker-daemon:mailstack:smoke');
+  const smoke = readFileSync(SMOKE, 'utf8');
+  expect(smoke).toContain('"$image"');
   expect(smoke).toContain(':ro'); expect(smoke).toContain('--read-only');
   expect(smoke).toContain('--tmpfs /data:uid=1000,gid=1000');
   expect(smoke).toContain('timeout 60');
@@ -82,7 +93,7 @@ esac`,
       writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`); chmodSync(join(dir, name), 0o755);
     }
     const calls = join(dir, 'calls');
-    const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script('Smoke')], {
+    const result = spawnSync('bash', [SMOKE, 'mailstack:smoke'], {
       env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, CALLS: calls, RUNNER_TEMP: dir, HEALTH: JSON.stringify(health) }, encoding: 'utf8',
     });
     expect(result.stderr).toBe(''); expect(result.status).toBe(status);
