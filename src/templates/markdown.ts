@@ -3,6 +3,7 @@ import type { Brand, TemplateData } from "../types.ts";
 import { codeBox, ctaButton, escapeHtml as e, summaryTable } from "./layout.ts";
 import { httpUrl } from "./config-schema.ts";
 import { WorkBudget } from "./output.ts";
+import { CONTEXT_FIELDS } from "./manifest.ts";
 
 type Component = { kind: "component"; name: string; args: string; tokens?: Token[] };
 export type Chunk = { kind: "markdown"; tokens: Token[] } | Component;
@@ -69,7 +70,7 @@ export function compileMarkdown(source: string, bundled = true): MarkdownPlan {
   return { chunks, fields: [...new Set([...fieldNames(source), ...keys])], urlFields: [...whole], partialUrlFields: [...partial] };
 }
 
-export const fieldValue = (brand: Brand, data: TemplateData, key: string) => (key.startsWith("brand.") && ["brand.id", "brand.name", "brand.subjectPrefix"].includes(key)
+export const fieldValue = (brand: Brand, data: TemplateData, key: string) => (CONTEXT_FIELDS.includes(key)
   ? String(brand[key.slice(6) as "id"]) : Object.hasOwn(data, key) ? data[key] : "").trim();
 /** Field output allowed per body render (HTML and text together); the final size limits are checked later. */
 export const renderBudget = () => new WorkBudget(768 * 1024);

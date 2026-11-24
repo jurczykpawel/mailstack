@@ -178,6 +178,15 @@ describe("field fallback in headers", () => {
   });
 });
 
+describe("brand fields in headers", () => {
+  it("reads only the brand fields the body may read", () => {
+    const { plans } = compile(value => { customOf(value).greet = { subject: "{brand.name}: {brand.to|hidden}", heading: "From {brand.from|us}", previewText: "{brand.subjectPrefix}", markdown: "Body {brand.to|hidden}" }; });
+    const email = prepareEmail(brand, getTemplate("greet", plans, "acme")!, {}, { plans });
+    expect(email.subject).toBe(`${brand.name}: hidden`);
+    expect([email.html.includes("From us"), email.html.includes("Body hidden"), email.html.includes(brand.to[0]!)]).toEqual([true, true, false]);
+  });
+});
+
 describe("order row replay", () => {
   it("stores a replay that the resend contract accepts", () => {
     const { plans } = compile(value => { value.logging.brands.acme = { templates: { "order-received": { level: "masked", resend: "replay" } } }; });

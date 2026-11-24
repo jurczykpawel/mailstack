@@ -3,13 +3,14 @@ import type { Presentation, TemplatePatch } from "./config-schema.ts";
 import { httpUrl } from "./config-schema.ts";
 import type { TemplatePlans } from "./config.ts";
 import { own } from "./config.ts";
+import { CONTEXT_FIELDS } from "./manifest.ts";
 import { textTokens } from "./tokens.ts";
 import { compileMarkdown, renderBudget, renderMarkdown } from "./markdown.ts";
 import { Output, length, parts, type Content, type Emit } from "./output.ts";
 import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout, humanizeLabel } from "./layout.ts";
 
 export function expandText(text: Presentation["subject"], brand: Brand, data: TemplateData, plans: TemplatePlans): readonly string[] {
-  const field = (key: string) => key.startsWith("brand.") ? String(own(brand as unknown as Record<string, string>, key.slice(6)) ?? "") : (own(data, key) ?? "").trim();
+  const field = (key: string) => CONTEXT_FIELDS.includes(key) ? String(own(brand as unknown as Record<string, string>, key.slice(6)) ?? "") : (own(data, key) ?? "").trim();
   return (typeof text === "string" ? [text] : text ?? []).flatMap(part => {
     if (typeof part !== "string") {
       const value = field(part.field);
