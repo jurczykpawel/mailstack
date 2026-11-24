@@ -4,9 +4,14 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-24
+
 - `{field|fallback}` works in the subject, heading and preview text of named
   templates and in presentation text, as in the body. Validation checks the field
   name (secret and confirmation rules); a confirmation subject stays literal.
+- The SES key rotator refuses to start while the newest Worker version is not the
+  only deployed one and keeps a new key that its secret change already published.
+- Pinned CI actions updated (no Node 20 runtime warnings).
 
 ## [1.2.0] - 2026-11-23
 
