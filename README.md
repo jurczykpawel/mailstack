@@ -121,7 +121,7 @@ Pushing a `v*` release tag runs typecheck and tests, then builds the image for
 with read-only example configuration and SQLite on tmpfs; `/health` must report `ok: true` and
 `store: "ok"` before it is pushed by digest and both digests are tagged as one multi-platform
 image in `ghcr.io/jurczykpawel/mailstack`. Running the workflow manually builds and smoke-tests
-without publishing.
+without publishing, also on a tag.
 Tags are the version without `v` (for example `1.2.3`), `sha-<full-commit-sha>`, and
 `latest` for stable `vMAJOR.MINOR.PATCH` releases only. Prereleases do not update `latest`.
 OCI labels record the source, revision, release version and MIT license. Configuration

@@ -163,7 +163,7 @@ describe("deploy execution", () => {
   it.each(["http", "json", "network"])("rejects a health %s failure", async (kind) => {
     const opts = options();
     if (kind === "network") opts.fetchHealth.mockRejectedValue(new Error("offline"));
-    else opts.fetchHealth.mockResolvedValue(new Response("unavailable", { status: kind === "http" ? 503 : 200 }));
+    else opts.fetchHealth.mockImplementation(async () => new Response("unavailable", { status: kind === "http" ? 503 : 200 }));
     await expect(deploy(opts)).rejects.toThrow();
   });
   it("explicitly reports a skipped health check without a URL", async () => {

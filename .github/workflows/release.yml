@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Builds and smoke-tests both platforms from any branch; only a v* tag publishes.
+  # Builds and smoke-tests both platforms; only a pushed v* tag publishes, never a manual run.
   workflow_dispatch:
 
 permissions:
@@ -49,11 +49,12 @@ jobs:
       - name: Smoke
         run: .github/scripts/smoke-image.sh mailstack:smoke
       - name: Log in to GHCR
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         env: {REGISTRY_TOKEN: '${{ secrets.GITHUB_TOKEN }}'}
         run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      # Same build from the cache just smoke-tested, exported untagged by digest.
       - id: push
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -62,10 +63,10 @@ jobs:
           labels: ${{ env.LABELS }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       - name: Record digest
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         env: {DIGEST: '${{ steps.push.outputs.digest }}'}
         run: mkdir -p "$RUNNER_TEMP/digests" && touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
-      - if: startsWith(github.ref, 'refs/tags/v')
+      - if: github.event_name == 'push'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digest-${{ matrix.arch }}
@@ -74,7 +75,7 @@ jobs:
           retention-days: 1
   publish:
     needs: image
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions: {contents: read, packages: write}
     steps:

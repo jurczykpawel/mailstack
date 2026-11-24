@@ -30,10 +30,12 @@ it('builds each platform natively and gates publication on validation, smoke and
   expect(workflow).toContain('org.opencontainers.image.licenses=MIT');
   expect(workflow).toContain('push-by-digest=true');
   expect(workflow.indexOf('- name: Smoke')).toBeLessThan(workflow.indexOf('- id: push'));
-  expect(workflow).toMatch(/publish:\n    needs: image\n    if: startsWith\(github.ref, 'refs\/tags\/v'\)/);
+  expect(workflow).toMatch(/push:\n    tags: \["v\*"\]\n  # [^\n]*\n  workflow_dispatch:\n/);
+  expect(workflow).toMatch(/publish:\n    needs: image\n    if: github.event_name == 'push'\n/);
   const image = workflow.slice(workflow.indexOf('\n  image:'), workflow.indexOf('\n  publish:'));
-  for (const step of image.split(/\n      - /).filter(step => /docker login|id: push|digest/.test(step)))
-    expect(step).toContain("if: startsWith(github.ref, 'refs/tags/v')");
+  const publishing = image.split(/\n      - /).filter(step => /docker login|id: push|digest/.test(step));
+  expect(publishing).toHaveLength(4);
+  for (const step of publishing) expect(step).toContain("if: github.event_name == 'push'");
   expect(workflow).not.toMatch(/push: true/);
 });
 
