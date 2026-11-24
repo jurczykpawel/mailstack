@@ -43,7 +43,7 @@ export function checkRepositories(cwd = process.cwd(), proPath = loadEnv(cwd).MA
 }
 
 export async function deploy({
-  cwd = process.cwd(), healthUrl = process.env.MAILSTACK_HEALTH_URL, proPath, workerName,
+  cwd = process.cwd(), healthUrl = loadEnv(cwd).MAILSTACK_HEALTH_URL, proPath, workerName,
   runWrangler = (args) => {
     const result = spawnSync("wrangler", args, { cwd, stdio: "inherit" });
     if (result.error || result.status !== 0) throw new Error("Wrangler deploy failed.");
