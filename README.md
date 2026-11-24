@@ -1349,9 +1349,13 @@ For every target, inactive keys unused for `inactiveDays` (default 7) are delete
 the youngest active key is at least `ageDays` old (default 75), the tool creates a key,
 sends directly through SES to `success@simulator.amazonses.com`, replaces
 `SES_ACCESS_KEY_ID`/`SES_SECRET_ACCESS_KEY` in one secret update, sends a `notice` through
-the Worker's `/v1/send`, deactivates the old key and sends again. A failed step deletes
-the new key, restores the previously deployed Worker version (its secrets included) and
-reactivates the old key. Two remaining keys (the IAM limit) stop the target with an alarm.
+the Worker's `/v1/send`, deactivates the old key and sends again. A failed step restores
+the previously deployed Worker version (its secrets included) and reactivates the old key.
+The new key is deleted only when the secret update created no Worker version; otherwise
+it stays active, because redeploys and secret edits inherit secrets from the newest
+version, not from the deployed one. Deploy a fixed release, verify a send, then deactivate
+the old key. Two keys (the IAM limit) or a newest version that is not the only deployed
+one (after a rollback or during a gradual deployment) stop the target with an alarm.
 Targets run in order; after a failure later targets are not attempted, so list staging
 first. `--force --only <name>` rotates one target regardless of age.
 
@@ -1362,7 +1366,9 @@ the sending user itself. Cloudflare tokens need Workers Scripts Edit on the targ
 account. The optional `ntfyUrlEnv` names a variable with the ntfy topic URL; a message
 is posted only after a rotation or a failure. Output never includes secret values. The
 new secret is not printed or stored elsewhere: a lost key is replaced by rotating.
-Redeploying a Worker with an older copy of the SES secrets reverts the rotation.
+Redeploying a Worker with an older copy of the SES secrets reverts the rotation; so does
+rolling back to a version created before the last rotation, whose key is deactivated
+or deleted. To return to older code, deploy that commit as a new version instead.
 
 ### Extension resend contract
 
