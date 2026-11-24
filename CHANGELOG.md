@@ -4,6 +4,8 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-24
+
 - Named template headers read only `{brand.id}`, `{brand.name}` and
   `{brand.subjectPrefix}`, like the body; other `{brand.*}` are request fields.
 - `npm run deploy` retries the post-deploy `/health` check (12 attempts, 5 seconds
