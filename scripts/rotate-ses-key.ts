@@ -21,6 +21,7 @@ export interface Deps {
   deleteKey(user: string, id: string): Promise<void>;
   probeSes(target: Target, credential: Credential): Promise<boolean>;
   deployedVersions(target: Target): Promise<Versions>;
+  latestVersion(target: Target): Promise<string>;
   putSecrets(target: Target, credential: Credential): Promise<void>;
   restoreVersions(target: Target, versions: Versions): Promise<void>;
   sendThroughWorker(target: Target): Promise<boolean>;
@@ -61,25 +62,36 @@ export async function rotateTarget(target: Target, deps: Deps, config: RotationC
   const youngest = Math.min(...active.map(key => (now - key.created.getTime()) / DAY));
   if (!force && youngest < ageDays) return out("skipped", `key age ${Math.floor(youngest)}d < ${ageDays}d`);
   if (keys.length >= 2) return out("failed", `user already has ${keys.length} keys (IAM limit 2); rotation stopped`);
+  // Secret edits and redeploys that keep secrets build on the newest version, not the deployed one; after a rollback
+  // that newest version may carry a key that no longer works, so rotation starts only when both are the same.
+  const previous = await deps.deployedVersions(target);
+  if (previous.length !== 1 || previous[0].version_id !== await deps.latestVersion(target))
+    return out("failed", "the newest Worker version is not the only deployed one (rollback or gradual deployment?); rotation stopped");
 
   const fresh = await deps.createKey(target.iamUser);
   const dropFresh: [string, () => Promise<unknown>] = ["delete new key", () => deps.deleteKey(target.iamUser, fresh.id)];
   if (!await retry(deps, 6, 10_000, () => deps.probeSes(target, fresh)))
     return out("failed", `new key ${tail(fresh.id)} failed the direct SES check${await undo([dropFresh])}`);
 
-  const previous = await deps.deployedVersions(target);
   const restoreWorker: [string, () => Promise<unknown>] = ["restore Worker version", () => deps.restoreVersions(target, previous)];
+  // The restored deployment uses the old key, but the next redeploy inherits secrets from the newest version: if the
+  // secret change created one, it holds the new key, which therefore must stay valid (it passed the direct SES check).
+  const settle = async (steps: [string, () => Promise<unknown>][]) => {
+    const created = await deps.latestVersion(target).then(id => id !== previous[0].version_id, () => true);
+    const detail = await undo(created ? steps : [...steps, dropFresh]);
+    return created ? `${detail}; new key ${tail(fresh.id)} kept for the newest Worker version (see ses-rotation docs)` : detail;
+  };
   try { await deps.putSecrets(target, fresh); }
-  catch { return out("failed", `setting Worker secrets failed${await undo([restoreWorker, dropFresh])}`); }
+  catch { return out("failed", `setting Worker secrets failed${await settle([restoreWorker])}`); }
   await deps.sleep(20_000);
   if (!await retry(deps, 6, 20_000, () => deps.sendThroughWorker(target)))
-    return out("failed", `Worker send failed after the secret change${await undo([restoreWorker, dropFresh])}`);
+    return out("failed", `Worker send failed after the secret change${await settle([restoreWorker])}`);
 
   // The old key stays valid until here, so only a send after deactivation proves the Worker uses the new key.
   for (const key of active) await deps.setActive(target.iamUser, key.id, false);
   if (!await retry(deps, 6, 20_000, () => deps.sendThroughWorker(target))) {
     const reactivate = active.map(key => [`reactivate ${tail(key.id)}`, () => deps.setActive(target.iamUser, key.id, true)] as [string, () => Promise<unknown>]);
-    return out("failed", `Worker send failed with the old key deactivated${await undo([...reactivate, restoreWorker, dropFresh])}`);
+    return out("failed", `Worker send failed with the old key deactivated${await settle([...reactivate, restoreWorker])}`);
   }
   return out("rotated", `${active.map(key => tail(key.id)).join(",")} → ${tail(fresh.id)}`);
 }
@@ -154,6 +166,12 @@ export function liveDeps(config: RotationConfig): Deps {
       const latest = [...result.deployments].sort((a, b) => b.created_on.localeCompare(a.created_on))[0];
       if (!latest) throw new Error("no deployment");
       return latest.versions;
+    },
+    async latestVersion(target) {
+      const result = await cloudflare(target, "/versions") as { items: { id: string; metadata: { created_on: string } }[] };
+      const latest = [...result.items].sort((a, b) => b.metadata.created_on.localeCompare(a.metadata.created_on))[0];
+      if (!latest) throw new Error("no version");
+      return latest.id;
     },
     async putSecrets(target, credential) {
       const secrets = { SES_ACCESS_KEY_ID: credential.id, SES_SECRET_ACCESS_KEY: credential.secret };

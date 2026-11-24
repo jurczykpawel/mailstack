@@ -9,10 +9,11 @@ const target = (name: string): Target => ({
 });
 const config: RotationConfig = { targets: [target("staging"), target("production")] };
 
-function fake(keys: Record<string, AccessKey[]>, behaviour: { probe?: boolean; sends?: boolean[]; putFails?: boolean } = {}) {
+function fake(keys: Record<string, AccessKey[]>, behaviour: { probe?: boolean; sends?: boolean[]; putFails?: boolean; latest?: string } = {}) {
   const calls: string[] = [], notes: string[] = [];
   const sends = [...behaviour.sends ?? []];
   let counter = 0;
+  const latest: Record<string, string> = {};
   const deps: Deps = {
     listKeys: async user => (keys[user] ?? []).map(key => ({ ...key })),
     createKey: async user => { const id = `AKIANEW${++counter}`; keys[user].push({ id, active: true, created: NOW }); calls.push(`create ${user}`); return { id, secret: "s" }; },
@@ -20,7 +21,8 @@ function fake(keys: Record<string, AccessKey[]>, behaviour: { probe?: boolean; s
     deleteKey: async (user, id) => { keys[user] = keys[user].filter(key => key.id !== id); calls.push(`delete ${id}`); },
     probeSes: async () => behaviour.probe ?? true,
     deployedVersions: async t => [{ version_id: `${t.name}-v1`, percentage: 100 }],
-    putSecrets: async t => { if (behaviour.putFails) throw new Error("cf"); calls.push(`secrets ${t.name}`); },
+    latestVersion: async t => latest[t.name] ?? behaviour.latest ?? `${t.name}-v1`,
+    putSecrets: async t => { if (behaviour.putFails) throw new Error("cf"); latest[t.name] = `${t.name}-v2`; calls.push(`secrets ${t.name}`); },
     restoreVersions: async (t, versions) => { calls.push(`restore ${t.name} ${versions[0].version_id}`); },
     sendThroughWorker: async () => sends.length ? sends.shift()! : true,
     notify: async message => { notes.push(message); },
@@ -76,19 +78,20 @@ describe("SES key rotation", () => {
     expect(f.keys["staging-ses"]).toEqual([expect.objectContaining({ id: "AKIAOLD", active: true })]);
   });
 
-  it("restores the previous Worker version and deletes the new key when the Worker send fails", async () => {
+  it("restores the previous Worker version and keeps the new key held by the newest version when the Worker send fails", async () => {
     const f = fake({ "staging-ses": [{ id: "AKIAOLD", active: true, created: daysAgo(80) }], "production-ses": [] }, { sends: Array(6).fill(false) });
     const [outcome] = await rotateAll(config, f.deps, { only: "staging" });
     expect(outcome.status).toBe("failed");
-    expect(outcome.detail).toMatch(/rolled back$/);
-    expect(f.calls).toEqual(["create staging-ses", "secrets staging", "restore staging staging-v1", "delete AKIANEW1"]);
+    expect(outcome.detail).toMatch(/rolled back; new key …NEW1 kept for the newest Worker version/);
+    expect(f.calls).toEqual(["create staging-ses", "secrets staging", "restore staging staging-v1"]);
+    expect(f.keys["staging-ses"].map(k => [k.id, k.active])).toEqual([["AKIAOLD", true], ["AKIANEW1", true]]);
   });
 
   it("reactivates the old key and rolls back when sends fail after deactivation", async () => {
     const f = fake({ "staging-ses": [{ id: "AKIAOLD", active: true, created: daysAgo(80) }], "production-ses": [] }, { sends: [true, ...Array(6).fill(false)] });
     const [outcome] = await rotateAll(config, f.deps, { only: "staging" });
     expect(outcome.status).toBe("failed");
-    expect(f.calls).toEqual(["create staging-ses", "secrets staging", "deactivate AKIAOLD", "activate AKIAOLD", "restore staging staging-v1", "delete AKIANEW1"]);
+    expect(f.calls).toEqual(["create staging-ses", "secrets staging", "deactivate AKIAOLD", "activate AKIAOLD", "restore staging staging-v1"]);
   });
 
   it("tolerates propagation: a later Worker attempt succeeds without rollback", async () => {
@@ -101,7 +104,16 @@ describe("SES key rotation", () => {
     const f = fake({ "staging-ses": [{ id: "AKIAOLD", active: true, created: daysAgo(80) }], "production-ses": [] }, { putFails: true });
     const [outcome] = await rotateAll(config, f.deps, { only: "staging" });
     expect(outcome.status).toBe("failed");
+    expect(outcome.detail).toMatch(/rolled back$/);
     expect(f.calls).toEqual(["create staging-ses", "restore staging staging-v1", "delete AKIANEW1"]);
+  });
+
+  it("stops before creating a key when the newest Worker version is not the deployed one", async () => {
+    const f = fake({ "staging-ses": [{ id: "AKIAOLD", active: true, created: daysAgo(80) }], "production-ses": [{ id: "AKIAPROD", active: true, created: daysAgo(150) }] }, { latest: "rolled-back-from" });
+    const outcomes = await rotateAll(config, f.deps);
+    expect(outcomes.map(o => o.status)).toEqual(["failed", "not-run"]);
+    expect(outcomes[0].detail).toMatch(/newest Worker version is not the only deployed one/);
+    expect(f.calls).toEqual([]);
   });
 
   it("rejects an unknown target", async () => {
