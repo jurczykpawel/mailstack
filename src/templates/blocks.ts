@@ -3,7 +3,7 @@ import type { Presentation, TemplatePatch } from "./config-schema.ts";
 import { httpUrl } from "./config-schema.ts";
 import type { TemplatePlans } from "./config.ts";
 import { own } from "./config.ts";
-import { tokenize } from "./tokens.ts";
+import { textTokens } from "./tokens.ts";
 import { compileMarkdown, renderBudget, renderMarkdown } from "./markdown.ts";
 import { Output, length, parts, type Content, type Emit } from "./output.ts";
 import { emitParagraph, codeBox, ctaButton, labelFor, summaryTable, messageBlock, metadataBlock, renderLayout, humanizeLabel } from "./layout.ts";
@@ -15,7 +15,7 @@ export function expandText(text: Presentation["subject"], brand: Brand, data: Te
       const value = field(part.field);
       return value ? [part.prefix ?? "", value, part.suffix ?? ""] : [part.empty ?? ""];
     }
-    return (own(plans.texts, part) ?? tokenize(part)).map(token => typeof token === "string" ? token : field(token.field));
+    return (own(plans.texts, part) ?? textTokens(part)).map(token => typeof token === "string" ? token : field(token.field) || (token.fallback ?? "").trim());
   });
 }
 export type Pair = { html: Emit; text: Emit };

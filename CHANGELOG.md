@@ -4,6 +4,10 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- `{field|fallback}` works in the subject, heading and preview text of named
+  templates and in presentation text, as in the body. Validation checks the field
+  name (secret and confirmation rules); a confirmation subject stays literal.
+
 ## [1.2.0] - 2026-11-23
 
 - Named templates (`mailTemplates.custom`) written in Markdown with button, field,
