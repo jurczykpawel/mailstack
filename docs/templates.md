@@ -113,7 +113,10 @@ subject and text to stderr.
 `{field}` inserts the value escaped for its position; a value is never parsed as
 Markdown or HTML. `{field|fallback}` uses the fallback when empty. In text, an
 empty field without fallback also removes one preceding space (`Hi {name},` gives
-`Hi,`). Line breaks in values become `<br>`. `{brand.id}`, `{brand.name}` and
+`Hi,`). The same `{field|fallback}` works in `subject`, `heading` and `previewText`
+(and in presentation text such as `copy`), where an empty field without fallback
+leaves its surrounding text unchanged; validation applies to the field name, so a
+confirmation subject must stay literal even with a fallback. Line breaks in values become `<br>`. `{brand.id}`, `{brand.name}` and
 `{brand.subjectPrefix}` are available. A field that is a whole link or `href`/`src`
 must be an http(s) URL, otherwise the link is dropped (Markdown) or becomes `#` (HTML).
 A field inside a literal URL is percent-encoded; secret fields cannot be used there.

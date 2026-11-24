@@ -1,5 +1,5 @@
 import { SOURCE_COPY_FIELDS } from '../core/config/sources.ts';
-import { textFields, tokenize, type Token } from "./tokens.ts";
+import { textFields, textTokens, type Token } from "./tokens.ts";
 import { compileMarkdown, type MarkdownPlan } from "./markdown.ts";
 import { compileCustom, type CustomPlan } from "./custom.ts";
 import type { Config } from "../core/config/schema.ts";
@@ -112,7 +112,7 @@ export function compileTemplatePlans(config: Config, fail: Fail): TemplatePlans 
   const layers = new Map<object, number>();
   const empty: TemplatePatch = {};
   const collect = (text: Presentation["subject"]) => {
-    for (const part of typeof text === "string" ? [text] : text ?? []) if (typeof part === "string" && !Object.hasOwn(plans.texts, part)) plans.texts[part] = tokenize(part);
+    for (const part of typeof text === "string" ? [text] : text ?? []) if (typeof part === "string" && !Object.hasOwn(plans.texts, part)) plans.texts[part] = textTokens(part);
   };
   const fragment = (patch: TemplatePatch) => {
     let index = layers.get(patch);

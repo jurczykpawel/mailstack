@@ -149,6 +149,35 @@ describe("named confirmation subject", () => {
   });
 });
 
+describe("field fallback in headers", () => {
+  const headers = (value: Draft) => { customOf(value).greet = { subject: "Order {order|pending}", heading: "Hi {name|friend}", previewText: "For {name|you}", markdown: "Hi {name|friend}" }; };
+  it("uses the fallback for empty fields and the value otherwise", () => {
+    const { plans } = compile(headers);
+    const empty = prepareEmail(brand, getTemplate("greet", plans, "acme")!, {}, { plans });
+    expect([empty.subject, empty.html.includes("Hi friend"), empty.html.includes("For you")]).toEqual(["Order pending", true, true]);
+    const filled = prepareEmail(brand, getTemplate("greet", plans, "acme")!, { order: "DR-7", name: "Ann" }, { plans });
+    expect([filled.subject, filled.html.includes("Hi Ann"), filled.html.includes("For Ann")]).toEqual(["Order DR-7", true, true]);
+  });
+  it("accepts a fallback heading in a confirmation and still rejects it in the subject", () => {
+    expect(() => compile(value => {
+      Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" }); customOf(value).thanks = { subject: "Thanks", heading: "Hi {name|friend}", previewText: "{summary|Your message}", markdown: "Hi" };
+    })).not.toThrow();
+    fails(value => {
+      Object.assign(value.brands.acme, { autoReplyTemplate: "thanks" }); customOf(value).thanks = { subject: "Thanks {name|friend}", heading: "H", markdown: "Hi" };
+    }, /custom\.thanks\.subject: literal single-line subject required/);
+  });
+  it("applies to built-in presentation text", () => {
+    const { value, plans } = compile(value => { (value.mailTemplates as Record<string, unknown>).templates = { notice: { heading: "{heading|Update}", subject: "News {heading|today}" } }; });
+    const email = prepareEmail(value.brands.acme, getTemplate("notice", plans, "acme")!, {}, { plans });
+    expect([email.subject, email.html.includes("Update")]).toEqual(["News today", true]);
+  });
+  it("checks the field name before the fallback", () => {
+    fails(value => { customOf(value).greet = { subject: "S", heading: "Hi {licenseKey|x}", secretFields: ["licenseKey"], markdown: "Hi" }; }, /custom\.greet\.heading: invalid header field/);
+    const { plans } = compile(value => { customOf(value).greet = { subject: "S", heading: "Hi { name|x}", markdown: "Hi" }; });
+    expect(prepareEmail(brand, getTemplate("greet", plans, "acme")!, { name: "Ann" }, { plans }).html).not.toContain("Hi x");
+  });
+});
+
 describe("order row replay", () => {
   it("stores a replay that the resend contract accepts", () => {
     const { plans } = compile(value => { value.logging.brands.acme = { templates: { "order-received": { level: "masked", resend: "replay" } } }; });
