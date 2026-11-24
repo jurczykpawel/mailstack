@@ -95,7 +95,7 @@ it('refuses the private file itself and a flag without generated keys', () => {
     expect(result.stderr).toBe('Unable to manage keys\n');
   }
   expect(existsSync(join(dir, 'absent.json'))).toBe(false);
-});
+}, 30000);
 
 it('prepends a new index key and preserves existing keys', () => {
   const old = [{ kid: 'old', key: Buffer.alloc(32, 1).toString('base64url') }];

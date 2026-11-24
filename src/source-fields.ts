@@ -1,6 +1,7 @@
 import type { SourceField } from "./core/config/sources.ts";
 import { WorkBudget } from "./templates/output.ts";
 import { tokenize } from "./templates/tokens.ts";
+import { normalizeRows } from "./templates/rows.ts";
 export function read(value: unknown, path: string): unknown {
   for (const part of path.split(".")) {
     if (!value || typeof value !== "object" || !Object.hasOwn(value, part)) return undefined;
@@ -25,6 +26,12 @@ export function sourceField(body: unknown, field: SourceField, budget = new Work
   } else {
     const value = read(body, field.path), text = scalar(value);
     budget.spend(text.length);
+    if (field.as === "rows") {
+      const rows = normalizeRows(value);
+      if (rows === null) throw new RangeError("invalid_event_data");
+      budget.spend(rows.length);
+      return rows;
+    }
     switch (field.as) {
       case "money-minor": push(typeof value === "number" && Number.isSafeInteger(value) ? (value / 100).toFixed(2) : ""); break;
       case "upper": {

@@ -371,7 +371,7 @@ it.each([true, false])('handles a slow alert with waitUntil=%s', async backgroun
 
 it('records attachment summaries and identity without archiving files', async () => {
   const previous = config.legacyApiKey;
-  config.legacyApiKey = { enabled: true, env: 'API_KEY', brands: '*', templates: '*', recipientOverride: true, attachments: true };
+  config.legacyApiKey = { enabled: true, env: 'API_KEY', brands: '*', templates: '*', recipientOverride: true, attachments: true, rawContent: false };
   deps.logging!.defaults.level = 'full'; deps.logging!.defaults.resend = 'replay';
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   const file = { filename: 'attachment-sentinel.txt', contentType: 'text/plain', contentBase64: Buffer.from('attachment content sentinel').toString('base64') };

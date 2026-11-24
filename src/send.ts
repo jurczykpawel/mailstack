@@ -29,6 +29,8 @@ import { checkRateLimit } from "./ratelimit";
 import { getTemplate } from "./templates/index";
 import { META_KEYS } from "./templates/types/contact";
 import { buildBlocks } from "./markup";
+import { normalizeRows } from "./templates/rows.ts";
+import { contentPlaceholder, requestContent, type RequestContent } from "./templates/custom.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_FIELDS = 40;
@@ -55,6 +57,8 @@ const RESERVED_KEYS = new Set([
   "resendOf",
   "attachments",
 ]);
+/** `content` is a control key only as an object ({markdown} or {html, text}); other values stay content fields. */
+const isContent = (value: unknown) => !!value && typeof value === "object" && !Array.isArray(value);
 
 const DEFAULT_AUTOREPLY_TEMPLATE = "received";
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
@@ -114,13 +118,13 @@ function coerceValue(v: unknown): string {
 }
 
 /** Build the flat content map (non-reserved keys, coerced + capped). */
-function extractData(body: Record<string, unknown>, publicNonce: boolean, languages = false): TemplateData {
+function extractData(body: Record<string, unknown>, publicNonce: boolean, languages = false, rows: string[] = []): TemplateData {
   const data: TemplateData = Object.create(null);
   let count = 0;
   for (const [key, raw] of Object.entries(body)) {
-    if (languages && key === "locale" || RESERVED_KEYS.has(key) || (publicNonce && (key === "nonce" || key === "product"))) continue;
+    if (languages && key === "locale" || RESERVED_KEYS.has(key) || key === "content" && isContent(raw) || (publicNonce && (key === "nonce" || key === "product"))) continue;
     if (count >= MAX_FIELDS) break;
-    data[key] = coerceValue(raw);
+    data[key] = rows.includes(key) ? normalizeRows(raw) ?? "" : coerceValue(raw);
     count++;
   }
   return data;
@@ -251,10 +255,11 @@ export async function handleSend(
       ? body.template.trim()
       : DEFAULT_TEMPLATE
     : DEFAULT_TEMPLATE;
-  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments))) {
+  if (client && (!permits(client, "send", brandId, templateId) || (body.to !== undefined && !client.recipientOverride) || (Object.hasOwn(body, "attachments") && !client.attachments) || (isContent(body.content) && !client.rawContent))) {
     return json({ success: false, message: "forbidden", code: "scope" }, { status: 403, cors: corsOrigin });
   }
-  const template = getTemplate(templateId);
+  const plans = deps.templates ?? compiledTemplates;
+  const template = getTemplate(templateId, plans, brand.id);
   if (!template) {
     return json(
       { success: false, message: "unknown template" },
@@ -264,10 +269,17 @@ export async function handleSend(
 
   const idempotencyKey = trusted ? req.headers.get("Idempotency-Key") ?? undefined : undefined;
   if (trusted) {
-    const code = Object.hasOwn(body, "resendOf") && !deps.resendSource ? "not_supported"
+    const code = Object.hasOwn(body, "resendOf") && (!deps.resendSource || isContent(body.content)) ? "not_supported"
       : Object.hasOwn(body, "ref") && (typeof body.ref !== "string" || body.ref.length < 1 || body.ref.length > 128) ? "invalid_ref"
       : idempotencyKey !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey) ? "invalid_idempotency_key" : undefined;
     if (code) return json({ success: false, message: code.replaceAll("_", " "), code }, { status: 400, cors: corsOrigin });
+  }
+
+  let content: RequestContent | undefined;
+  if (trusted && isContent(body.content)) {
+    const result = requestContent(body.content);
+    if ("code" in result) return json({ success: false, message: result.code.replaceAll("_", " "), code: result.code }, { status: result.status, cors: corsOrigin });
+    content = result;
   }
 
   let attachments: Attachment[] | undefined;
@@ -277,8 +289,11 @@ export async function handleSend(
     attachments = result.files;
   }
 
+  const rows = template.rowFields ?? [];
+  if (rows.some(key => Object.hasOwn(body, key) && normalizeRows(body[key]) === null))
+    return json({ success: false, message: "invalid rows", code: "invalid_rows" }, { status: 400, cors: corsOrigin });
   // Content fields (reserved keys stripped).
-  const data = extractData(body, !trusted && !!brand.requireNonce, !!brand.mailTemplates?.languages);
+  const data = extractData(body, !trusted && !!brand.requireNonce, !!brand.mailTemplates?.languages, rows);
   if (nonceProduct !== undefined) data.type = nonceProduct;
   // For the contact template, attach request-time meta (footer small print).
   if (template.id === "contact") {
@@ -336,12 +351,13 @@ export async function handleSend(
     replyTo,
     subject: subjectOverride,
     locale: body.locale,
-    legacyData: () => extractData(body, false),
+    legacyData: () => extractData(body, false, false, rows),
     explicitJsonLd,
     clientId: client?.id ?? "public",
     ref: trusted ? body.ref as string | undefined : undefined,
     idempotencyKey,
     attachments,
+    content,
     submitted: !trusted && template.id === 'contact',
   });
 
@@ -395,7 +411,7 @@ function maybeSendAutoReply(ctx: AutoReplyContext): void {
   const to = (data.email || "").trim();
   if (!EMAIL_RE.test(to)) return;
 
-  const template = getTemplate(brand.autoReplyTemplate ?? DEFAULT_AUTOREPLY_TEMPLATE);
+  const template = getTemplate(brand.autoReplyTemplate ?? DEFAULT_AUTOREPLY_TEMPLATE, deps.templates ?? compiledTemplates, brand.id);
   if (!template) return;
 
   // Build a small confirmation payload from the submission.
@@ -484,18 +500,19 @@ export async function renderAndSend(
 
 export function prepareSend(deps: SendDeps, brand: Brand, template: TemplateDef, data: TemplateData, params: RenderAndSendParams, policy: import("./core/config/schema.ts").Policy): PreparedDelivery {
   const plans = deps.templates ?? compiledTemplates;
-  const prepared = prepareEmail(brand, template, data, { ...params, plans });
+  const prepared = prepareEmail(brand, template, data, { ...params, content: params.content?.body, plans });
   const delivery: PreparedDelivery = {
     params: { from: brand.from, attachments: params.attachments, to: params.to, replyTo: params.replyTo, subject: prepared.subject, html: prepared.html, text: prepared.text },
     template: prepared.template, data: prepared.data,
     record: { budget: prepared.budget,
       renderMetadata: { ...(prepared.formKind ? { formKind: prepared.formKind } : {}), ...(prepared.locale ? { locale: prepared.locale } : {}) },
-      render: projected => prepareEmail(brand, template, projected, { ...params, plans, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget }),
+      render: projected => prepareEmail(brand, template, projected, { ...params, plans, selected: prepared, projection: true, explicitJsonLd: [], budget: prepared.budget,
+        content: params.content && (policy.level === "full" ? params.content.body : contentPlaceholder()) }),
     },
   };
   delivery.prepared = prepareRecord({ ...delivery.record, clientId: params.clientId ?? 'public', brand, template: delivery.template, data: delivery.data,
     recipients: params.to.map(address => ({ role: 'to', address })), subject: prepared.subject, explicitSubject: params.subject,
-    localeInput: prepared.localeInput, replyTo: params.replyTo, markup: params.explicitJsonLd }, policy, (deps.logging ?? config.logging).patterns);
+    localeInput: prepared.localeInput, replyTo: params.replyTo, markup: params.explicitJsonLd, content: params.content?.raw }, policy, (deps.logging ?? config.logging).patterns);
   delivery.params.to = freezePlans([...delivery.params.to]);
   Object.freeze(delivery.params); freezePlans(delivery.prepared);
   return Object.freeze(delivery);

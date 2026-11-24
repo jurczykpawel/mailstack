@@ -1,6 +1,7 @@
 import { measureJson } from "../../templates/output.ts";
 import type { WorkBudget } from "../../templates/output.ts";
 import { MAX_OPENED } from "../transit.ts";
+import { resendData } from "../resend-contract.ts";
 import type { ArchiveProjection, ProjectionInput, ArchiveMetadata } from "./projection.ts";
 import type { attachmentSummary } from '../../attachments';
 import type { Config } from '../config/schema';
@@ -28,7 +29,7 @@ export interface RecordInput {
   attachments?: Awaited<ReturnType<typeof attachmentSummary>>;
   clientId: string; brand: Brand; template: TemplateDef; data: TemplateData;
   recipients: { role: RecipientRow['role']; address: string }[];
-  replyTo?: string; subject?: string; ref?: string; idempotencyKey?: string; markup?: unknown[];
+  replyTo?: string; subject?: string; ref?: string; idempotencyKey?: string; markup?: unknown[]; content?: Record<string, string>;
   provider?: string; providerAccount?: string; resendOf?: string; resendRoot?: string;
 }
 
@@ -40,7 +41,7 @@ export function intentRequest(input: RecordInput, legacy = false): unknown {
     data: Object.fromEntries(Object.entries(input.data).filter(([key]) =>
       input.template.id !== 'contact' || !Object.values<string>(META_KEYS).includes(key))),
     subject: legacy ? input.subject ?? input.template.subject(input.brand, input.data) : input.explicitSubject ?? null,
-    replyTo: input.replyTo ?? null, ref: input.ref ?? null, markup: input.markup ?? null,
+    replyTo: input.replyTo ?? null, ref: input.ref ?? null, markup: input.markup ?? null, ...(input.content ? { content: input.content } : {}),
   };
 }
 
@@ -64,7 +65,7 @@ function addressHint(address: string): string {
 }
 
 export function prepareRecord(input: RecordInput, policy: Config['logging']['defaults'], patterns: Config['logging']['patterns']) {
-  const canReplay = policy.resend === 'replay' && !input.template.secretFields?.length
+  const canReplay = policy.resend === 'replay' && !input.content && !input.template.secretFields?.length
     && !input.template.optionalSecretFields?.some(field => input.data[field]);
   const replay = { to: input.recipients.filter(r => r.role === 'to').map(r => r.address),
     ...(input.recipients.some(r => r.role === 'cc') ? { cc: input.recipients.filter(r => r.role === 'cc').map(r => r.address) } : {}),
@@ -73,12 +74,13 @@ export function prepareRecord(input: RecordInput, policy: Config['logging']['def
     ...(input.explicitSubject !== undefined ? { subjectOverride: input.explicitSubject } : {}),
     ...(input.localeInput ? { locale: input.localeInput } : {}),
     template: input.template.id, data: input.data, ...(input.markup !== undefined ? { markup: input.markup } : {}) };
-  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject,
+  const archive = projectArchive({ policy, patterns, brand: input.brand, template: input.template, data: input.data, subject: input.subject, explicitSubject: input.explicitSubject !== undefined,
     budget: input.budget, render: input.render, metadata: { clientId: input.clientId, status: 'sending', createdAt: new Date(0).toISOString(),
       ...(input.renderMetadata ? { render: input.renderMetadata } : {}) } });
   measureJson(archive, 2 * 1024 * 1024);
   if (canReplay) { try { measureJson(replay, MAX_OPENED); } catch { throw new RangeError('replay_payload_limit'); } }
-  return { archive, ...(canReplay ? { replay } : {}) };
+  // Only data the resend contract accepts is stored for replay.
+  return { archive, ...(canReplay && resendData.safeParse(replay.data).success ? { replay } : {}) };
 }
 
 export async function recordIntent(deps: RecordDeps, input: RecordInput): Promise<{ id: string | undefined }> {

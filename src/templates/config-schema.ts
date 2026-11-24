@@ -30,6 +30,7 @@ const text = z.union([templateString, z.array(z.union([templateString, fragment]
   .refine(v => (typeof v === "string" ? v.length : v.reduce((n, part) => n + (typeof part === "string" ? part.length :
     part.field.length + 2 + (part.prefix?.length ?? 0) + (part.suffix?.length ?? 0) + (part.empty?.length ?? 0)), 0)) <= 5000);
 const reference = z.string().min(1).max(128);
+const source = z.union([z.string().max(64 * 1024), z.array(z.string().max(5000)).max(1000).transform(lines => lines.join("\n"))]);
 export const httpUrl = (value: string) => {
   if (!/^https?:\/\//i.test(value) || /[\s\u0000-\u001f\u007f-\u009f]/.test(value) || new TextEncoder().encode(value).length > 2048) return false;
   try { const url = new URL(value); return !!url.hostname && !url.username && !url.password; } catch { return false; }
@@ -42,6 +43,7 @@ const block = z.discriminatedUnion("kind", [
   z.strictObject({ id, kind: z.literal("metadata"), items: z.array(z.enum(["receivedAt", "origin", "ip"])) }),
   z.strictObject({ id, kind: z.literal("cta"), url: z.union([z.strictObject({ literal: z.string().refine(httpUrl) }), z.strictObject({ field: reference })]), label: label.refine(v => !!v.trim()) }),
   z.strictObject({ id, kind: z.literal("code"), field: reference, label: label.optional() }),
+  z.strictObject({ id, kind: z.literal("markdown"), markdown: source }),
 ]);
 const body = z.strictObject({ blocks: z.array(block).max(24), htmlJoin: z.enum(["", "\n"]).optional(), textJoin: z.enum(["\n", "\n\n"]).optional() });
 const presentationShape = { subject: text.optional(), heading: text.optional(), previewText: text.optional(),
@@ -50,9 +52,13 @@ const presentation = z.strictObject(presentationShape);
 const localizedPresentation = presentation.extend({ locales: locales(presentation).optional() });
 const template = localizedPresentation.extend({ fields: map(field, z.strictObject({ kind: z.enum(["text", "email", "url"]) })).optional(), secretFields: z.array(field).max(43).optional() });
 const templateId = z.string().refine(key => Object.hasOwn(MANIFEST, key));
+const customVariant = z.strictObject({ subject: text.optional(), heading: text.optional(), previewText: text.optional(), markdown: source.optional(), html: source.optional(), text: source.optional() });
+const custom = customVariant.extend({ subject: text, heading: text, fields: map(field, z.strictObject({ kind: z.enum(["text", "email", "url", "rows"]) })).optional(),
+  secretFields: z.array(field).max(43).optional(), requiredFields: z.array(field).max(43).optional(), layout: z.literal("none").optional(), locales: locales(customVariant).optional() });
+const customs = map(id, custom).refine(value => Object.keys(value).length <= 64);
 const common = z.strictObject({ copy: map(field, text).optional(), labels: map(field, label).optional() });
-export const mailTemplatesSchema = z.strictObject({ version: z.literal(1), defaults: common.optional(), templates: map(templateId, template).optional() });
-export const brandMailTemplatesSchema = z.strictObject({ defaults: common.optional(), templates: map(templateId, template).optional(),
+export const mailTemplatesSchema = z.strictObject({ version: z.literal(1), defaults: common.optional(), templates: map(templateId, template).optional(), custom: customs.optional() });
+export const brandMailTemplatesSchema = z.strictObject({ defaults: common.optional(), templates: map(templateId, template).optional(), custom: customs.optional(),
   languages: z.strictObject({ default: language, allowed: z.array(language).min(1).max(8),
     layout: locales(z.strictObject({ sentBy: label, phoneLabel: label })).optional() }).optional(),
   forms: z.strictObject({ selector: z.strictObject({ byTemplate: map(templateId, field), values: map(z.string().min(1).refine(v => safeKey(v) && v.trim() === v), id), empty: id, otherwise: id }),
@@ -61,3 +67,5 @@ export const brandMailTemplatesSchema = z.strictObject({ defaults: common.option
 export type Presentation = z.infer<typeof presentation>;
 export type TemplatePatch = z.infer<typeof template>;
 export type BrandMailTemplates = z.infer<typeof brandMailTemplatesSchema>;
+export type CustomDefinition = z.infer<typeof custom>;
+export type CustomVariantDefinition = z.infer<typeof customVariant>;

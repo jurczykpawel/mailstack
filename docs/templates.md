@@ -1,7 +1,8 @@
 # Template configuration
 
 The eight registered IDs are `contact`, `received`, `welcome`, `payment`, `license`,
-`notice`, `refund` and `bank-transfer`. Public sends always select `contact`.
+`notice`, `refund` and `bank-transfer`. [Named templates](#named-templates) add
+any other ID from configuration. Public sends always select `contact`.
 The [template table](../AGENTS.md#templates) lists content fields; the
 [Sellf contract](../README.md#sellf-event-contract) lists mapped requirements.
 Changing copy does not change recipients, scopes, source event selection or
@@ -25,8 +26,8 @@ Text is a string with `{field}` placeholders or an array of strings and fragment
 `{"field":"orderId","prefix":" - ","suffix":"","empty":""}`. Prefix/suffix
 are emitted with a nonempty field; `empty` supplies its alternative. Brand context
 includes `{brand.id}`, `{brand.name}` and `{brand.subjectPrefix}`. Values are escaped
-once and are never interpreted as further placeholders. Literal braces and raw
-HTML blocks are not supported. Headers admit only the type's declared header fields;
+once and are never interpreted as further placeholders. Literal braces are not
+supported in configured text. Headers admit only the type's declared header fields;
 private fields cannot be moved into subjects, headings or previews.
 
 Additional fields are declared as `"fields":{"tracking":{"kind":"text"}}`;
@@ -47,6 +48,7 @@ Each block has a distinct lowercase `id` and one `kind`; up to 24 blocks are all
 | `metadata` | `items` from `receivedAt`, `origin`, `ip` (form types only) |
 | `cta` | `url: {literal: "https://..."}` or `{field: "ctaUrl"}`, nonblank `label` |
 | `code` | `field`, optional `label` |
+| `markdown` | `markdown`: text or array of lines, [Markdown syntax](#markdown); declared fields only |
 
 `body.htmlJoin` is `""` or `"\n"`; `textJoin` is `"\n"` or `"\n\n"`.
 CTA fields must be declared URLs. Configured URLs use HTTP(S), no credentials and
@@ -72,6 +74,117 @@ For example, merge this fragment at the root of the complete configuration:
   }
 }
 ```
+
+## Named templates
+
+`mailTemplates.custom.<id>` (global) and `brands.<brand>.mailTemplates.custom.<id>`
+define templates under any ID matching `^[a-z][a-z0-9-]{0,63}$` that is not a
+built-in name. A brand definition replaces a global one of the same ID; another
+brand cannot select it. Pro clients still need the ID in `templates`; sources and
+logging policies select it by name. [`config/custom-templates.example.json`](../config/custom-templates.example.json)
+contains a Markdown licence, an order with rows and an HTML invitation.
+
+| Member | Meaning |
+| --- | --- |
+| `subject`, `heading`, `previewText` | Text with `{field}` placeholders; `subject` and `heading` are required; secret and row fields are refused |
+| `markdown` or `html` | Exactly one body: text, array of lines or `{"file": "relative/path"}` |
+| `text` | HTML only: plain-text alternative; generated from the HTML when absent |
+| `fields` | Optional kinds; `{"kind": "rows"}` marks an order row field |
+| `secretFields`, `requiredFields` | Classification as for built-in types; required fields give source deliveries 422 when empty |
+| `layout: "none"` | HTML only: the body is a complete document sent without the brand header and footer |
+| `locales.<tag>` | `subject`, `heading`, `previewText`, `markdown`/`html`, `text` for brands with languages; a `text` alone replaces the alternative of the inherited HTML |
+
+A brand definition replaces a global one with the same name for that brand only;
+logging policies are checked against the definition each brand resolves, and a
+source mapping must cover the required fields of every definition it can select.
+A named template used as `autoReplyTemplate` may personalise its heading and body
+with `name` and `summary`, but its subject (and every locale subject) must be
+literal single-line text, as for built-in confirmations.
+
+File paths are relative to `mailstack.json` and stay inside its directory. The
+Node loader and Worker setup read them at boot/build, so `BUILD_CONFIG_SHA` covers
+their content. `node scripts/mailstack.ts config check <file>` prints the generated
+text of every HTML template without `text`; `node scripts/mailstack.ts template
+preview <file> <brand> <id> [data.json]` prints the rendered HTML to stdout and the
+subject and text to stderr.
+
+### Fields
+
+`{field}` inserts the value escaped for its position; a value is never parsed as
+Markdown or HTML. `{field|fallback}` uses the fallback when empty. In text, an
+empty field without fallback also removes one preceding space (`Hi {name},` gives
+`Hi,`). Line breaks in values become `<br>`. `{brand.id}`, `{brand.name}` and
+`{brand.subjectPrefix}` are available. A field that is a whole link or `href`/`src`
+must be an http(s) URL, otherwise the link is dropped (Markdown) or becomes `#` (HTML).
+A field inside a literal URL is percent-encoded; secret fields cannot be used there.
+
+### Markdown
+
+Paragraphs, `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, links (http, https,
+mailto), ordered and bulleted lists, quotes (drawn as a note), `---`, code blocks and
+GFM tables. `#`/`##` give a subheading and `###` a section label in `theme.labelColor`.
+Images show their alternative text. HTML written in Markdown is shown as text;
+`\{` writes a literal brace. All tables of one body may have at most 1000 cells
+(header width times rows, including the header; a block with a valid delimiter row
+counts even if Markdown later declines it). One-line components, each on its own
+line indented at most three spaces and outside fenced code blocks:
+
+| Component | Output, omitted when empty |
+| --- | --- |
+| `[[button: Label \| {url}]]` | Brand button (http/https) |
+| `[[fields: key=Label, other=Label]]` | Label/value table |
+| `[[code: Title \| {field}]]` | Copyable code box |
+| `[[note: Markdown with {fields}]]` | Highlighted note |
+| `[[items: {items}]]` | Order rows: "qty × name", amount on the right, optional description |
+| `[[totals: Shipping={shipping\|Free}; **Total**={total}]]` | Summary rows; `**…**` makes a row bold |
+
+A row field accepts an array of up to 50 objects with nonempty `qty`, `name` and
+`amount` and an optional `description` (strings or numbers, at most 500 characters);
+anything else returns `400 invalid_rows`, and an incomplete source row `422
+invalid_event_data`. A replay record may hold a row field longer than the
+5000-character limit of other fields. In archives, a row cell shorter than three characters of a
+hidden or classified row field masks another field only when that field's whole
+value equals it. Sources map it with `{"path": "data.lines", "as": "rows"}`.
+Amounts arrive formatted: Mailstack does not calculate, convert or check totals.
+
+### HTML
+
+HTML is parsed into a tree (parse5) and serialized again, so only these elements
+reach the output: `p`, `h1`–`h6`, `ul`, `ol`, `li`, `table`, `thead`, `tbody`,
+`tfoot`, `tr`, `td`, `th`, `a`, `img`, `span`, `div`, `strong`, `em`, `b`, `i`, `u`,
+`s`, `br`, `hr` (plus `html`, `head`, `body`, `title`, `meta charset/name/content`
+with `layout: "none"`). Attributes: `style`, `href`, `src`, `alt`, `width`, `height`,
+`align`, `valign`, `role`, `cellpadding`, `cellspacing`, `colspan`, `border`,
+`title`, `lang`, `dir`. `href` accepts http(s), `mailto:` and `#anchor`; `src` http(s).
+`style` cannot contain fields, `url(`, `expression(`, backslashes or comments.
+Anything else is a configuration error; comments are dropped. Use inline styles.
+Attribute values are always written back in double quotes, so an unquoted
+attribute (`<p title={label}>`) is accepted and rendered as `title="…"` with the
+field escaped like any quoted attribute.
+Generated text puts blocks on separate lines and links as "label (address)".
+
+### Request content
+
+A trusted client with `rawContent: true` (Pro `clients` entry or
+`legacyApiKey.rawContent`, default false) may send
+`"content": {"markdown": "..."}` or `"content": {"html": "...", "text": "..."}`
+with `/v1/send`. The content replaces the selected template body; subject,
+heading and the brand layout remain, `layout: "none"` is not available. Fields of
+the same request fill its placeholders. Each member is limited to 16 KiB
+(`413 content_too_large`); invalid shape or markup returns `422 content_invalid`;
+without permission `403 scope`; with `resendOf`, `400 not_supported`. Public
+requests ignore `content`. The content is part of the request identity, so a
+changed body with the same `Idempotency-Key` conflicts. The archive stores
+`[treść z żądania ukryta]` below `full`, and such messages have no replay.
+A leaked key with this permission can send convincing brand-styled mail: grant it
+only to narrowly scoped clients.
+
+### Brand theme
+
+Optional `theme.background` (page colour), `theme.headingFont: "serif"`,
+`theme.buttonRadius` (0–999, e.g. 999 for a pill) and `theme.labelColor` (section
+labels and Markdown links). Colours are `#rgb`–`#rrggbbaa`, a colour name or `rgb()`.
+Without them the output is unchanged.
 
 ## Optional languages
 
@@ -131,6 +244,9 @@ All template sections and source copy overlays together are capped at 256 KiB.
 Compiled plans allow 1024 combinations and 8 MiB. Configured output limits are
 512 KiB HTML, 256 KiB text and 998 subject bytes. The runtime declines over-limit
 output before a delivery attempt; no language-specific table or D1 lookup is added.
+Field substitutions in one named or request body may produce at most 768 KiB of
+characters (HTML and text together); rendering stops with `422
+template_output_limit` as soon as that is exceeded.
 
 Archive reads show the bytes and actual language recorded when sent. Old archives
 may have no language metadata. Replay uses current presentation and the saved

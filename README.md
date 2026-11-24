@@ -547,7 +547,11 @@ The legacy key has attachment permission here solely for the local attachment ex
 ### Template copy and optional languages
 
 See [template configuration reference](docs/templates.md) for merge order, block
-shapes and a complete opt-in language example.
+shapes and a complete opt-in language example. Your own templates under any name,
+written in Markdown or HTML (including order rows and brand theme options), are
+described in [named templates](docs/templates.md#named-templates); clients with
+`rawContent: true` may send their own body in
+[`content`](docs/templates.md#request-content).
 
 Declare `mailTemplates.version: 1` to configure any of the eight registered types.
 Global `mailTemplates.templates` and each brand's `mailTemplates.templates` accept
@@ -648,7 +652,7 @@ the added archive metadata, but cannot show its language label.
 The free core authenticates exactly one **full key**: the secret in `API_KEY` (or the
 variable named by `legacyApiKey.env`). It has `send` and `hook:<id>` for sources with `legacyKey: true`, every brand
 and template, and may override `to`. Free `legacyApiKey` options are `enabled`, `env`,
-`attachments` and `signatureSecretEnv` (required `X-Sellf-Signature` on `/v1/hooks/sellf`,
+`attachments`, `rawContent` (own body in `content`, default false) and `signatureSecretEnv` (required `X-Sellf-Signature` on `/v1/hooks/sellf`,
 see [Sellf webhook](#sellf-event-contract)). `brands`, `templates` and `recipientOverride` may only restate the full values;
 `scopes` is not a legacy-key configuration member; any restriction fails validation with
 `additional or restricted API keys require Mailstack Pro`.
@@ -956,7 +960,8 @@ SMTP DSN polling and generic provider webhooks are not implemented.
 ### Security model
 Origin allow-list (CORS reflects the exact origin, never `*`) · server-side Turnstile (fails
 closed) · honeypot · fixed recipient / anti-relay · D1 rate limit (8/hour per brand+IP) ·
-constant-time bearer compare · all field values HTML-escaped · 64 KiB (10 MiB for attachment-enabled send clients) / ~40 fields / 5000
+constant-time bearer compare · all field values HTML-escaped · template HTML reduced to an
+allow list, URLs from fields http(s) only · request `content` only with `rawContent: true` · 64 KiB (10 MiB for attachment-enabled send clients) / ~40 fields / 5000
 UTF-16 code units per content value · no secrets in code. Content values are capped
 after string-array joining (with blank-line separators). If the boundary falls
 inside a surrogate pair, the whole final character is omitted, leaving 4999 units.

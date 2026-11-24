@@ -1,4 +1,4 @@
-import { containsSecret, secretCandidates } from "../../templates/privacy.ts";
+import { containsSecret, representations, secretCandidates, shortCells } from "../../templates/privacy.ts";
 import { WorkBudget } from "../../templates/output.ts";
 import type { Config, Policy } from "../config/schema.ts";
 import type { Brand, TemplateData, TemplateDef } from "../../types.ts";
@@ -20,6 +20,8 @@ export interface ProjectionInput {
   template: TemplateDef;
   data: TemplateData;
   subject?: string;
+  /** The subject was set by the request, not rendered by the template. */
+  explicitSubject?: boolean;
   metadata?: ArchiveMetadata;
   budget?: WorkBudget;
   render?: (data: TemplateData) => { html: string; text: string; subject: string };
@@ -65,10 +67,12 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     : [...secretFields].map((field) => [field, data[field] ?? ""] as const);
   const replacements = fields
     .filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
-    .flatMap(([field, value]) => (secretFields.has(field) ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : [...new Set([value, escapeHtml(value)])]).map((representation) => ({
-      representation, replacement: secretFields.has(field) ? partial(value) : "[ukryte]",
-      secret: secretFields.has(field), short: !secretFields.has(field) && policy.level === "masked" && Array.from(value).length < 3,
-    })));
+    .flatMap(([field, value]) => {
+      const secret = secretFields.has(field), replacement = secret ? partial(value) : "[ukryte]";
+      const short = !secret && policy.level === "masked" && Array.from(value).length < 3;
+      return (secret ? secretCandidates({ ...template, secretFields: [field], optionalSecretFields: [] }, data, budget) : representations(template, field, value))
+        .map(representation => ({ representation, replacement, secret, short }));
+    });
   if (policy.level === "masked") replacements.sort((a, b) => b.representation.length - a.representation.length);
   const secretReplacements = replacements.filter(({ secret }) => secret);
   const mask = (value: string, html = false, values = replacements): string => {
@@ -83,9 +87,13 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     }
     return maskPatterns(value, patterns, budget);
   };
+  // A row cell shorter than three characters cannot be told apart from a fragment of other text, so only
+  // another field whose whole value equals it is masked.
+  const shortValues = new Map(includeSecrets ? [] : fields.filter(([field, value]) => value && (secretFields.has(field) || policy.level === "masked" && !show.has(field)))
+    .flatMap(([field, value]) => shortCells(template, field, value).map(cell => [cell, secretFields.has(field) ? "••••" : "[ukryte]"] as const)));
   const projected = Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
     !includeSecrets && secretFields.has(key) ? partial(value)
-      : policy.level === "masked" && !show.has(key) ? "[ukryte]" : mask(value, false, secretReplacements),
+      : policy.level === "masked" && !show.has(key) ? "[ukryte]" : shortValues.get(value.trim()) ?? mask(value, false, secretReplacements),
   ]));
   const render = () => {
     if (input.render) return input.render(projected);
@@ -93,7 +101,9 @@ export function projectArchive(input: ProjectionInput): ArchiveProjection | null
     return { ...renderLayout(brand, body), subject: template.subject(brand, projected) };
   };
   const rendered = render();
-  const subject = input.subject ?? rendered.subject;
+  // A whole-value mask changes a field the template's own subject may contain, so that subject is taken from the masked render.
+  const wholeValueMasked = Object.entries(data).some(([key, value]) => shortValues.has(value.trim()) && projected[key] !== value);
+  const subject = input.subject === undefined || wholeValueMasked && !input.explicitSubject ? rendered.subject : input.subject;
   const post = (value: string, html = false, all = false) => {
     if (includeSecrets) return value;
     if (html) {

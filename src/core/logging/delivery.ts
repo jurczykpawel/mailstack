@@ -25,6 +25,7 @@ export interface DeliveryContext {
   ref?: string;
   idempotencyKey?: string;
   explicitJsonLd?: unknown[];
+  content?: import("../../templates/custom.ts").RequestContent;
   /** Public contact submission: `form.submitted` is recorded with `message.sent`. */
   submitted?: boolean;
 }
@@ -50,7 +51,7 @@ export async function deliver(
     ...(envelope.attachments?.length ? { attachments: await attachmentSummary(envelope.attachments) } : {}),
     ...context.record, resendOf: context.resendOf, resendRoot: context.resendRoot, clientId, brand, template, data, recipients: envelope.to.map(address => ({ role: 'to' as const, address })),
     explicitSubject: context.explicitSubject, localeInput: context.localeInput, replyTo: envelope.replyTo, ref: context.ref,
-    idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, provider: deps.provider ?? 'ses',
+    idempotencyKey: context.idempotencyKey, markup: context.explicitJsonLd, content: context.content?.raw, provider: deps.provider ?? 'ses',
   };
   const request = intentRequest(input);
   let id: string | undefined;

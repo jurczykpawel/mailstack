@@ -8,6 +8,8 @@ import { effectiveTemplate, containsSecret, secretCandidates, normalizeHeader } 
 import { WorkBudget, Output } from './output.ts';
 import { renderLayout } from './layout.ts';
 import { serializeToHead } from '../markup/index.ts';
+import { MANIFEST } from './manifest.ts';
+import { renderBody, type Body } from './custom.ts';
 
 export function selectKind(brand: Brand, template: string, data: TemplateData): string {
   const forms = brand.mailTemplates?.forms;
@@ -17,7 +19,7 @@ export function selectKind(brand: Brand, template: string, data: TemplateData): 
   return value ? own(forms!.selector.values, value) ?? forms!.selector.otherwise : forms!.selector.empty;
 }
 export function prepareEmail(brand: Brand, template: TemplateDef, original: TemplateData, options: {
-  projection?: boolean; selected?: { formKind: string; definition: import('./config-schema.ts').TemplatePatch; locale: string | null }; budget?: WorkBudget; plans: TemplatePlans; locale?: unknown; subject?: string; explicitJsonLd?: import('../types.ts').JsonLdBlock[]; confirmation?: boolean;
+  projection?: boolean; selected?: { formKind: string; definition: import('./config-schema.ts').TemplatePatch; locale: string | null }; budget?: WorkBudget; plans: TemplatePlans; locale?: unknown; subject?: string; explicitJsonLd?: import('../types.ts').JsonLdBlock[]; confirmation?: boolean; content?: Body;
 }) {
   const formKind = options.selected?.formKind ?? selectKind(brand, template.id, original);
   const localeInput = brand.mailTemplates?.languages ? normalizeLocale(options.locale) : null;
@@ -33,8 +35,8 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
   };
   const dry = new Recipe(definition, brand, data, options.plans, active, locale, template.id);
   const recipeSubject = template.subject(brand, data, dry);
-  // A replacement body doesn't need the recipe's body serialization.
-  const rendered = template.render(brand, data, dry);
+  // A replacement body doesn't need the template body.
+  const rendered = options.content && template.headers ? { ...template.headers(brand, data, dry), bodyHtml: '', bodyText: '' } : template.render(brand, data, dry);
   const templateSubject = definition.subject === undefined ? recipeSubject : header(definition.subject);
   const heading = definition.heading === undefined ? template.id === 'contact' && definition.subject !== undefined ? templateSubject : rendered.heading : header(definition.heading);
   const previewText = definition.previewText === undefined ? rendered.previewText : header(definition.previewText);
@@ -49,7 +51,10 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
   const headHtml = serializeToHead(options.explicitJsonLd ?? rendered.jsonLd ?? []);
   const layout = { subject, heading, previewText, headHtml, locale, layoutCopy: copy };
   let result;
-  if (definition.body) result = renderConfigured(brand, definition, options.plans, data, layout);
+  if (options.content) {
+    const body = renderBody(options.content, brand, data);
+    result = renderLayout(brand, { ...rendered, bodyHtml: body.html, bodyText: body.text, ...layout });
+  } else if (definition.body) result = renderConfigured(brand, definition, options.plans, data, layout);
   else {
     if (active) {
       new Output(998, false).raw(subject);
@@ -58,7 +63,8 @@ export function prepareEmail(brand: Brand, template: TemplateDef, original: Temp
         { html: new Output(512 * 1024, false), text: new Output(256 * 1024, false) });
     }
     const body = dry.measuring ? template.render(brand, data, new Recipe(definition, brand, data, options.plans, false, locale, template.id)) : rendered;
-    result = renderLayout(brand, { ...body, ...layout });
+    result = body.document ? { html: headHtml ? body.bodyHtml.replace(/<\/head>/i, `${headHtml}</head>`) : body.bodyHtml, text: body.bodyText } : renderLayout(brand, { ...body, ...layout });
   }
+  if (options.content || !Object.hasOwn(MANIFEST, template.id)) { new Output(512 * 1024, false).raw(result.html); new Output(256 * 1024, false).raw(result.text); }
   return { ...result, subject, heading, previewText, data, formKind, locale, localeInput, definition, template, budget };
 }

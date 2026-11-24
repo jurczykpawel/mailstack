@@ -6,7 +6,7 @@ import type { Config } from "../../src/core/config/schema";
 export function testKeys(config: Pick<Config, "clients">): KeyProvider {
   const find = (id?: string) => {
     const entry = config.clients?.find((client) => client.id === id);
-    return entry && ({ brands: [], templates: [], recipientOverride: false, attachments: false, ...entry } as unknown as Client & { tokenSha256: string });
+    return entry && ({ brands: [], templates: [], recipientOverride: false, attachments: false, rawContent: false, ...entry } as unknown as Client & { tokenSha256: string });
   };
   return {
     client: find,

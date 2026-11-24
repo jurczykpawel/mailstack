@@ -199,7 +199,8 @@ if (command.startsWith('hmac-')) {
       // The panel's AWS page sends simulator scenarios in process (SES delivery only).
       ...delivery === 'ses' ? { aws: { brands: [{ id: 'acme', test: true }] } } : {} } }];
     cfg.clients = [
-      { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice'] },
+      // Named templates of the staging configuration and own request bodies (rawContent) go through st-send.
+      { id: 'st-send', tokenSha256: digest(secrets.STAGING_SEND_TOKEN), scopes: ['send'], brands: ['acme'], templates: ['notice', ...Object.keys(cfg.mailTemplates?.custom ?? {})], rawContent: true },
       { id: 'st-hook', tokenSha256: digest(secrets.STAGING_HOOK_TOKEN), scopes: ['hook:sellf'], brands: ['acme'], templates: ['payment', 'refund', 'notice', 'welcome'], signatureSecretEnv: 'SELLF_STAGING_HMAC' },
       { id: 'st-panel', tokenSha256: digest(secrets.STAGING_PANEL_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
       { id: 'st-panel-worker', tokenSha256: digest(secrets.STAGING_PANEL_WORKER_TOKEN), scopes: ['panel', 'webhooks:write'], brands: '*', templates: '*' },
