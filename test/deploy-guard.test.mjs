@@ -114,7 +114,7 @@ describe("non-production Worker", () => {
 });
 
 describe("deploy execution", () => {
-  const options = () => ({ cwd, healthUrl: "https://mail.example.com/health", runWrangler: vi.fn(), fetchHealth: vi.fn(), log: vi.fn() });
+  const options = () => ({ cwd, healthUrl: "https://mail.example.com/health", runWrangler: vi.fn(), fetchHealth: vi.fn(), log: vi.fn(), sleep: vi.fn() });
   it("passes HEAD to Wrangler and checks health after success", async () => {
     const opts = options(), sha = git(cwd, "rev-parse", "HEAD");
     opts.fetchHealth.mockImplementation(async (_url, init) => {
@@ -134,6 +134,17 @@ describe("deploy execution", () => {
     await expect(deploy(opts)).rejects.toThrow(/Health check failed/);
     expect(opts.fetchHealth).toHaveBeenCalledOnce();
   });
+  it("retries until the new commit answers and fails only after the last attempt", async () => {
+    const opts = { ...options(), healthAttempts: 3, healthIntervalMs: 7 }, sha = git(cwd, "rev-parse", "HEAD");
+    opts.fetchHealth.mockResolvedValueOnce(Response.json({ commit: "old" }))
+      .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(Response.json({ commit: sha }));
+    await deploy(opts);
+    expect(opts.fetchHealth).toHaveBeenCalledTimes(3);
+    expect(opts.sleep).toHaveBeenCalledWith(7);
+    opts.fetchHealth.mockReset().mockImplementation(async () => Response.json({ commit: "old" }));
+    await expect(deploy(opts)).rejects.toThrow(/commit/i);
+    expect(opts.fetchHealth).toHaveBeenCalledTimes(3);
+  });
   it("stops before Wrangler when repository checks fail", async () => {
     const opts = options(); commit(cwd, "local");
     await expect(deploy(opts)).rejects.toThrow();
@@ -146,13 +157,13 @@ describe("deploy execution", () => {
     expect(opts.fetchHealth).not.toHaveBeenCalled();
   });
   it.each([{}, { commit: "other" }])("rejects health with commit %j", async (body) => {
-    const opts = options(); opts.fetchHealth.mockResolvedValue(Response.json(body));
+    const opts = options(); opts.fetchHealth.mockImplementation(async () => Response.json(body));
     await expect(deploy(opts)).rejects.toThrow(/commit/i);
   });
   it.each(["http", "json", "network"])("rejects a health %s failure", async (kind) => {
     const opts = options();
     if (kind === "network") opts.fetchHealth.mockRejectedValue(new Error("offline"));
-    else opts.fetchHealth.mockResolvedValue(new Response("unavailable", { status: kind === "http" ? 503 : 200 }));
+    else opts.fetchHealth.mockImplementation(async () => new Response("unavailable", { status: kind === "http" ? 503 : 200 }));
     await expect(deploy(opts)).rejects.toThrow();
   });
   it("explicitly reports a skipped health check without a URL", async () => {
@@ -168,7 +179,7 @@ describe("deploy execution", () => {
     opts.fetchHealth.mockResolvedValue(Response.json({ commit: sha, proCommit: sha }));
     await deploy(opts);
     expect(opts.runWrangler).toHaveBeenCalledWith(["deploy", "--var", `BUILD_COMMIT:${sha}`, "--var", `BUILD_PRO_COMMIT:${sha}`]);
-    opts.fetchHealth.mockResolvedValue(Response.json({ commit: sha }));
+    opts.fetchHealth.mockImplementation(async () => Response.json({ commit: sha }));
     await expect(deploy(opts)).rejects.toThrow(/commit/i);
     commit(pro, "local Pro change"); opts.runWrangler.mockClear();
     await expect(deploy(opts)).rejects.toThrow(/origin\/main/);

@@ -5,7 +5,7 @@ import { own, type TemplatePlans } from "./config.ts";
 import { expandText } from "./blocks.ts";
 import { compileMarkdown, fieldNames, fill, renderBudget, renderMarkdown, type MarkdownPlan } from "./markdown.ts";
 import { compileHtml, htmlText, renderHtml, type HtmlPlan } from "./html.ts";
-import { MANIFEST } from "./manifest.ts";
+import { CONTEXT_FIELDS, MANIFEST } from "./manifest.ts";
 import { textFields } from "./tokens.ts";
 import { utf8Size } from "./output.ts";
 
@@ -90,7 +90,7 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
       fail([...root, ...(tag ? ["locales", tag] : []), "subject"], "literal single-line subject required");
     const used = variants.flatMap(item => [...HEADERS.flatMap(key => textFields(item[key])), ...item.body ? Object.values(item.body).flatMap(body => typeof body === "string" ? fieldNames(body) : body.fields) : []]);
     const urls = variants.flatMap(item => item.body ? Object.values(item.body).flatMap(body => [...body.urlFields ?? [], ...body.partialUrlFields ?? []]) : []);
-    if (urls.length || used.some(field => !["name", "summary", "brand.id", "brand.name", "brand.subjectPrefix"].includes(field)))
+    if (urls.length || used.some(field => !["name", "summary", ...CONTEXT_FIELDS].includes(field)))
       fail(root, "confirmation field unavailable");
   }
   return result;

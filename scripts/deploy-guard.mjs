@@ -48,7 +48,8 @@ export async function deploy({
     const result = spawnSync("wrangler", args, { cwd, stdio: "inherit" });
     if (result.error || result.status !== 0) throw new Error("Wrangler deploy failed.");
   },
-  fetchHealth = fetch, log = console.log,
+  fetchHealth = fetch, log = console.log, healthAttempts = 12, healthIntervalMs = 5_000,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const { sha, pro } = checkRepositories(cwd, proPath, workerName);
   await runWrangler(["deploy", "--var", `BUILD_COMMIT:${sha}`, ...(pro ? ["--var", `BUILD_PRO_COMMIT:${pro}`] : [])]);
@@ -56,12 +57,25 @@ export async function deploy({
     log("MAILSTACK_HEALTH_URL is unset; skipping post-deploy health check.");
     return;
   }
-  const response = await fetchHealth(healthUrl, {
-    cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}.`);
-  const health = await response.json();
-  if (health?.commit !== sha || health?.proCommit !== pro) throw new Error("Health commit does not match HEAD.");
+  // A fresh deploy may take a while to reach the edge: retry until the commit matches; redirects fail at once.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const response = await fetchHealth(healthUrl, {
+        cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        const error = new Error(`Health check failed: HTTP ${response.status}.`);
+        if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) error.final = true;
+        throw error;
+      }
+      const health = await response.json();
+      if (health?.commit !== sha || health?.proCommit !== pro) throw new Error("Health commit does not match HEAD.");
+      break;
+    } catch (error) {
+      if (error.final || attempt >= healthAttempts) throw error;
+      await sleep(healthIntervalMs);
+    }
+  }
   log(`Health commit verified: ${sha}`);
 }
 
