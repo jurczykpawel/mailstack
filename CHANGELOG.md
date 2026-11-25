@@ -4,6 +4,8 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-25
+
 - The default Polish greeting of `received`, `payment` and `license` is
   "Dzień dobry," with or without a name; `welcome` with a name reads
   "Dzień dobry, witamy w <brand>!". Configured greetings still win.
