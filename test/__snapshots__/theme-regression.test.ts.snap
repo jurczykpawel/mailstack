@@ -75,7 +75,7 @@ exports[`bank-transfer renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -109,7 +109,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -295,7 +295,7 @@ World</div>
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -356,7 +356,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -386,7 +386,7 @@ exports[`license renders byte for byte without theme options 1`] = `
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -422,7 +422,7 @@ exports[`license renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -432,7 +432,7 @@ exports[`license renders byte for byte without theme options 1`] = `
   "text": "Twój klucz licencji
 ===================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:
 
@@ -452,7 +452,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -501,7 +501,7 @@ exports[`notice renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -523,7 +523,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -553,7 +553,7 @@ exports[`payment renders byte for byte without theme options 1`] = `
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -591,7 +591,7 @@ exports[`payment renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -601,7 +601,7 @@ exports[`payment renders byte for byte without theme options 1`] = `
   "text": "Potwierdzenie płatności
 =======================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Dziękujemy za płatność. Poniżej podsumowanie:
 
@@ -621,7 +621,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -651,7 +651,7 @@ exports[`received renders byte for byte without theme options 1`] = `
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
@@ -664,7 +664,7 @@ exports[`received renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -674,7 +674,7 @@ exports[`received renders byte for byte without theme options 1`] = `
   "text": "Dziękujemy za wiadomość
 =======================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
 
@@ -688,7 +688,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -736,7 +736,7 @@ exports[`refund renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -768,7 +768,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -779,7 +779,7 @@ exports[`welcome renders byte for byte without theme options 1`] = `
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Witaj, Jane &amp; Smith w Acme Inc.!</title>
+    <title>Dzień dobry, witamy w Acme Inc.!</title>
     
   </head>
   <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
@@ -793,7 +793,7 @@ exports[`welcome renders byte for byte without theme options 1`] = `
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
-                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Witaj, Jane &amp; Smith w Acme Inc.!</h1>
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Dzień dobry, witamy w Acme Inc.!</h1>
               </td>
             </tr>
             <tr>
@@ -817,14 +817,14 @@ exports[`welcome renders byte for byte without theme options 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
   </body>
 </html>",
-  "subject": "Witaj w Acme Inc.",
-  "text": "Witaj, Jane & Smith w Acme Inc.!
+  "subject": "Dzień dobry,
+  "text": "Dzień dobry, witamy w Acme Inc.!
 ================================
 
 Welcome
@@ -839,6 +839,6 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;

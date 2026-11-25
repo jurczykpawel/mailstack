@@ -94,7 +94,7 @@ describe("archive projection", () => {
     expect(archive.html).toContain(`src="${logoUrl}"`);
     for (const value of [archive.html, archive.text]) {
       expect(value).toContain(input.item);
-      expect(value).toContain(level === "masked" ? "Witaj [ukryte]," : "Witaj Pro,");
+      expect(value).toContain("Dzień dobry,");
     }
     expect(archive.text).toContain("Pozycja: Produkt Żółw");
   });
@@ -107,7 +107,7 @@ describe("archive projection", () => {
     const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
       patterns: [], brand, template: getTemplate("payment")!, data: { name, item: "Produkt Żółw" }, subject }));
     expect(archive.subject).toBe(expected);
-    expect(archive.text).toContain("Witaj [ukryte],");
+    expect(archive.text).toContain("Dzień dobry,");
   });
   it.each(["masked", "full"] as const)("projects license values inside allowed fields at level %s", (level) => {
     const input = { ...data, productName: "Demo", instructions: `Use ${data.licenseKey} at ${data.activationUrl}` };

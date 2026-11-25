@@ -66,7 +66,8 @@ describe("welcome", () => {
       ctaLabel: "Get started",
     });
     expect(subject).toBe("Witaj w Acme Inc.");
-    expect(html).toContain("Witaj, Alice w Acme Inc.!");
+    expect(html).toContain("Dzień dobry, witamy w Acme Inc.!");
+    expect(html).not.toContain("Alice");
     expect(html).toContain("https://example.com/start");
     expect(html).toContain("Get started");
     expect(text).toContain("Get started: https://example.com/start");
