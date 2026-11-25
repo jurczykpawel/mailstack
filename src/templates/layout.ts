@@ -2,6 +2,9 @@ import type { Brand, LayoutInput, RenderedEmail } from "../types.ts";
 import { Output, esc, length, type Content, type Emit } from "./output.ts";
 import { isHttpUrl } from "../urls.ts";
 
+/** Default greeting: neutral, so a name never needs the Polish vocative. */
+export const GREETING = "Dzień dobry,";
+
 const MAILSTACK_HOME_URL = "https://mailstack.techskills.academy/pl";
 
 /** Escape the five HTML-significant characters. Applied to every untrusted value. */
@@ -209,7 +212,7 @@ export function renderLayout(brand: Brand, input: LayoutParts, sinks?: { html: O
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">${esc(input.layoutCopy?.sentBy ?? "Wysłano przez")} <a href="${esc(MAILSTACK_HOME_URL)}" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">${esc(input.layoutCopy?.sentBy ?? "Wysłano przez")} <a href="${esc(MAILSTACK_HOME_URL)}" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -232,6 +235,6 @@ function renderLayoutText(brand: Brand, input: LayoutParts, output = new Output(
   if (brand.theme.address) output.raw(["\n", brand.theme.address]);
   if (brand.theme.phone) output.raw(["\n", input.layoutCopy?.phoneLabel ?? "tel:", " ", brand.theme.phone]);
   if (isHttpUrl(brand.theme.siteUrl)) output.raw(["\n", brand.theme.siteUrl]);
-  output.raw(["\n\n", input.layoutCopy?.sentBy ?? "Wysłano przez", " mailstack (", MAILSTACK_HOME_URL, ")"]);
+  output.raw(["\n\n", input.layoutCopy?.sentBy ?? "Wysłano przez", " Mailstack (", MAILSTACK_HOME_URL, ")"]);
   return output.result();
 }

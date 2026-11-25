@@ -13,7 +13,7 @@ export const welcomeTemplate: TemplateDef = {
 
   render(brand: Brand, data: TemplateData, recipe = new Recipe()): RenderedBody {
     const name = (data.name || "").trim();
-    const heading = name ? recipe.copy("headingWithName", `Witaj, ${name} w ${brand.name}!`) : recipe.copy("headingWithoutName", `Witaj w ${brand.name}!`);
+    const heading = name ? recipe.copy("headingWithName", `Dzień dobry, witamy w ${brand.name}!`) : recipe.copy("headingWithoutName", `Witaj w ${brand.name}!`);
 
     const intro = (data.intro || "").trim();
     const body = (data.body || "").trim();
