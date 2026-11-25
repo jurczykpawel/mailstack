@@ -71,7 +71,7 @@ it('replaces notice parsing with the configured body', () => {
   expect(result.html).toContain('Configured'); expect(result.html).not.toContain('Legacy');
 });
 it('greets neutrally by default, with or without a name, unless configured', () => {
-  for (const id of ['received', 'payment', 'license']) for (const data of [{ name: 'Jan Kowalski' }, {}]) {
+  for (const id of ['received', 'payment', 'license']) for (const data of [{ name: 'Jan Kowalski' }, {}] as Record<string, string>[]) {
     const result = render(configured(), id, data);
     expect(result.text).toContain('Dzień dobry,'); expect(result.text).not.toContain('Witaj'); expect(result.text).not.toContain('Kowalski');
   }
