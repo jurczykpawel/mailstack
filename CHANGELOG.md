@@ -4,6 +4,11 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- The default Polish greeting of `received`, `payment` and `license` is
+  "Dzień dobry," with or without a name; `welcome` with a name reads
+  "Dzień dobry, witamy w <brand>!". Configured greetings still win.
+- The footer reads "Wysłano przez Mailstack" / "Sent by Mailstack".
+
 ## [1.2.2] - 2026-11-24
 
 - Named template headers read only `{brand.id}`, `{brand.name}` and

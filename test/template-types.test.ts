@@ -38,9 +38,9 @@ describe("template registry", () => {
 describe("every template stays on-brand and escapes input", () => {
   const cases: Array<[string, TemplateData]> = [
     ["contact", { name: "<script>alert(1)</script>", email: "a@b.com" }],
-    ["welcome", { name: "<script>alert(1)</script>", intro: "Hello" }],
-    ["received", { name: "<script>alert(1)</script>", refId: "R-1" }],
-    ["payment", { name: "<script>alert(1)</script>", amount: "100" }],
+    ["welcome", { name: "Alice", intro: "<script>alert(1)</script>" }],
+    ["received", { name: "Alice", refId: "<script>alert(1)</script>" }],
+    ["payment", { name: "Alice", item: "<script>alert(1)</script>", amount: "100" }],
     ["notice", { heading: "<script>alert(1)</script>", paragraphs: "Content" }],
   ];
 

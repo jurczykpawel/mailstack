@@ -341,7 +341,7 @@
       "ctaLabel": "Open"
     },
     "expected": {
-      "subject": "Dzień dobry,
+      "subject": "Witaj w Acme Inc.",
       "body": {
         "heading": "Dzień dobry, witamy w Acme Inc.!",
         "bodyHtml": "<p style=\"margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;\">Welcome</p>\n<p style=\"margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;\">Details<br>Next</p>\n\n            <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:18px 0;max-width:100%;table-layout:fixed;\">\n              <tr>\n                <td style=\"border-radius:8px;background:#0064BC;\">\n                  <a href=\"https://example.com/start\" style=\"display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;\">Open</a>\n                </td>\n              </tr>\n            </table>",
@@ -387,9 +387,9 @@
     },
     "data": {},
     "expected": {
-      "subject": "Dzień dobry,
+      "subject": "Witaj w Acme Inc.",
       "body": {
-        "heading": "Dzień dobry,
+        "heading": "Witaj w Acme Inc.!",
         "bodyHtml": "",
         "bodyText": "",
         "previewText": "Witaj w Acme Inc.!"
@@ -439,9 +439,9 @@
       "ctaLabel": " \t "
     },
     "expected": {
-      "subject": "Dzień dobry,
+      "subject": "Witaj w Acme Inc.",
       "body": {
-        "heading": "Dzień dobry,
+        "heading": "Witaj w Acme Inc.!",
         "bodyHtml": "",
         "bodyText": "",
         "previewText": "Witaj w Acme Inc.!"
@@ -1507,7 +1507,7 @@
       "ctaLabel": "Open"
     },
     "expected": {
-      "subject": "Dzień dobry,
+      "subject": "Witaj w Demo Brand",
       "body": {
         "heading": "Dzień dobry, witamy w Demo Brand!",
         "bodyHtml": "<p style=\"margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;\">Welcome</p>\n<p style=\"margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;\">Details<br>Next</p>\n\n            <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:18px 0;max-width:100%;table-layout:fixed;\">\n              <tr>\n                <td style=\"border-radius:8px;background:#008AFF;\">\n                  <a href=\"https://example.com/start\" style=\"display:inline-block;box-sizing:border-box;max-width:100%;overflow-wrap:anywhere;word-break:break-word;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;\">Open</a>\n                </td>\n              </tr>\n            </table>",
@@ -1543,9 +1543,9 @@
     },
     "data": {},
     "expected": {
-      "subject": "Dzień dobry,
+      "subject": "Witaj w Demo Brand",
       "body": {
-        "heading": "Dzień dobry,
+        "heading": "Witaj w Demo Brand!",
         "bodyHtml": "",
         "bodyText": "",
         "previewText": "Witaj w Demo Brand!"
@@ -1585,9 +1585,9 @@
       "ctaLabel": " \t "
     },
     "expected": {
-      "subject": "Dzień dobry,
+      "subject": "Witaj w Demo Brand",
       "body": {
-        "heading": "Dzień dobry,
+        "heading": "Witaj w Demo Brand!",
         "bodyHtml": "",
         "bodyText": "",
         "previewText": "Witaj w Demo Brand!"

@@ -26,7 +26,7 @@ exports[`renders the license template with shared layout 1`] = `
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -62,7 +62,7 @@ exports[`renders the license template with shared layout 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -72,7 +72,7 @@ exports[`renders the license template with shared layout 1`] = `
   "text": "Twój klucz licencji
 ===================
 
-Dzień dobry,
+Witaj Jane & Smith,
 
 Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:
 
@@ -95,6 +95,6 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
