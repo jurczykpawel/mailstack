@@ -68,7 +68,7 @@ next line</span>
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -90,7 +90,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
   },
 }
 `;
@@ -152,7 +152,7 @@ exports[`notice formatting > preserves legacy output byte-for-byte: " \\n\\n " 1
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -169,7 +169,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
   },
 }
 `;
@@ -231,7 +231,7 @@ exports[`notice formatting > preserves legacy output byte-for-byte: "" 1`] = `
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -248,7 +248,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
   },
 }
 `;
@@ -324,7 +324,7 @@ Second</span>
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -345,7 +345,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
   },
 }
 `;
