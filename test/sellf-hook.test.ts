@@ -135,7 +135,8 @@ describe("handleSellfHook — purchase.completed", () => {
     expect(params.html).toContain("49.99 PLN");
     expect(params.html).toContain("Protocol: X");
     expect(params.html).toContain("pi_test_999");
-    expect(params.html).toContain("Anna Nowak");
+    expect(params.html).toContain("Dzień dobry,");
+    expect(params.html).not.toContain("Anna Nowak");
   });
 
   it("uses paymentIntentId when sessionId is absent", async () => {

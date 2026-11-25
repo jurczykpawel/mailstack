@@ -507,8 +507,8 @@ describe("handleSend — auto-reply (public contact)", () => {
     expect(reply.replyTo).toBe("inbox@acme.example");
     expect(reply.subject).toBe("Potwierdzenie: otrzymaliśmy Twoje zgłoszenie");
     expect(reply.html).toContain("Dziękujemy za wiadomość");
-    // Submission context carried into the confirmation.
-    expect(reply.html).toContain("Jane Smith");
+    // Submission context carried into the confirmation; the default greeting omits the name.
+    expect(reply.html).toContain("Dzień dobry,");
     expect(reply.html).toContain("Consultation");
   });
 

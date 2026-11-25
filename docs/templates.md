@@ -24,8 +24,8 @@ Defaults support shared `copy`/`labels`; type patches support `subject`, `headin
 
 The built-in `received`, `payment` and `license` greeting is "Dzień dobry," with or
 without a name (a Polish name would need the vocative); `greetingWithName` and
-`greetingWithoutName` replace it, e.g. `"Hello {name},"`. Amounts are printed exactly
-as sent: the sending application supplies them in display format.
+`greetingWithoutName` replace it, e.g. `"Hello {name},"`. In `POST /v1/send`, amounts
+are printed exactly as sent: the sending application supplies them in display format.
 
 Text is a string with `{field}` placeholders or an array of strings and fragments:
 `{"field":"orderId","prefix":" - ","suffix":"","empty":""}`. Prefix/suffix

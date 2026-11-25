@@ -328,7 +328,7 @@ submitted (a "we received your message" email), in addition to the main email to
 - **What it sends:** the `received` template (override per brand with
   `brand.autoReplyTemplate`), themed for the brand, `from: brand.from`, `to:` the
   submitter, `replyTo: brand.to[0]` so their reply reaches the brand inbox. The
-  confirmation carries the submitter's name and the `type`/`topic` as a short summary.
+  confirmation carries the `type`/`topic` as a short summary (the default greeting omits the name).
 - **Non-blocking + best-effort:** dispatched via the Worker's `ctx.waitUntil`, so it never
   delays the response; if the auto-reply send fails it is swallowed (the submission already
   succeeded → the user still gets `{success:true}`). It is a single direct send and never
