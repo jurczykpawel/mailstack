@@ -41,7 +41,7 @@ describe('configured template delivery', () => {
   });
   it('uses canonical locale, custom aliases and layout copy', () => {
     const result = render(configured({ contact: { locales: { en: { subject: 'Message', labels: { name: 'Name', 'Imię i nazwisko': 'Full name', phone: 'Phone' }, copy: { messageLabel: 'Message' } } } } }, { languages: { default: 'pl', allowed: ['pl', 'en'] } }), 'contact', { NAME: 'Jane', 'Imię i nazwisko': 'Doe', phone: '123' }, 'EN-us');
-    expect(result.html).toContain('lang="en"'); expect(result.text).toContain('Name: Jane'); expect(result.text).toContain('Full name: Doe'); expect(result.text).toContain('Sent by mailstack'); expect(result.html).toContain('https://mailstack.techskills.academy/pl');
+    expect(result.html).toContain('lang="en"'); expect(result.text).toContain('Name: Jane'); expect(result.text).toContain('Full name: Doe'); expect(result.text).toContain('Sent by Mailstack'); expect(result.html).toContain('https://mailstack.techskills.academy/pl');
   });
   it.each(['', ' ', '\n'])('uses a configured CTA fallback for %j', ctaLabel => {
     for (const id of ['notice', 'welcome']) {
@@ -69,6 +69,13 @@ it('escapes a configured reference label once', () => {
 it('replaces notice parsing with the configured body', () => {
   const result = render(configured({ notice: { body: { blocks: [{ id: 'p', kind: 'paragraph', text: 'Configured' }] } } }), 'notice', { heading: 'Heading', paragraphs: '## Legacy\n\nOld paragraph' });
   expect(result.html).toContain('Configured'); expect(result.html).not.toContain('Legacy');
+});
+it('greets neutrally by default, with or without a name, unless configured', () => {
+  for (const id of ['received', 'payment', 'license']) for (const data of [{ name: 'Jan Kowalski' }, {}] as Record<string, string>[]) {
+    const result = render(configured(), id, data);
+    expect(result.text).toContain('Dzień dobry,'); expect(result.text).not.toContain('Witaj'); expect(result.text).not.toContain('Kowalski');
+  }
+  expect(render(configured({ received: { copy: { greetingWithName: 'Cześć {name},' } } }), 'received', { name: 'Jan' }).text).toContain('Cześć Jan,');
 });
 it('uses every recipe slot on its corresponding branch', () => {
   const cases: [string, Record<string, string>, string[]][] = [

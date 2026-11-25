@@ -22,6 +22,11 @@ Defaults support shared `copy`/`labels`; type patches support `subject`, `headin
 `previewText`, `copy`, `labels`, `ctaLabels`, `body`, `fields`, `secretFields` and
 `locales`. Slot names come from `src/templates/manifest.ts`; unknown slots fail boot.
 
+The built-in `received`, `payment` and `license` greeting is "Dzień dobry," with or
+without a name (a Polish name would need the vocative); `greetingWithName` and
+`greetingWithoutName` replace it, e.g. `"Hello {name},"`. In `POST /v1/send`, amounts
+are printed exactly as sent: the sending application supplies them in display format.
+
 Text is a string with `{field}` placeholders or an array of strings and fragments:
 `{"field":"orderId","prefix":" - ","suffix":"","empty":""}`. Prefix/suffix
 are emitted with a nonempty field; `empty` supplies its alternative. Brand context

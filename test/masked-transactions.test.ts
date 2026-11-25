@@ -58,7 +58,8 @@ it.each([
     }
     if (id === 'refund') expect(output).toContain('Zakres zwrotu: pełny.');
     for (const value of ['PRIVATE-NAME', 'private@example.com', 'PRIVATE-LICENSE', 'private-activation', 'private-token', 'PRIVATE-BODY', 'PRIVATE-HEADING', 'PRIVATE-REASON']) expect(output).not.toContain(value);
-    expect(output).toContain('[ukryte]');
+    // payment and license render no private field besides the name, which the default greeting omits.
+    if (id !== 'payment' && id !== 'license') expect(output).toContain('[ukryte]');
   }
 });
 

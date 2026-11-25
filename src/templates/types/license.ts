@@ -1,6 +1,6 @@
 import { Recipe } from "../recipe.ts";
 import type { TemplateDef } from "../../types.ts";
-import { ctaText } from "../layout.ts";
+import { GREETING, ctaText } from "../layout.ts";
 
 export const licenseTemplate: TemplateDef = {
   id: "license",
@@ -11,7 +11,7 @@ export const licenseTemplate: TemplateDef = {
     return `${recipe.copy("branchHeading", "Twój klucz licencji")}: ${data.productName || ""}`;
   },
   render(brand, data, recipe = new Recipe()) {
-    const greeting = data.name ? recipe.copy("greetingWithName", `Witaj ${data.name},`) : recipe.copy("greetingWithoutName", "Witaj,");
+    const greeting = recipe.copy(data.name ? "greetingWithName" : "greetingWithoutName", GREETING);
     const intro = recipe.copy("intro", "Twoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:");
     const rows = [
       { label: recipe.label("productName", "Produkt"), value: data.productName || "" },

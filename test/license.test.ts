@@ -37,7 +37,7 @@ it("renders long license keys in a wrapping code box below the summary", () => {
   expect(summary).not.toContain(licenseKey);
   expect(summary).not.toContain("Klucz licencji");
   expect(body.bodyHtml).toMatch(/Klucz licencji<\/p>\s*<table\b/);
-  expect(body.bodyText).toBe(`Witaj,\n\nTwoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:\n\nProdukt: Example Pro\n\nKlucz licencji: ${licenseKey}`);
+  expect(body.bodyText).toBe(`Dzień dobry,\n\nTwoja licencja jest gotowa. Poniżej znajdziesz jej szczegóły:\n\nProdukt: Example Pro\n\nKlucz licencji: ${licenseKey}`);
 });
 
 it('validates activation configuration and retains existing brands', () => {

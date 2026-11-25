@@ -6,7 +6,7 @@ import type {
   TemplateData,
   TemplateDef,
 } from "../../types.ts";
-import { ctaText } from "../layout.ts";
+import { GREETING, ctaText } from "../layout.ts";
 import { viewAction } from "../../markup/index.ts";
 
 const paymentHeading = (data: TemplateData) => data.settledVia === 'bank_transfer' ? 'Płatność otrzymana' : 'Potwierdzenie płatności';
@@ -32,7 +32,7 @@ export const paymentTemplate: TemplateDef = {
     const invoiceUrl = (data.invoiceUrl || "").trim();
 
     const heading = recipe.copy(data.settledVia === "bank_transfer" ? "transferHeading" : "branchHeading", paymentHeading(data));
-    const greeting = name ? recipe.copy("greetingWithName", `Witaj ${name},`) : recipe.copy("greetingWithoutName", "Witaj,");
+    const greeting = recipe.copy(name ? "greetingWithName" : "greetingWithoutName", GREETING);
     const intro = recipe.copy(data.settledVia === 'bank_transfer' ? 'transferIntro' : 'intro', data.settledVia === 'bank_transfer' ? 'Otrzymaliśmy Twój przelew. Dziękujemy za płatność. Poniżej podsumowanie:' : 'Dziękujemy za płatność. Poniżej podsumowanie:');
 
     const amountValue = amount ? `${amount} ${currency}`.trim() : "";

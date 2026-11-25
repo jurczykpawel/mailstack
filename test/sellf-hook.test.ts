@@ -135,7 +135,8 @@ describe("handleSellfHook — purchase.completed", () => {
     expect(params.html).toContain("49.99 PLN");
     expect(params.html).toContain("Protocol: X");
     expect(params.html).toContain("pi_test_999");
-    expect(params.html).toContain("Anna Nowak");
+    expect(params.html).toContain("Dzień dobry,");
+    expect(params.html).not.toContain("Anna Nowak");
   });
 
   it("uses paymentIntentId when sessionId is absent", async () => {
@@ -170,7 +171,7 @@ describe("handleSellfHook — other mapped events", () => {
     expect(params.to).toEqual(["buyer@example.com"]);
     expect(params.html).toContain("Zwróciliśmy 49.99 PLN za: Protocol: X.");
     expect(params.html).toContain("Numer transakcji: cs_refund_1.");
-    expect(createHash('sha256').update(JSON.stringify([params.subject, params.html, params.text])).digest('hex')).toMatchInlineSnapshot(`"a95f4433a3ea70ffbdad4a038b8c1cf943a2cfaab30bdf432dd0a54ea26c3fba"`);
+    expect(createHash('sha256').update(JSON.stringify([params.subject, params.html, params.text])).digest('hex')).toMatchInlineSnapshot(`"a34379fc40ab92a85987f5f56b8117afb47137df7ce15690d59b81c8e1f0abc7"`);
   });
 
   it("waitlist.signup -> notice acknowledging the signup", async () => {

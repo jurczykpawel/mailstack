@@ -48,7 +48,8 @@ describe("archive projection", () => {
       patterns: [], brand, template: getTemplate("payment")!, data: input, subject }));
     expect(archive.subject).toBe(level === "masked" ? "Dla [ukryte] [ukryte]: Pro Plan" : subject);
     for (const value of [archive.subject, archive.html, archive.text]) {
-      expect(value.includes(input.name)).toBe(level === "full");
+      // The default greeting no longer shows the name, so only the supplied subject carries it.
+      expect(value.includes(input.name)).toBe(level === "full" && value === archive.subject);
       expect(value).toContain(input.item);
       if (level === "masked") expect(value).not.toContain(input.email);
     }
@@ -94,7 +95,7 @@ describe("archive projection", () => {
     expect(archive.html).toContain(`src="${logoUrl}"`);
     for (const value of [archive.html, archive.text]) {
       expect(value).toContain(input.item);
-      expect(value).toContain(level === "masked" ? "Witaj [ukryte]," : "Witaj Pro,");
+      expect(value).toContain("Dzień dobry,");
     }
     expect(archive.text).toContain("Pozycja: Produkt Żółw");
   });
@@ -107,7 +108,7 @@ describe("archive projection", () => {
     const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["item"] },
       patterns: [], brand, template: getTemplate("payment")!, data: { name, item: "Produkt Żółw" }, subject }));
     expect(archive.subject).toBe(expected);
-    expect(archive.text).toContain("Witaj [ukryte],");
+    expect(archive.text).toContain("Dzień dobry,");
   });
   it.each(["masked", "full"] as const)("projects license values inside allowed fields at level %s", (level) => {
     const input = { ...data, productName: "Demo", instructions: `Use ${data.licenseKey} at ${data.activationUrl}` };
@@ -135,8 +136,8 @@ describe("archive projection", () => {
     }
   });
   it("keeps only allowed fields and labelled partial values", () => {
-    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["name"] }, patterns, brand, template: getTemplate("license")!, data }));
-    expect(archive.text).toContain("Jane");
+    const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "masked", show: ["tier"] }, patterns, brand, template: getTemplate("license")!, data: { ...data, tier: "TIER-VISIBLE" } }));
+    expect(archive.text).toContain("TIER-VISIBLE");
     expect(archive.text).toContain("[ukryte]");
     expect(archive.text).not.toContain("example.com\n");
     expect(archive.subject).toBe("Twój klucz licencji: [ukryte]");
@@ -177,8 +178,8 @@ it("preserves escaped partial values in rendered HTML", () => {
 it("retains full ordinary fields and applies encoded parameter names", () => {
   const template = getTemplate("payment")!;
   const archive = content(projectArchive({ policy: { ...config().logging.defaults, level: "full" }, patterns, brand, template,
-    data: { name: "Jane", invoiceUrl: "https://example.com/invoice?%74oken=example-value&view=order" } }));
-  expect(archive.text).toContain("Jane");
+    data: { item: "Jane Plan", invoiceUrl: "https://example.com/invoice?%74oken=example-value&view=order" } }));
+  expect(archive.text).toContain("Jane Plan");
   expect(archive.html).not.toContain("example-value");
   expect(archive.text).not.toContain("example-value");
   expect(archive.html).toContain("view=order");

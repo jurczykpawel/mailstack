@@ -223,7 +223,7 @@ World</div>
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -267,7 +267,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -335,7 +335,7 @@ Open: https://example.com/start",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -357,14 +357,14 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
 exports[`acme/payment retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -393,7 +393,7 @@ exports[`acme/payment retains its rendering 1`] = `
                 </td>
               </tr>
             </table>",
-    "bodyText": "Witaj Jane & Smith,
+    "bodyText": "Dzień dobry,
 
 Dziękujemy za płatność. Poniżej podsumowanie:
 
@@ -444,7 +444,7 @@ Pobierz fakturę: https://example.com/invoice",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -482,7 +482,7 @@ Pobierz fakturę: https://example.com/invoice",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -492,7 +492,7 @@ Pobierz fakturę: https://example.com/invoice",
   "text": "Potwierdzenie płatności
 =======================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Dziękujemy za płatność. Poniżej podsumowanie:
 
@@ -512,18 +512,18 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
 exports[`acme/received retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>",
-    "bodyText": "Witaj Jane & Smith,
+    "bodyText": "Dzień dobry,
 
 Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
 
@@ -557,7 +557,7 @@ Consultation",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
@@ -570,7 +570,7 @@ Consultation",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -580,7 +580,7 @@ Consultation",
   "text": "Dziękujemy za wiadomość
 =======================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
 
@@ -594,7 +594,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -616,7 +616,7 @@ exports[`acme/welcome retains its rendering 1`] = `
 Details
 
 Open: https://example.com/start",
-    "heading": "Witaj, Jane & Smith w Acme Inc.!",
+    "heading": "Dzień dobry, witamy w Acme Inc.!",
     "previewText": "Welcome",
   },
   "html": "<!doctype html>
@@ -624,7 +624,7 @@ Open: https://example.com/start",
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Witaj, Jane &amp; Smith w Acme Inc.!</title>
+    <title>Dzień dobry, witamy w Acme Inc.!</title>
     
   </head>
   <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
@@ -638,7 +638,7 @@ Open: https://example.com/start",
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
-                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Witaj, Jane &amp; Smith w Acme Inc.!</h1>
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Dzień dobry, witamy w Acme Inc.!</h1>
               </td>
             </tr>
             <tr>
@@ -662,14 +662,14 @@ Open: https://example.com/start",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
   </body>
 </html>",
   "subject": "Witaj w Acme Inc.",
-  "text": "Witaj, Jane & Smith w Acme Inc.!
+  "text": "Dzień dobry, witamy w Acme Inc.!
 ================================
 
 Welcome
@@ -684,7 +684,7 @@ Acme Inc.
 tel: +00 000 000 000
 https://acme.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -911,7 +911,7 @@ World</div>
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -953,7 +953,7 @@ IP: -
 Demo Brand
 https://demo.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -1021,7 +1021,7 @@ Open: https://example.com/start",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -1041,14 +1041,14 @@ Open: https://example.com/start
 Demo Brand
 https://demo.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
 exports[`demo/payment retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -1077,7 +1077,7 @@ exports[`demo/payment retains its rendering 1`] = `
                 </td>
               </tr>
             </table>",
-    "bodyText": "Witaj Jane & Smith,
+    "bodyText": "Dzień dobry,
 
 Dziękujemy za płatność. Poniżej podsumowanie:
 
@@ -1128,7 +1128,7 @@ Pobierz fakturę: https://example.com/invoice",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dziękujemy za płatność. Poniżej podsumowanie:</p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaeaea;border-radius:8px;overflow:hidden;table-layout:fixed;">
@@ -1166,7 +1166,7 @@ Pobierz fakturę: https://example.com/invoice",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -1176,7 +1176,7 @@ Pobierz fakturę: https://example.com/invoice",
   "text": "Potwierdzenie płatności
 =======================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Dziękujemy za płatność. Poniżej podsumowanie:
 
@@ -1194,18 +1194,18 @@ Pobierz fakturę: https://example.com/invoice
 Demo Brand
 https://demo.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
 exports[`demo/received retains its rendering 1`] = `
 {
   "body": {
-    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+    "bodyHtml": "<p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>",
-    "bodyText": "Witaj Jane & Smith,
+    "bodyText": "Dzień dobry,
 
 Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
 
@@ -1239,7 +1239,7 @@ Consultation",
             </tr>
             <tr>
               <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Witaj Jane &amp; Smith,</p>
+                <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Dzień dobry,</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;">Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.</p>
 <p style="margin:0 0 14px 0;font-size:14px;color:#1a1a1a;line-height:1.6;">Numer zgłoszenia: <strong>REF-1</strong></p>
 <div style="padding:14px 16px;background:#f7f7f7;border-radius:8px;font-size:14px;color:#1a1a1a;line-height:1.55;white-space:pre-wrap;">Consultation</div>
@@ -1252,7 +1252,7 @@ Consultation",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
@@ -1262,7 +1262,7 @@ Consultation",
   "text": "Dziękujemy za wiadomość
 =======================
 
-Witaj Jane & Smith,
+Dzień dobry,
 
 Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.
 
@@ -1274,7 +1274,7 @@ Consultation
 Demo Brand
 https://demo.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;
 
@@ -1296,7 +1296,7 @@ exports[`demo/welcome retains its rendering 1`] = `
 Details
 
 Open: https://example.com/start",
-    "heading": "Witaj, Jane & Smith w Demo Brand!",
+    "heading": "Dzień dobry, witamy w Demo Brand!",
     "previewText": "Welcome",
   },
   "html": "<!doctype html>
@@ -1304,7 +1304,7 @@ Open: https://example.com/start",
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Witaj, Jane &amp; Smith w Demo Brand!</title>
+    <title>Dzień dobry, witamy w Demo Brand!</title>
     
   </head>
   <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere;word-break:break-word;">
@@ -1318,7 +1318,7 @@ Open: https://example.com/start",
             </tr>
             <tr>
               <td style="padding:24px 24px 4px 24px;">
-                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Witaj, Jane &amp; Smith w Demo Brand!</h1>
+                <h1 style="margin:0;font-size:18px;line-height:1.4;color:#1a1a1a;font-weight:700;">Dzień dobry, witamy w Demo Brand!</h1>
               </td>
             </tr>
             <tr>
@@ -1342,14 +1342,14 @@ Open: https://example.com/start",
               </td>
             </tr>
           </table>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">mailstack</a></p>
+          <p style="margin:16px 0 0 0;font-size:11px;color:#b0b0b0;">Wysłano przez <a href="https://mailstack.techskills.academy/pl" style="color:#b0b0b0;text-decoration:none;">Mailstack</a></p>
         </td>
       </tr>
     </table>
   </body>
 </html>",
   "subject": "Witaj w Demo Brand",
-  "text": "Witaj, Jane & Smith w Demo Brand!
+  "text": "Dzień dobry, witamy w Demo Brand!
 =================================
 
 Welcome
@@ -1362,6 +1362,6 @@ Open: https://example.com/start
 Demo Brand
 https://demo.example
 
-Wysłano przez mailstack (https://mailstack.techskills.academy/pl)",
+Wysłano przez Mailstack (https://mailstack.techskills.academy/pl)",
 }
 `;

@@ -1,6 +1,7 @@
 import { Recipe } from "../recipe.ts";
 import type { Brand, RenderedBody, TemplateData, TemplateDef } from "../../types.ts";
 import { esc, type Emit } from "../output.ts";
+import { GREETING } from "../layout.ts";
 
 /** Acknowledgement that a submission was received. */
 export const receivedTemplate: TemplateDef = {
@@ -16,7 +17,7 @@ export const receivedTemplate: TemplateDef = {
     const summary = (data.summary || "").trim();
 
     const heading = "Dziękujemy za wiadomość";
-    const greeting = name ? recipe.copy("greetingWithName", `Witaj ${name},`) : recipe.copy("greetingWithoutName", "Witaj,");
+    const greeting = recipe.copy(name ? "greetingWithName" : "greetingWithoutName", GREETING);
     const intro =
       recipe.copy("intro", "Otrzymaliśmy Twoje zgłoszenie i odezwiemy się wkrótce.");
 

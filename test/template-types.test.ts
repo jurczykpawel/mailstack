@@ -38,9 +38,9 @@ describe("template registry", () => {
 describe("every template stays on-brand and escapes input", () => {
   const cases: Array<[string, TemplateData]> = [
     ["contact", { name: "<script>alert(1)</script>", email: "a@b.com" }],
-    ["welcome", { name: "<script>alert(1)</script>", intro: "Hello" }],
-    ["received", { name: "<script>alert(1)</script>", refId: "R-1" }],
-    ["payment", { name: "<script>alert(1)</script>", amount: "100" }],
+    ["welcome", { name: "Alice", intro: "<script>alert(1)</script>" }],
+    ["received", { name: "Alice", refId: "<script>alert(1)</script>" }],
+    ["payment", { name: "Alice", item: "<script>alert(1)</script>", amount: "100" }],
     ["notice", { heading: "<script>alert(1)</script>", paragraphs: "Content" }],
   ];
 
@@ -66,7 +66,8 @@ describe("welcome", () => {
       ctaLabel: "Get started",
     });
     expect(subject).toBe("Witaj w Acme Inc.");
-    expect(html).toContain("Witaj, Alice w Acme Inc.!");
+    expect(html).toContain("Dzień dobry, witamy w Acme Inc.!");
+    expect(html).not.toContain("Alice");
     expect(html).toContain("https://example.com/start");
     expect(html).toContain("Get started");
     expect(text).toContain("Get started: https://example.com/start");

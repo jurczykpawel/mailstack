@@ -6,6 +6,12 @@ serializer at that commit. It records subject, every RenderedBody field and
 final HTML/text. It is an independent baseline for future renderer changes;
 do not regenerate it from a replacement renderer.
 
+Intentional copy changes are applied to the expected output as targeted edits,
+not by regeneration. 1.2.3 (issue #58): the default greeting of received,
+payment and license is "Dzień dobry,", the welcome heading with a name is
+"Dzień dobry, witamy w <brand>!" (with its text underline) and the footer
+reads "Mailstack".
+
 Inputs are synthetic examples following the template fields documented in
 AGENTS.md and README.md. Example brand transport/theme comes from
 `config/mailstack.example.json`. The existing specialized contact/received
