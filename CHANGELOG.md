@@ -4,6 +4,8 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-11-26
+
 - Public contact confirmations contain configured text only: no submitted name,
   `type` or `topic`. The only summary is the product of a verified form nonce, so
   without `requireNonce` a `received.summary` form selector always picks `empty`.
