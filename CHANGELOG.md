@@ -4,6 +4,8 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-11-26
+
 - `npm run config:push` deploys a changed configuration with the deployed code:
   it checks the checkout against `/health`, lists changed renders, asks for
   confirmation, verifies the new configuration in `/health` and rolls back to the
