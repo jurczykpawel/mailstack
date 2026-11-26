@@ -9,7 +9,7 @@ import { tombstoneRegistry } from "./core/offsite";
 import { metered } from "./core/budget";
 import { version } from "../package.json";
 import type { Env, SendDeps } from "./types";
-import { config, findBrandByOrigin, getBrand } from "./core/config";
+import { BUILD_CONFIG_SHA, config, findBrandByOrigin, getBrand } from "./core/config";
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
 import { handleSourceHook } from "./sources";
@@ -113,7 +113,7 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
         let storeState = "down";
         try { if (store) { await store.health(); storeState = "ok"; } } catch {}
         return new Response(
-          JSON.stringify({ store: storeState, ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev",
+          JSON.stringify({ store: storeState, ok: true, service: "mailstack", version, commit: env.BUILD_COMMIT || "dev", config: BUILD_CONFIG_SHA,
             ...(env.BUILD_PRO_COMMIT ? { proCommit: env.BUILD_PRO_COMMIT } : {}) }),
           { headers: { "content-type": "application/json; charset=utf-8" } },
         );

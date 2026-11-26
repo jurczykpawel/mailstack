@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import worker, { createApp } from "../src/index";
 import { version } from "../package.json";
+import { BUILD_CONFIG_SHA } from "../src/core/config";
 import type { Env } from "../src/types";
 
 const env: Env = {
@@ -22,13 +23,13 @@ describe("router", () => {
   it("GET /health returns service ok", async () => {
     const res = await call("https://mail.example.com/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "dev", store: "down" });
+    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "dev", config: BUILD_CONFIG_SHA, store: "down" });
   });
 
   it("GET /health returns the build commit", async () => {
     const res = await worker.fetch(new Request("https://mail.example.com/health"),
       { ...env, BUILD_COMMIT: "abc123" }, ctx);
-    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "abc123", store: "down" });
+    expect(await res.json()).toEqual({ ok: true, service: "mailstack", version, commit: "abc123", config: BUILD_CONFIG_SHA, store: "down" });
   });
 
   it("unknown route returns 404 JSON", async () => {
