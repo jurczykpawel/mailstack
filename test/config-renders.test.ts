@@ -38,3 +38,13 @@ it("reports changed configuration paths without values, also when no render chan
   expect(changedRenders(example, next)).toEqual([]);
   expect(changedPaths(example, next)).toEqual(["brands.demo.allowedOrigins.2", "cloudflare.plan"]);
 });
+
+it("shows conditional branches and form kinds reached by a selector value", () => {
+  const forms = (subject: string) => edit((json) => {
+    json.mailTemplates = { version: 1 };
+    json.brands.demo.mailTemplates = { templates: { "bank-transfer": { copy: { reminderHeading: subject } } },
+      forms: { selector: { byTemplate: { contact: "type" }, values: { Wycena: "quote" }, empty: "question", otherwise: "question" },
+        kinds: { quote: { templates: { contact: { subject } } }, question: { templates: {} } } } };
+  });
+  expect(changedRenders(forms("A"), forms("B"))).toEqual(["demo/bank-transfer/default/variant", "demo/contact/default/type=Wycena"]);
+});

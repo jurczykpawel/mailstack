@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { configPush } from "../scripts/config-push.mjs";
+import { readConfigFile } from "../src/core/config/node.ts";
 
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 const example = readFileSync("config/mailstack.example.json", "utf8");
@@ -30,20 +31,23 @@ const go = (o = {}) => configPush({
   run: (cmd, args, env) => {
     calls.push([cmd, ...args].join(" "));
     if (args[1] === "setup") writeFileSync(bundled(), bundle(readFileSync(env.MAILSTACK_CONFIG, "utf8")));
-    if (args[1] === "setup" && o.schema && calls.filter((c) => c === "npm run setup").length === 1) writeFileSync(join(cwd, ".wrangler/migrations/1001_ext_pro_2.sql"), "-- new");
+    const migration = join(cwd, ".wrangler/migrations/1001_ext_pro_2.sql");
+    if (args[1] === "setup" && o.schema) readFileSync(env.MAILSTACK_CONFIG, "utf8") === example ? rmSync(migration, { force: true }) : writeFileSync(migration, "-- new");
+    if (args[1] === "setup" && o.restoreFails && (o.setups = (o.setups ?? 0) + 1) === 3) throw new Error("setup failed");
     if (cmd === "/hooks/copy.sh" && o.hookFails) throw new Error("hook failed");
   },
   wrangler: (args) => {
     calls.push(`wrangler ${args.join(" ")}`);
+    if (args[0] === "rollback" && o.rollbackFails) throw new Error("wrangler rollback failed.");
     return args[0] === "deployments" ? JSON.stringify(o.status ?? STATUS) : args[0] === "versions" ? JSON.stringify(o.list ?? LIST) : "";
   },
-  deployConfig: async ({ configSha, proPath }) => { calls.push(`deploy ${configSha === sha(readFileSync(file, "utf8")) ? "new" : configSha} ${proPath}`); if (o.fail) throw new Error("Health commit does not match HEAD."); },
+  deployConfig: async ({ configSha, proPath }) => { calls.push(`deploy ${configSha === sha(readConfigFile(file)) ? "new" : configSha} ${proPath}`); if (o.fail) throw new Error("Health commit does not match HEAD."); },
   confirm: async () => { calls.push("confirm"); return o.answer ?? true; },
 });
 
 it("validates, lists changed renders and deploys the same code with the new configuration", async () => {
   await go({ args: [] });
-  expect(calls).toEqual(["node scripts/bundle-config.ts --check", "confirm", "wrangler deployments status --json", "wrangler versions list --json", "npm run setup", "deploy new undefined"]);
+  expect(calls).toEqual(["node scripts/bundle-config.ts --check", "wrangler deployments status --json", "wrangler versions list --json", "confirm", "npm run setup", "npm run setup", "deploy new undefined"]);
   expect(logs.join("\n")).toMatch(/acme\/contact\/default/);
   expect(logs.join("\n")).not.toMatch(/demo\//);
   expect(logs.join("\n")).toMatch(/brands\.acme\.subjectPrefix/);
@@ -83,7 +87,7 @@ it("deploys a file change without render changes after listing the changed paths
 
 it("N: stops without confirmation", async () => {
   await go({ args: [], answer: false });
-  expect(calls).toEqual(["node scripts/bundle-config.ts --check", "confirm"]);
+  expect(calls).toEqual(["node scripts/bundle-config.ts --check", "wrangler deployments status --json", "wrangler versions list --json", "confirm"]);
 });
 
 it("N: refuses when the deployed version is not the newest and only one (no rollback behind a SES key rotation)", async () => {
@@ -94,7 +98,7 @@ it("N: refuses when the deployed version is not the newest and only one (no roll
 
 it("N: a configuration that changes the schema is refused and the previous setup restored", async () => {
   await expect(go({ schema: true })).rejects.toThrow(/npm run release/);
-  expect(calls.filter((c) => c === "npm run setup")).toHaveLength(2);
+  expect(calls.filter((c) => c === "npm run setup")).toHaveLength(3);
   expect(calls.some((c) => c.startsWith("deploy"))).toBe(false);
   expect(readFileSync(bundled(), "utf8")).toBe(bundle(example));
 });
@@ -117,4 +121,29 @@ it("passes the Pro checkout on and requires MAILSTACK_HEALTH_URL", async () => {
   await go({ pro: "p1", env: { MAILSTACK_PRO_PATH: "/opt/pro" } });
   expect(calls.at(-1)).toBe("deploy new /opt/pro");
   await expect(go({ env: { MAILSTACK_HEALTH_URL: "" } })).rejects.toThrow(/MAILSTACK_HEALTH_URL/);
+});
+
+it("N: a failed rollback or restore says what state the Worker and the checkout are in", async () => {
+  await expect(go({ fail: true, rollbackFails: true })).rejects.toThrow(/Rollback to v2 FAILED.*may serve the new configuration/);
+  writeFileSync(bundled(), bundle(example));
+  await expect(go({ fail: true, restoreFails: true })).rejects.toThrow(/rolled back to v2; restoring the setup failed/);
+});
+
+it("hashes template files inlined like setup, so configurations with file bodies can be pushed", async () => {
+  writeFileSync(join(cwd, "promo.md"), "Hello **{name}**");
+  writeFileSync(file, edited((json) => { json.mailTemplates = { version: 1, custom: { promo: { subject: "Promo", heading: "Promo", markdown: { file: "promo.md" } } } }; }));
+  await go();
+  expect(calls.at(-1)).toBe("deploy new undefined");
+  expect(logs.join("\n")).toMatch(/acme\/promo\/default/);
+});
+
+it("N: rejects unknown arguments", async () => {
+  for (const args of [["--ye"], ["--from=x"], ["--yes", "--from"]]) await expect(go({ args })).rejects.toThrow(/Usage/);
+  expect(calls).toEqual([]);
+});
+
+it("notes source mapping changes, which renders do not cover", async () => {
+  writeFileSync(file, edited((json) => { json.sources.sellf.signature.toleranceSeconds = 120; }));
+  await go();
+  expect(logs.join("\n")).toMatch(/Source mappings changed/);
 });

@@ -1,5 +1,5 @@
 // Render fingerprints of a configuration for `npm run config:push`: every brand, template and language with sample
-// data and without data, plus the public auto-reply exactly as send.ts prepares it (no submitted fields, product of a verified nonce).
+// data, without data, in conditional variants and for each form-kind selector value, plus the public auto-reply exactly as send.ts prepares it (no submitted fields, product of a verified nonce).
 import { createHash } from "node:crypto";
 import { loadConfig } from "../src/core/config/load.ts";
 import { templatePlans } from "../src/templates/config.ts";
@@ -25,6 +25,9 @@ export function renders(json: string): Record<string, string> {
       };
       out[key] = render(SAMPLE);
       out[`${key}/no-data`] = render({}); // slots used only without a field (e.g. greetingWithoutName)
+      out[`${key}/variant`] = render({ ...SAMPLE, reminder: "true", reason: "Reason" }); // reminder and reason branches
+      const selector = brand.mailTemplates?.forms?.selector, field = selector?.byTemplate?.[templateId];
+      if (field) for (const value of Object.keys(selector!.values ?? {})) out[`${key}/${field}=${value}`] = render({ ...SAMPLE, [field]: value });
       if (brand.autoReply && templateId === (brand.autoReplyTemplate ?? "received"))
         out[`${key}/auto-reply`] = render({ name: "", summary: brand.requireNonce ? brand.products?.[0] ?? "" : "" }, true);
     }

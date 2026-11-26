@@ -451,17 +451,22 @@ npm run config:push            # asks for confirmation; add -- --yes to skip the
    it stops: that is a code release (`npm run release`).
 2. The deployed configuration is the one the last setup of this checkout bundled
    (`src/core/config/bundled.ts`), accepted only when its SHA-256 equals `config` in `/health`.
-   Another copy can be given with `-- --from <file>`, checked the same way.
-3. It validates the new file (`config check`, plus Pro), renders both configurations with the
-   same code (every brand, template and language, with and without sample data, and the
-   public auto-reply) and prints the changed renders and changed configuration paths (no values).
-   A file equal to the deployed one deploys nothing.
-4. It deploys the same code with the new configuration and waits until `/health` reports the
+   Another copy can be given with `-- --from <file>`, checked the same way. `npm test` and
+   `npm run typecheck` overwrite that setup with the example, so after running them use `--from`.
+   Hashes cover template bodies inlined from `{"file": …}`, as setup does.
+3. It validates the new file as setup does (schema, templates and Pro rules; run `config check`
+   too for its warnings), renders both configurations with the same code (every brand, template
+   and language with sample data, without data, in the reminder/reason variants, for each
+   form-kind selector value, and the public auto-reply) and prints the changed renders and changed
+   configuration paths (no values). Source field mappings are not rendered: a change under
+   `sources` is flagged for a separate check. A file equal to the deployed one deploys nothing.
+4. After the version check below and the confirmation, it deploys the same code with the new configuration and waits until `/health` reports the
    new `config` with an unchanged commit. A configuration that changes the generated database
    migrations (for example Pro webhook options) is refused: use `npm run release`. The deployed
    version must be the newest and only one; on a failed deploy or health check it runs
    `wrangler rollback` to exactly that version (it carries the current secrets) and restores
-   the setup of the deployed configuration.
+   the setup of the deployed configuration. If the rollback itself fails, the error says so:
+   check `/health` and roll back manually.
 5. `MAILSTACK_CONFIG_POST_PUSH` may name an executable run after success with the
    configuration path as its argument (for example, to store an offline copy); its failure only warns.
 
@@ -737,7 +742,7 @@ needs `npm run setup` and a build/deploy. Do not restore `src/brands.ts` or edit
 bundles. Keep credentials in runtime secrets, outside this JSON.
 
 ### API (summary)
-- `GET /health` → `{ ok: true, service: "mailstack", version, commit, config }` (`commit: "dev"` locally; `config` is the SHA-256 of the bundled configuration file).
+- `GET /health` → `{ ok: true, service: "mailstack", version, commit, config }` (`commit: "dev"` locally; `config` is the SHA-256 of the bundled configuration file on the Worker; Node reports the SHA-256 of its loaded configuration).
   This is liveness, not readiness; its `store: "ok"` field proves reads, not writes or
   delivery, and read-only storage can still cause `requireLog: true` sends to return `503`.
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
