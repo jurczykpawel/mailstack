@@ -348,6 +348,11 @@ Add the spam widget and point the form at mailstack. A minimal example:
 ```
 Submissions now arrive in your inbox. 🎉
 
+If the brand has `"autoReply": true`, the submitter also gets a short confirmation whose
+text comes from your configuration (no submitted fields, no name). To skip it for one form,
+add `data.autoreply = "0";` before `fetch`; a form cannot turn it on for a brand with
+`autoReply` off.
+
 ---
 
 ## Public forms using ALTCHA
@@ -392,8 +397,8 @@ Solve the nested `altcha` challenge and submit flat JSON to `POST /v1/send`:
 The nonce uses `ALTCHA_HMAC_KEY`, is valid for 10 minutes, and carries the brand and
 product. `product` in POST is optional; when present, it must match the nonce exactly.
 The product must still be in the brand's configured list when submitting. Mailstack
-sets `type` from that product, including for the confirmation email when auto-reply
-is enabled. Only public requests for brands with `requireNonce: true` treat `nonce`
+sets `type` from that product; it is also the only submission-derived text in the
+confirmation email when auto-reply is enabled. Only public requests for brands with `requireNonce: true` treat `nonce`
 and `product` as control fields and omit them from email content. For other brands
 and all trusted requests, both fields remain ordinary template content.
 
@@ -453,7 +458,7 @@ mode. `npm run deploy` alone does not upgrade the schema. Keep runtime images an
 - **Two modes** — public (Turnstile + origin + honeypot + rate limit) and trusted (Bearer token).
 - **Template types** — `contact`, `welcome`, `received`, `payment`, `refund`, `notice`, `license`, `bank-transfer`; one branded layout.
 - **Footer branding** — change `MAILSTACK_HOME_URL` in `src/templates/layout.ts` to customize the mailstack link in HTML and plain-text emails.
-- **Auto-reply** — optional confirmation to the submitter, sent non-blocking via `ctx.waitUntil`.
+- **Auto-reply** — optional confirmation to the submitter (`autoReply: true` on the brand), sent non-blocking via `ctx.waitUntil`. Its text comes from configuration only; a request can turn it off with `"autoreply": "0"` but cannot turn it on.
 - **Sellf webhook source** — maps e-commerce events to branded emails (`/v1/hooks/sellf`).
 - **D1 storage** — atomic rate limits and ALTCHA usage records. **Secret scanning** in pre-commit + CI.
 
@@ -709,7 +714,7 @@ bundles. Keep credentials in runtime secrets, outside this JSON.
   delivery, and read-only storage can still cause `requireLog: true` sends to return `503`.
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control
   keys: `brand` (body or query), `cf-turnstile-response`, `botcheck`, `subject`/`to`/`replyTo`/
-  `template` (trusted only), `autoreply` (public contact), plus the reserved fields documented below.
+  `template` (trusted only), `autoreply` (public contact, can only turn the confirmation off), plus the reserved fields documented below.
   Empty or omitted body `brand` falls back to `?brand=<id>`; different nonempty values return `400 brand mismatch`.
   Public requests may use ALTCHA instead of Turnstile; opted-in brands also require a nonce.
 - `POST /v1/hooks/sellf` — Sellf webhook source (Bearer required, optional client signature). See [AGENTS.md](AGENTS.md).

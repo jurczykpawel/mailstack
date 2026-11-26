@@ -4,6 +4,12 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- Public contact confirmations contain configured text only: no submitted name,
+  `type` or `topic`. The only summary is the product of a verified form nonce, so
+  without `requireNonce` a `received.summary` form selector always picks `empty`.
+- The public `autoreply` control key can turn a brand's confirmation off, but no
+  longer turns it on for a brand with `autoReply` off.
+
 ## [1.2.3] - 2026-11-25
 
 - The default Polish greeting of `received`, `payment` and `license` is

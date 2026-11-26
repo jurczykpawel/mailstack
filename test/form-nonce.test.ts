@@ -239,11 +239,12 @@ describe('public form nonce', () => {
     expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   });
   it('includes the product in the submitter confirmation', async () => {
-    expect((await send({ ...await submission(), autoreply: true })).status).toBe(200);
+    expect((await send({ ...await submission(), autoreply: true, name: 'Jane Smith', topic: 'Pricing' })).status).toBe(200);
     await Promise.all(tasks);
     const mail = vi.mocked(deps.sendEmail).mock.calls[1][1];
     expect(mail.to).toEqual(['viewer@example.com']);
     expect(mail.text).toContain(PRODUCT);
+    expect(mail.text).not.toMatch(/Jane|Pricing/);
   });
   it('leaves trusted submissions independent of nonce', async () => {
     delete deps.store;

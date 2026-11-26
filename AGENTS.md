@@ -83,7 +83,7 @@ Request body is **flat JSON**: a few control keys plus arbitrary content fields.
 | `replyTo` | Reply-To override (trusted mode only, validated) |
 | `template` | email type to render (trusted mode only); public is always `contact` |
 | `locale` | language preference only for brands with `mailTemplates.languages`; otherwise content. Exact tag → base → available default; public confirmation resolves independently. |
-| `autoreply` | per-request toggle for the submitter confirmation (`1`/`true`/`yes`/`on` vs `0`/`false`); overrides `brand.autoReply`. See [Auto-reply](#auto-reply). |
+| `autoreply` | `0`/`false`/`no`/`off`/empty turns the submitter confirmation off for this request; it cannot turn on a confirmation the brand has disabled (`brand.autoReply`). See [Auto-reply](#auto-reply). |
 | `ref` | trusted correlation string (1-128 characters) |
 | `resendOf` | trusted: approved source jobs only with an enabled extension; otherwise `400 not_supported`; public: ignored |
 | `attachments` | trusted client with `attachments: true`: array of `{ filename, contentType, contentBase64 }`; public: ignored |
@@ -194,7 +194,7 @@ interface Brand {
   turnstileAction?: string;
   requireNonce?: boolean;
   products?: string[];
-  autoReply?: boolean;         // default for the contact auto-reply (default false). See Auto-reply.
+  autoReply?: boolean;         // enables the contact auto-reply (default false); requests may only turn it off. See Auto-reply.
   autoReplyTemplate?: string;  // template used for the auto-reply (default "received")
 }
 ```
@@ -322,13 +322,16 @@ submitted (a "we received your message" email), in addition to the main email to
 - **When it fires:** public mode + `contact` template + a syntactically valid submitter
   `email`, and only **after the main email was sent successfully**. Trusted/transactional
   sends never auto-reply.
-- **Enable/disable:** per-request `autoreply` control key wins (`1`/`true`/`yes`/`on` =
-  on, `0`/`false`/`no`/`off`/empty = off); otherwise the brand default `brand.autoReply`
-  applies (default `false`). The demo `acme` brand defaults to **on**; `demo` is off.
+- **Enable/disable:** the brand enables it with `brand.autoReply: true` (default `false`).
+  A request can only turn it off: `autoreply` `0`/`false`/`no`/`off`/empty disables it for
+  that submission; `1`/`true`/`yes`/`on` does not enable it for a brand with `autoReply`
+  off. The demo `acme` brand defaults to **on**; `demo` is off.
 - **What it sends:** the `received` template (override per brand with
   `brand.autoReplyTemplate`), themed for the brand, `from: brand.from`, `to:` the
-  submitter, `replyTo: brand.to[0]` so their reply reaches the brand inbox. The
-  confirmation carries the `type`/`topic` as a short summary (the default greeting omits the name).
+  submitter, `replyTo: brand.to[0]` so their reply reaches the brand inbox. Its text comes
+  from configuration only: no submitted field is rendered (the greeting always uses the
+  variant without a name, `greetingWithoutName`). The only summary is the product of a
+  verified form nonce (brands with `requireNonce`), which is always one of `brand.products`.
 - **Non-blocking + best-effort:** dispatched via the Worker's `ctx.waitUntil`, so it never
   delays the response; if the auto-reply send fails it is swallowed (the submission already
   succeeded → the user still gets `{success:true}`). It is a single direct send and never
