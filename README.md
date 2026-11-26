@@ -466,7 +466,8 @@ npm run config:push            # asks for confirmation; add -- --yes to skip the
    version must be the newest and only one; on a failed deploy or health check it runs
    `wrangler rollback` to exactly that version (it carries the current secrets) and restores
    the setup of the deployed configuration. If the rollback itself fails, the error says so:
-   check `/health` and roll back manually.
+   check `/health` and roll back manually. After a rollback the newest version is the one that
+   was rolled back, so the next push is refused until `npm run release` deploys a new version.
 5. `MAILSTACK_CONFIG_POST_PUSH` may name an executable run after success with the
    configuration path as its argument (for example, to store an offline copy); its failure only warns.
 

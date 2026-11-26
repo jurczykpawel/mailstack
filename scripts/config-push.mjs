@@ -79,7 +79,7 @@ export async function configPush({ cwd = process.cwd(), env = loadEnv(cwd), args
       throw new Error(`${error.message} Rollback to ${previous} FAILED (${rollback.message}): the Worker may serve the new configuration; check /health and roll back manually.`);
     }
     try { setup(before); } catch (restore) { throw new Error(`${error.message} Deploy rolled back to ${previous}; restoring the setup failed (${restore.message}), use --from next time.`); }
-    throw new Error(`${error.message} Deploy rolled back to ${previous}.`);
+    throw new Error(`${error.message} Deploy rolled back to ${previous}; run npm run release before the next push.`);
   }
   log(`Configuration ${sha(after)} deployed.`);
   const hook = env.MAILSTACK_CONFIG_POST_PUSH?.trim();

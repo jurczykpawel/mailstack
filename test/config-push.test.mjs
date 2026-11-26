@@ -104,7 +104,7 @@ it("N: a configuration that changes the schema is refused and the previous setup
 });
 
 it("rolls back to the replaced version and restores the setup when the deploy fails", async () => {
-  await expect(go({ fail: true })).rejects.toThrow(/rolled back to v2/);
+  await expect(go({ fail: true })).rejects.toThrow(/rolled back to v2; run npm run release/);
   expect(calls).toContain("wrangler rollback v2 --message config:push failed --yes");
   expect(readFileSync(bundled(), "utf8")).toBe(bundle(example));
 });
