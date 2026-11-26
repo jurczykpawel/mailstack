@@ -24,7 +24,8 @@ Defaults support shared `copy`/`labels`; type patches support `subject`, `headin
 
 The built-in `received`, `payment` and `license` greeting is "Dzień dobry," with or
 without a name (a Polish name would need the vocative); `greetingWithName` and
-`greetingWithoutName` replace it, e.g. `"Hello {name},"`. In `POST /v1/send`, amounts
+`greetingWithoutName` replace it, e.g. `"Hello {name},"`; a public contact confirmation
+always uses `greetingWithoutName`. In `POST /v1/send`, amounts
 are printed exactly as sent: the sending application supplies them in display format.
 
 Text is a string with `{field}` placeholders or an array of strings and fragments:
@@ -102,9 +103,11 @@ contains a Markdown licence, an order with rows and an HTML invitation.
 A brand definition replaces a global one with the same name for that brand only;
 logging policies are checked against the definition each brand resolves, and a
 source mapping must cover the required fields of every definition it can select.
-A named template used as `autoReplyTemplate` may personalise its heading and body
-with `name` and `summary`, but its subject (and every locale subject) must be
-literal single-line text, as for built-in confirmations.
+A named template used as `autoReplyTemplate` may reference `name` and `summary`, but
+a public confirmation always renders `name` empty and `summary` only from a verified
+form nonce product, so the text comes from configuration (use `{name|fallback}` if
+the copy needs a word there). Its subject (and every locale subject) must be literal
+single-line text, as for built-in confirmations.
 
 File paths are relative to `mailstack.json` and stay inside its directory. The
 Node loader and Worker setup read them at boot/build, so `BUILD_CONFIG_SHA` covers
@@ -242,7 +245,9 @@ language. Amounts, currencies, customer data and supplied dates are not translat
 
 Brand `forms.selector` contains `byTemplate`, `values`, `empty` and `otherwise`.
 Use the corresponding selector field for each form template (`contact.type` and
-`received.summary` are the normal pair). `forms.kinds.<id>.templates` holds the
+`received.summary` are the normal pair). In a public confirmation `summary` is set only
+from a verified form nonce product (`requireNonce` brands); for other brands the
+confirmation always uses the `empty` kind. `forms.kinds.<id>.templates` holds the
 presentation patches. A selector changes presentation only, never transport or
 permissions. Preserve existing form copy in configuration before replacing a
 custom renderer. Check the first notification and confirmation, not only resend.

@@ -84,7 +84,7 @@ export function compileCustom(config: Config, fail: (path: Path, message: string
     const owner = own(result[brandId], id) ? brandId : "", plan = own(result[owner], id);
     if (!plan) { fail(["brands", brandId, "autoReplyTemplate"], "unknown confirmation template"); continue; }
     const variants = [plan, ...Object.values(plan.locales)], root = [...(owner ? ["brands", owner, "mailTemplates"] : ["mailTemplates"]), "custom", id];
-    // The submitter controls name and summary, so a public confirmation keeps the brand's own subject.
+    // A public confirmation renders no submitted text (summary is at most a nonce product); its subject stays literal.
     for (const [tag, item] of [["", plan] as const, ...Object.entries(plan.locales)]) if (item.subject !== undefined && (textFields(item.subject).length
       || (typeof item.subject === "string" ? [item.subject] : item.subject).some(part => typeof part !== "string" || /[\u0000-\u001f\u007f-\u009f]/.test(part))))
       fail([...root, ...(tag ? ["locales", tag] : []), "subject"], "literal single-line subject required");

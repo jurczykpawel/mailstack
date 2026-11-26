@@ -3,6 +3,9 @@ import { describe, it, expect, vi } from "vitest";
 import { createChallenge, verifyAltcha } from "../src/altcha";
 import { handleSend } from "../src/send";
 import type { Env, SendDeps, SendParams } from "../src/types";
+import example from "../config/mailstack.example.json";
+import { parseConfig } from "../src/core/config/schema";
+import { templatePlans } from "../src/templates/config";
 
 const API_KEY = "trusted-secret-token";
 
@@ -483,6 +486,7 @@ describe("handleSend — auto-reply (public contact)", () => {
           name: "Jane Smith",
           email: "jane@example.com",
           type: "Consultation",
+          topic: "Pricing",
           "cf-turnstile-response": "ok",
         },
         { origin: ACME_ORIGIN, "cf-connecting-ip": "1.2.3.4" },
@@ -507,9 +511,32 @@ describe("handleSend — auto-reply (public contact)", () => {
     expect(reply.replyTo).toBe("inbox@acme.example");
     expect(reply.subject).toBe("Potwierdzenie: otrzymaliśmy Twoje zgłoszenie");
     expect(reply.html).toContain("Dziękujemy za wiadomość");
-    // Submission context carried into the confirmation; the default greeting omits the name.
+    // The confirmation carries configured text only, nothing from the form.
     expect(reply.html).toContain("Dzień dobry,");
-    expect(reply.html).toContain("Consultation");
+    for (const value of ["Jane", "Consultation", "Pricing"]) {
+      expect(reply.html).not.toContain(value);
+      expect(reply.text).not.toContain(value);
+    }
+  });
+
+  it("greets without the name even when the brand configures one", async () => {
+    const { waitUntil, flush } = collectingWaitUntil();
+    const templates = templatePlans(parseConfig({ ...structuredClone(example), mailTemplates: { version: 1,
+      templates: { received: { copy: { greetingWithName: "Hi {name},", greetingWithoutName: "Hello," } } } } }));
+    const deps = makeDeps({ waitUntil, templates });
+    await handleSend(
+      req(
+        { brand: "acme", name: "Jane Smith", email: "jane@example.com", "cf-turnstile-response": "ok" },
+        { origin: ACME_ORIGIN },
+      ),
+      makeEnv(),
+      deps,
+    );
+    await flush();
+    const reply = deps.sendEmail.mock.calls[1][1] as SendParams;
+    expect(reply.text).toContain("Hello,");
+    expect(reply.text).not.toContain("Jane");
+    expect(reply.html).not.toContain("Jane");
   });
 
   it("does not auto-reply when the submitter email is invalid", async () => {
@@ -562,7 +589,7 @@ describe("handleSend — auto-reply (public contact)", () => {
     expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   });
 
-  it("body autoreply:'1' overrides a brand default of false", async () => {
+  it("body autoreply:'1' cannot enable a brand default of false", async () => {
     const { waitUntil, flush } = collectingWaitUntil();
     const deps = makeDeps({ waitUntil, verifyAltcha, now: () => new Date() });
     const challenge = await createChallenge(makeEnv().ALTCHA_HMAC_KEY, { maxnumber: 0 });
@@ -582,10 +609,7 @@ describe("handleSend — auto-reply (public contact)", () => {
     );
     expect(res.status).toBe(200);
     await flush();
-    expect(deps.sendEmail).toHaveBeenCalledTimes(2);
-    const reply = deps.sendEmail.mock.calls[1][1] as SendParams;
-    expect(reply.to).toEqual(["alice@example.com"]);
-    expect(reply.replyTo).toBe("team@demo.example");
+    expect(deps.sendEmail).toHaveBeenCalledTimes(1);
   });
 
   it("does not auto-reply for a brand with the default off", async () => {

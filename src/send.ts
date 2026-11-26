@@ -375,7 +375,7 @@ export async function handleSend(
 
   // Best-effort auto-reply to the submitter (public contact form only), dispatched
   // off the request path so it never delays or fails the user's response.
-  maybeSendAutoReply({ trusted, brand, templateId: template.id, data, body, env, deps });
+  maybeSendAutoReply({ trusted, brand, templateId: template.id, data, body, env, deps, nonceProduct });
 
   return json(deliveryResponse(result, trusted), { cors: corsOrigin });
 }
@@ -388,6 +388,8 @@ interface AutoReplyContext {
   body: Record<string, unknown>;
   env: Env;
   deps: SendDeps;
+  /** Product from a verified form nonce (always one of `brand.products`). */
+  nonceProduct?: string;
 }
 
 /**
@@ -397,15 +399,13 @@ interface AutoReplyContext {
  * detached; errors are swallowed (the main submission already succeeded).
  */
 function maybeSendAutoReply(ctx: AutoReplyContext): void {
-  const { trusted, brand, templateId, data, body, env, deps } = ctx;
+  const { trusted, brand, templateId, data, body, env, deps, nonceProduct } = ctx;
 
   // Public contact form only — trusted/transactional sends never auto-reply.
   if (trusted || templateId !== "contact") return;
 
-  // Per-request override wins over the brand default.
-  const override = parseAutoReplyOverride(body.autoreply);
-  const enabled = override ?? brand.autoReply ?? false;
-  if (!enabled) return;
+  // The brand enables confirmations; a request can only turn them off.
+  if (!brand.autoReply || parseAutoReplyOverride(body.autoreply) === false) return;
 
   // Only reply to a syntactically valid submitter address.
   const to = (data.email || "").trim();
@@ -414,11 +414,8 @@ function maybeSendAutoReply(ctx: AutoReplyContext): void {
   const template = getTemplate(brand.autoReplyTemplate ?? DEFAULT_AUTOREPLY_TEMPLATE, deps.templates ?? compiledTemplates, brand.id);
   if (!template) return;
 
-  // Build a small confirmation payload from the submission.
-  const replyData: TemplateData = {
-    name: data.name || data["Imię i nazwisko"] || "",
-    summary: data.type || data.topic || "",
-  };
+  // Content comes from configuration only; the summary is a configured product name.
+  const replyData: TemplateData = { name: "", summary: nonceProduct ?? "" };
 
   // Start the task on a later tick so it never runs in the synchronous request
   // path; this keeps the user response immediate and the send observable only
