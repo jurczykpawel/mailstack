@@ -25,6 +25,14 @@ it("lists only the renders a template change affects, including the auto-reply a
   expect(changedRenders(example, example)).toEqual([]);
 });
 
+it("shows a slot used only without data, also for a brand without auto-reply", () => {
+  const next = edit((json) => {
+    json.mailTemplates = { version: 1 };
+    json.brands.demo.mailTemplates = { templates: { received: { copy: { greetingWithoutName: "Hello," } } } };
+  });
+  expect(changedRenders(example, next)).toEqual(["demo/received/default/no-data"]);
+});
+
 it("reports changed configuration paths without values, also when no render changes", () => {
   const next = edit((json) => { json.brands.demo.allowedOrigins.push("https://other.example"); json.cloudflare = undefined; });
   expect(changedRenders(example, next)).toEqual([]);

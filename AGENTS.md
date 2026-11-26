@@ -51,7 +51,7 @@ Base URL is wherever the Worker is deployed (e.g. `https://mail.example.com`).
 ### `GET /health`
 Liveness check.
 ```json
-{ "ok": true, "service": "mailstack", "version": "1.0.0", "commit": "dev" }
+{ "ok": true, "service": "mailstack", "version": "1.0.0", "commit": "dev", "config": "<sha256 of the bundled configuration>" }
 ```
 
 ### `OPTIONS /v1/send`
@@ -608,6 +608,12 @@ For local `npx wrangler dev`, copy `.dev.vars.example` → `.dev.vars` and fill 
    With Mailstack Pro, `MAILSTACK_EGRESS_URL` in `.env` (plus secrets `EGRESS_KEYS`, `EGRESS_ACCESS_CLIENT_ID`,
    `EGRESS_ACCESS_CLIENT_SECRET`) points webhooks and resend source at the `egress` service of the panel's Compose,
    behind a Tunnel + Access (Pro README). Without all four they stay `disabled` (`platform:secure_egress_unavailable`).
+   **Configuration only:** `npm run config:push` (README "Changing the configuration only") deploys an
+   edited `MAILSTACK_CONFIG` with the deployed code: the checkout must equal `/health` `commit`/`proCommit`,
+   the previous configuration comes from the checkout's last setup (or `--from`) and must match `/health`
+   `config`; it prints changed renders, deploys after confirmation (`--yes`), checks the new `config` in
+   `/health` and rolls back to the replaced version on failure. Schema changes need `npm run release`;
+   `MAILSTACK_CONFIG_POST_PUSH` runs after success.
 5. **Custom domain:** add a route / custom domain (e.g. `mail.example.com`) to the Worker
    in the Cloudflare dashboard or via `wrangler`.
    Optional `MAILSTACK_INTERNAL_ROUTE` adds a second domain serving `/internal/v2/*` and `/internal/ext/pro/*`
