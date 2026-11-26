@@ -4,6 +4,12 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- `npm run config:push` deploys a changed configuration with the deployed code:
+  it checks the checkout against `/health`, lists changed renders, asks for
+  confirmation, verifies the new configuration in `/health` and rolls back to the
+  replaced Worker version on failure. Optional `MAILSTACK_CONFIG_POST_PUSH` hook.
+- `/health` reports `config`, the SHA-256 of the bundled configuration file.
+
 ## [1.2.4] - 2026-11-26
 
 - Public contact confirmations contain configured text only: no submitted name,

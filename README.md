@@ -293,7 +293,7 @@ With `MAILSTACK_ROUTE` set, setup disables `workers.dev` and preview URLs.
 Profiles (a)/(b) use a custom hostname; configure it before deploying, then check it:
 ```bash
 curl https://mail.example.com/health
-# → {"ok":true,"service":"mailstack","version":"1.0.0","commit":"<HEAD sha>"}
+# → {"ok":true,"service":"mailstack","version":"1.0.0","commit":"<HEAD sha>","config":"<configuration sha256>"}
 ```
 A core-only Worker with no `MAILSTACK_ROUTE` uses its default `workers.dev` URL;
 use that URL for the health check instead.
@@ -437,7 +437,41 @@ After editing the configuration, validate it with `npm run mailstack -- config c
 Restart the Docker service with `docker compose up --build -d --force-recreate`, or use
 the guarded `npm run release` from a clean release checkout (setup, schema upgrade, deploy).
 `npm run migrate:worker` applies only the remote schema upgrade after setup; it has no dry-run
-mode. `npm run deploy` alone does not upgrade the schema. Keep runtime images and backups current; see [docs/backup.md](docs/backup.md) for encrypted offsite copies and restore.
+mode. `npm run deploy` alone does not upgrade the schema.
+
+### Changing the configuration only (`npm run config:push`)
+The Worker bundles `mailstack.json` at build time, so a configuration change (brands,
+templates, clients, sources) needs a deploy, but not a new application version. In the
+release checkout of exactly the deployed commit (`.env` with `MAILSTACK_CONFIG`,
+`MAILSTACK_HEALTH_URL` and, with Pro, `MAILSTACK_PRO_PATH`), edit the external file, then:
+```bash
+npm run config:push            # asks for confirmation; add -- --yes to skip the question
+```
+1. The core (and Pro) checkout must equal `commit` (and `proCommit`) in `/health`; otherwise
+   it stops: that is a code release (`npm run release`).
+2. The deployed configuration is the one the last setup of this checkout bundled
+   (`src/core/config/bundled.ts`), accepted only when its SHA-256 equals `config` in `/health`.
+   Another copy can be given with `-- --from <file>`, checked the same way. `npm test` and
+   `npm run typecheck` overwrite that setup with the example, so after running them use `--from`.
+   Hashes cover template bodies inlined from `{"file": …}`, as setup does.
+3. It validates the new file as setup does (schema, templates and Pro rules; run `config check`
+   too for its warnings), renders both configurations with the same code (every brand, template
+   and language with sample data, without data, in the reminder/reason variants, for each
+   form-kind selector value, and the public auto-reply) and prints the changed renders and changed
+   configuration paths (no values). Source field mappings are not rendered: a change under
+   `sources` is flagged for a separate check. A file equal to the deployed one deploys nothing.
+4. After the version check below and the confirmation, it deploys the same code with the new configuration and waits until `/health` reports the
+   new `config` with an unchanged commit. A configuration that changes the generated database
+   migrations (for example Pro webhook options) is refused: use `npm run release`. The deployed
+   version must be the newest and only one; on a failed deploy or health check it runs
+   `wrangler rollback` to exactly that version (it carries the current secrets) and restores
+   the setup of the deployed configuration. If the rollback itself fails, the error says so:
+   check `/health` and roll back manually. After a rollback the newest version is the one that
+   was rolled back, so the next push is refused until `npm run release` deploys a new version.
+5. `MAILSTACK_CONFIG_POST_PUSH` may name an executable run after success with the
+   configuration path as its argument (for example, to store an offline copy); its failure only warns.
+
+The panel Worker reads brands and templates from the API at run time and needs no deploy. Keep runtime images and backups current; see [docs/backup.md](docs/backup.md) for encrypted offsite copies and restore.
 
 ## Troubleshooting
 - **Email not arriving?** You're probably still in SES "sandbox" — verify the recipient address
@@ -709,7 +743,7 @@ needs `npm run setup` and a build/deploy. Do not restore `src/brands.ts` or edit
 bundles. Keep credentials in runtime secrets, outside this JSON.
 
 ### API (summary)
-- `GET /health` → `{ ok: true, service: "mailstack", version, commit }` (`commit: "dev"` locally).
+- `GET /health` → `{ ok: true, service: "mailstack", version, commit, config }` (`commit: "dev"` locally; `config` is the SHA-256 of the bundled configuration file on the Worker; Node reports the SHA-256 of its loaded configuration).
   This is liveness, not readiness; its `store: "ok"` field proves reads, not writes or
   delivery, and read-only storage can still cause `requireLog: true` sends to return `503`.
 - `POST /v1/send` — public (browser form, needs Turnstile) or trusted (Bearer token). Control

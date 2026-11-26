@@ -145,6 +145,14 @@ describe("deploy execution", () => {
     await expect(deploy(opts)).rejects.toThrow(/commit/i);
     expect(opts.fetchHealth).toHaveBeenCalledTimes(3);
   });
+  it("with a configuration SHA-256 retries until health reports it with an unchanged commit", async () => {
+    const opts = { ...options(), healthAttempts: 2, configSha: "b".repeat(64) }, sha = git(cwd, "rev-parse", "HEAD");
+    opts.fetchHealth.mockResolvedValueOnce(Response.json({ commit: sha, config: "a".repeat(64) })).mockResolvedValueOnce(Response.json({ commit: sha, config: opts.configSha }));
+    await deploy(opts);
+    expect(opts.fetchHealth).toHaveBeenCalledTimes(2);
+    opts.fetchHealth.mockReset().mockImplementation(async () => Response.json({ commit: sha, config: "a".repeat(64) }));
+    await expect(deploy(opts)).rejects.toThrow(/configuration/);
+  });
   it("stops before Wrangler when repository checks fail", async () => {
     const opts = options(); commit(cwd, "local");
     await expect(deploy(opts)).rejects.toThrow();

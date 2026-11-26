@@ -43,7 +43,7 @@ export function checkRepositories(cwd = process.cwd(), proPath = loadEnv(cwd).MA
 }
 
 export async function deploy({
-  cwd = process.cwd(), healthUrl = loadEnv(cwd).MAILSTACK_HEALTH_URL, proPath, workerName,
+  cwd = process.cwd(), healthUrl = loadEnv(cwd).MAILSTACK_HEALTH_URL, proPath, workerName, configSha,
   runWrangler = (args) => {
     const result = spawnSync("wrangler", args, { cwd, stdio: "inherit" });
     if (result.error || result.status !== 0) throw new Error("Wrangler deploy failed.");
@@ -70,13 +70,14 @@ export async function deploy({
       }
       const health = await response.json();
       if (health?.commit !== sha || health?.proCommit !== pro) throw new Error("Health commit does not match HEAD.");
+      if (configSha && health?.config !== configSha) throw new Error("Health configuration does not match the new configuration.");
       break;
     } catch (error) {
       if (error.final || attempt >= healthAttempts) throw error;
       await sleep(healthIntervalMs);
     }
   }
-  log(`Health commit verified: ${sha}`);
+  log(`Health commit verified: ${sha}${configSha ? `, configuration ${configSha}` : ""}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
