@@ -134,8 +134,9 @@ async function main() {
         && !wrangler(["email", "sending", "enable", from.split("@")[1]]).ok)
         console.log("  Enable it in the dashboard instead: Compute & AI > Email Service > Onboard Domain.");
       console.log(`On the Workers Free plan messages go only to verified destination addresses. Adding ${inbox} (Cloudflare emails a confirmation link):`);
-      if (!wrangler(["email", "routing", "addresses", "create", inbox]).ok) console.log("  Already added, or add it in the dashboard: Email Routing > Destination addresses.");
-      await ask(`Click the link Cloudflare sent to ${inbox}, then press Enter`, "ok", () => true);
+      const added = wrangler(["email", "routing", "addresses", "create", inbox]).ok;
+      if (!added) console.log(`  Not added here (see above). If ${inbox} is not verified yet, add it in the dashboard: Email Routing > Destination addresses.`);
+      await ask(added ? `Click the link Cloudflare sent to ${inbox}, then press Enter` : `Press Enter once ${inbox} is a verified destination address`, "ok", () => true);
     }
 
     mkdirSync(configDir, { recursive: true, mode: 0o700 });
