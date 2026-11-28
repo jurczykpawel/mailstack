@@ -1,6 +1,7 @@
 import { measureJson } from '../../templates/output.ts';
-import { Aes256Gcm, CipherSuite, HkdfSha256 } from '@hpke/core';
-import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
+// Native WebCrypto X25519 (workerd, Node 24, current browsers); same KEM id 0x0020 and envelopes as the
+// pure-JS KEM used before 1.2.6. A runtime without X25519 fails closed with "Unable to seal/open content".
+import { Aes256Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from '@hpke/core';
 
 export type ContentKey = JsonWebKey & { kid: string };
 export interface IndexKey { kid: string; key: string }
@@ -16,6 +17,8 @@ const utf8 = new TextEncoder();
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const purposes = new Set(['rcpt', 'subject', 'ref', 'content', 'replay', 'evidence', 'provider_response']);
 const invalid = () => new Error('Invalid key configuration');
+// WebCrypto enforces ext/key_ops/use on JWK import; the pure-JS KEM ignored them, so pass only key material.
+export const jwk = ({ kty, crv, x, d }: ContentKey): JsonWebKey => (d === undefined ? { kty, crv, x } : { kty, crv, x, d });
 
 export function encode(value: ArrayBuffer): string {
   return btoa(Array.from(new Uint8Array(value), (b) => String.fromCharCode(b)).join(''))
@@ -48,7 +51,7 @@ export async function seal(data: unknown, context: SealContext, keys: readonly C
     const key = keys[0];
     if (key.d !== undefined || key.kty !== 'OKP' || key.crv !== 'X25519') throw invalid();
     measureJson(data, maxBytes);
-    const recipientPublicKey = await suite.kem.importKey('jwk', key);
+    const recipientPublicKey = await suite.kem.importKey('jwk', jwk(key));
     const json = new Blob([canonicalJson(data)]);
     if (json.size > maxBytes) throw new Error();
     const compressed = await new Response(json.stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
@@ -68,7 +71,7 @@ export async function open(value: string, context: SealContext, keys: readonly C
     if (version !== 'ms1' || extra !== undefined) throw invalid();
     const key = keys.find((k) => k.kid === kid);
     if (!key?.d || key.kty !== 'OKP' || key.crv !== 'X25519') throw invalid();
-    const recipientKey = await suite.kem.importKey('jwk', key, false);
+    const recipientKey = await suite.kem.importKey('jwk', jwk(key), false);
     const plaintext = await suite.open({ recipientKey, enc: decode(enc), info }, decode(ciphertext), aad);
     return await readJson(new Blob([plaintext]).stream().pipeThrough(new DecompressionStream('gzip')), maxBytes);
   } catch {

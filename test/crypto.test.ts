@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { Aes256Gcm, CipherSuite, HkdfSha256 } from '@hpke/core';
+import { Aes256Gcm, CipherSuite, DhkemX25519HkdfSha256 as NativeX25519, HkdfSha256 } from '@hpke/core';
+// Pure-JS reference used before 1.2.6: envelopes must stay interchangeable in both directions.
 import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
-import { blindIndex, blindIndexes, canonicalJson, createMac, open, seal, verifyMac } from '../src/core/crypto';
+import { blindIndex, blindIndexes, canonicalJson, createMac, open, seal, suite as runtimeSuite, verifyMac } from '../src/core/crypto';
 
 const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm() });
 const context = { brand: 'acme', messageId: 'msg-1', purpose: 'content' as const };
@@ -87,6 +88,25 @@ describe('content envelopes', () => {
     const encode = (raw: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     const key = { kty: 'OKP', crv: 'X25519', kid: 'fixture', x: encode(await suite.kem.serializePublicKey(pair.publicKey)), d: encode(await suite.kem.serializePrivateKey(pair.privateKey)) };
     expect(await open('ms1.fixture.3okjpnXQIYDN19AJe6QEueHikw1WZculjRdlAGNheTs.jT10erfFg5YsVo0_OE6N-oZCcTKnTndTydR6VQ0s1VI8HbPolUfg_7nLwTTP4llfrYxwyQ', context, [key])).toEqual({ fixture: true });
+  });
+
+  it('uses the native WebCrypto X25519 KEM', () => {
+    expect(runtimeSuite.kem).toBeInstanceOf(NativeX25519);
+  });
+
+  it('interoperates with the pure-JS KEM on the same keys in both directions', async () => {
+    const data = { text: 'Zażółć 📨', n: [1, 2] };
+    const native = await seal(data, context, [publicKey]);
+    const [, , enc, ciphertext] = native.split('.');
+    const gz = await suite.open({ recipientKey: await suite.kem.importKey('jwk', privateKey, false), enc: decode(enc), info: new TextEncoder().encode('mailstack/v1/content') }, decode(ciphertext), new TextEncoder().encode('acme|msg-1|content'));
+    expect(JSON.parse(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text())).toEqual(data);
+    expect(await open(await independentEnvelope(data), context, [privateKey])).toEqual(data);
+  });
+
+  it('ignores JWK export metadata that the pure-JS KEM ignored', async () => {
+    const meta = { ext: false, key_ops: ['deriveBits'], use: 'enc' };
+    const sealed = await seal({ ok: 1 }, context, [{ ...publicKey, ext: false, key_ops: [], use: 'enc' }]);
+    expect(await open(sealed, context, [{ ...privateKey, ...meta }])).toEqual({ ok: 1 });
   });
 
   it('round trips JSON and uses the first public key', async () => {
