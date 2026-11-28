@@ -2,11 +2,13 @@ import type { Env, SendParams, SendResult } from '../../types';
 
 // Workers binding error codes (developers.cloudflare.com/email-service/api/send-emails/workers-api/#error-codes) -> HTTP-like status for the log.
 const STATUS: Record<string, number> = {
-  E_RECIPIENT_NOT_ALLOWED: 403, E_SENDER_NOT_VERIFIED: 403, E_SENDER_DOMAIN_NOT_AVAILABLE: 403, E_RECIPIENT_SUPPRESSED: 403,
+  E_RECIPIENT_NOT_ALLOWED: 403, E_RECIPIENT_PLAN_RESTRICTED: 403, E_SENDER_NOT_VERIFIED: 403, E_SENDER_DOMAIN_NOT_AVAILABLE: 403, E_RECIPIENT_SUPPRESSED: 403,
   E_ACCOUNT_SUSPENDED: 403, E_CONTENT_TOO_LARGE: 413, E_RATE_LIMIT_EXCEEDED: 429, E_DAILY_LIMIT_EXCEEDED: 429, E_DELIVERY_FAILED: 502,
 };
 const HINT: Record<string, string> = {
-  E_RECIPIENT_NOT_ALLOWED: 'recipient is not a verified destination address (Workers Free sends only to verified addresses)',
+  E_RECIPIENT_NOT_ALLOWED: 'recipient not allowed by the send_email binding',
+  // Measured on Workers Free (2026-11-28), not in the documented list: a recipient that is not a verified destination address.
+  E_RECIPIENT_PLAN_RESTRICTED: 'recipient is not a verified destination address (Workers Free sends only to verified addresses)',
   E_SENDER_NOT_VERIFIED: 'the sender domain is not enabled for Email Service in this account',
   E_SENDER_DOMAIN_NOT_AVAILABLE: 'the sender domain is not enabled for Email Service in this account',
 };

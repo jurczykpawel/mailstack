@@ -29,10 +29,10 @@ it('passes a bare sender address and decoded attachments', async () => {
 
 it('turns a coded refusal into an explicit failure with a readable diagnostic', async () => {
   const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-  const result = await sendCloudflare(envWith(() => Promise.reject(refusal('E_RECIPIENT_NOT_ALLOWED'))), params);
-  expect(result).toEqual({ ok: false, status: 403, response: { code: 'E_RECIPIENT_NOT_ALLOWED' } });
+  const result = await sendCloudflare(envWith(() => Promise.reject(refusal('E_RECIPIENT_PLAN_RESTRICTED'))), params);
+  expect(result).toEqual({ ok: false, status: 403, response: { code: 'E_RECIPIENT_PLAN_RESTRICTED' } });
   const line = String(error.mock.calls[0][0]);
-  expect(line).toContain('E_RECIPIENT_NOT_ALLOWED');
+  expect(line).toContain('E_RECIPIENT_PLAN_RESTRICTED');
   expect(line).toContain('verified destination');
   expect(line).not.toContain('owner@acme.example');
 });

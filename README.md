@@ -48,7 +48,7 @@ for its offline copy.
 addresses** in your account. A contact form to your own inbox works; mail to visitors or
 customers (auto-reply, payment and license emails) needs Workers Paid or the SES sender.
 A refused send returns `502 send_failed`; `npx wrangler tail <worker>` shows the reason, for example
-`Cloudflare Email Service refused: E_RECIPIENT_NOT_ALLOWED - recipient is not a verified
+`Cloudflare Email Service refused: E_RECIPIENT_PLAN_RESTRICTED - recipient is not a verified
 destination address`. Reply-To and attachments are supported. SES configuration sets, message
 tags and the `/v1/events/ses` delivery events do not apply: a message counts as sent when Cloudflare
 accepts it, and bounces or complaints are not recorded. Node/Docker cannot use this sender
