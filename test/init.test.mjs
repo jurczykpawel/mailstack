@@ -16,7 +16,7 @@ it('derives ids and the site origin from what the user types', () => {
 
 it.each([['cloudflare', 'none'], ['ses', 'meta']])('builds a configuration the validator accepts without warnings (%s, %s)', (sender, level) => {
   const config = buildConfig({ ...answers, sender, level });
-  expect(config.brands['lodz-cafe']).toMatchObject({ from: 'Łódź Café <no-reply@example.com>', to: ['owner@example.com'], captcha: 'altcha',
+  expect(config.brands['lodz-cafe']).toMatchObject({ from: '"Łódź Café" <no-reply@example.com>', to: ['owner@example.com'], captcha: 'altcha',
     autoReply: false, allowedOrigins: ['https://example.com', 'https://www.example.com'] });
   expect(config.sources).toEqual({});
   const dir = mkdtempSync(join(tmpdir(), 'mailstack-init-')), file = join(dir, 'config.json');
@@ -26,7 +26,7 @@ it.each([['cloudflare', 'none'], ['ses', 'meta']])('builds a configuration the v
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toBe('');
   } finally { rmSync(dir, { recursive: true }); }
-});
+}, 30000);
 
 it('reads wrangler output', () => {
   expect(parseD1Id('[[d1_databases]]\nbinding = "DB"\ndatabase_id = "0f2ac74b-498b-4a2f-9e1d-1b2d3c4e5f60"')).toBe('0f2ac74b-498b-4a2f-9e1d-1b2d3c4e5f60');

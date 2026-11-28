@@ -3,8 +3,8 @@
 // creates the databases, configuration, secrets and Worker, and prints the HTML form. Works without git.
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -34,7 +34,7 @@ export function buildConfig({ name, id, site, inbox, from, sender, level }) {
     cloudflare: { plan: "free" },
     sources: {},
     brands: { [id]: {
-      id, name, from: `${name} <${from}>`, to: [inbox], allowedOrigins: [site, ...host.startsWith("www.") ? [] : [site.replace("://", "://www.")]],
+      id, name, from: `"${name.replace(/["\\\r\n]/g, "")}" <${from}>`, to: [inbox], allowedOrigins: [site, ...host.startsWith("www.") ? [] : [site.replace("://", "://www.")]],
       subjectPrefix: "New message from", captcha: "altcha", autoReply: false, theme: { accent: "#2563eb", siteUrl: site },
     } },
     logging: {
@@ -139,33 +139,33 @@ async function main() {
       await ask(added ? `Click the link Cloudflare sent to ${inbox}, then press Enter` : `Press Enter once ${inbox} is a verified destination address`, "ok", () => true);
     }
 
+    // Keys and secrets are written first (0600), so a later failure leaves nothing that exists only in memory.
     mkdirSync(configDir, { recursive: true, mode: 0o700 });
-    const d1 = parseD1Id(must(wrangler(["d1", "create", worker]), "Creating the database"));
-    const preview = parseD1Id(must(wrangler(["d1", "create", `${worker}-preview`]), "Creating the preview database"));
-    writeFileSync(configPath, JSON.stringify(buildConfig({ name, id, site, inbox, from, sender, level }), null, 2) + "\n", { mode: 0o600 });
     if (level !== "none") {
       const keyFile = join(configDir, `${worker}-content-private.json`);
       console.log(`Creating the encryption key file ${keyFile}; copy it to offline storage when asked.`);
       const keys = spawnSync(process.execPath, [join(root, "scripts/keys.mjs"), "init", keyFile], { cwd: root, encoding: "utf8", stdio: ["inherit", "pipe", "inherit"] });
-      if (keys.status !== 0) throw new Error("Key setup did not finish; rerun npm run init after removing .env and the files it names.");
+      if (keys.status !== 0) throw new Error(`Key setup did not finish; nothing else was created. Remove ${keyFile} and run npm run init again.`);
       for (const line of keys.stdout.trim().split("\n")) {
         const [, key, value] = line.match(/^([A-Z_]+)='(.*)'$/) ?? [];
         if (key === "CONTENT_PUBLIC_KEYS" || key === "INDEX_KEYS") secrets[key] = value;
       }
     }
+    const secretsPath = join(configDir, `${worker}.secrets.json`), keyPath = join(configDir, `${worker}.api-key`);
+    writeFileSync(secretsPath, JSON.stringify(secrets), { mode: 0o600 });
+    writeFileSync(keyPath, `${secrets.API_KEY}\n`, { mode: 0o600 }); chmodSync(keyPath, 0o600);
+    const d1 = parseD1Id(must(wrangler(["d1", "create", worker]), "Creating the database"));
+    const preview = parseD1Id(must(wrangler(["d1", "create", `${worker}-preview`]), "Creating the preview database"));
+    writeFileSync(configPath, JSON.stringify(buildConfig({ name, id, site, inbox, from, sender, level }), null, 2) + "\n", { mode: 0o600 });
     writeFileSync(join(root, ".env"), [`MAILSTACK_CONFIG=${configPath}`, `MAILSTACK_WORKER_NAME=${worker}`,
       `MAILSTACK_D1_ID=${d1}`, `MAILSTACK_D1_PREVIEW_ID=${preview}`, ""].join("\n"), { mode: 0o600 });
 
+    const finish = `npx wrangler secret bulk ${secretsPath} --name ${worker}`;
     console.log("\nDeploying (setup, database schema, Worker)...");
     const release = await tee("npm", ["run", "release"]);
-    if (!release.ok) throw new Error("npm run release failed; fix the reported problem and run npm run release again.");
-    const dir = mkdtempSync(join(tmpdir(), "mailstack-secrets-")), file = join(dir, "secrets.json");
-    try {
-      writeFileSync(file, JSON.stringify(secrets), { mode: 0o600 });
-      must(wrangler(["secret", "bulk", file, "--name", worker]), "Uploading the secrets");
-    } finally { rmSync(dir, { recursive: true, force: true }); }
-    const keyPath = join(configDir, `${worker}.api-key`);
-    writeFileSync(keyPath, `${secrets.API_KEY}\n`, { mode: 0o600 }); chmodSync(keyPath, 0o600);
+    if (!release.ok) throw new Error(`npm run release failed; fix the reported problem, run npm run release, then ${finish}`);
+    must(wrangler(["secret", "bulk", secretsPath, "--name", worker]), `Uploading the secrets (retry: ${finish})`);
+    rmSync(secretsPath);
 
     const api = parseWorkerUrl(release.out) ?? `https://${worker}.<your-subdomain>.workers.dev`;
     const health = await fetch(`${api}/health`).then((r) => r.json()).catch(() => undefined);
