@@ -52,7 +52,7 @@ const shape = z.strictObject({
     module: z.string().regex(/^(?:\/[^\s?#]+|(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*)$/),
     options: z.record(z.string(), z.unknown()).optional(),
   })).default([]),
-  sender: z.strictObject({ type: z.enum(["ses", "smtp"]) }).optional(),
+  sender: z.strictObject({ type: z.enum(["ses", "smtp", "cloudflare"]) }).optional(),
   // Workers plan controls the invocation operations budget and provider backup window; omitted means Free.
   cloudflare: z.strictObject({ plan: z.enum(["paid", "free"]) }).optional(),
   sources: z.record(sourceId, sourceSchema).default(() => ({ sellf: sourceSchema.parse(sellfPreset) })),

@@ -27,6 +27,8 @@ export interface Env extends KeyEnvironment {
   API_KEY: string;
   ALTCHA_HMAC_KEY: string;
   DB?: D1Database;
+  /** Cloudflare Email Service binding (`"sender": {"type": "cloudflare"}`). */
+  EMAIL?: SendEmail;
   /** Egress service behind a Tunnel (WP20B); without all four, outbound features stay off. */
   EGRESS_URL?: string; EGRESS_KEYS?: string; EGRESS_ACCESS_CLIENT_ID?: string; EGRESS_ACCESS_CLIENT_SECRET?: string;
   CONTENT_PUBLIC_KEYS?: string;
@@ -197,7 +199,7 @@ export interface SendDeps {
   emitEvent?: import("./core/extensions").EmitEvent;
   /** Resolves when an extension consumes events (durable rows are written); `ref` stores the reference digest. */
   durableEvents?: () => Promise<{ ref: boolean } | undefined>;
-  provider?: 'ses' | 'smtp';
+  provider?: 'ses' | 'smtp' | 'cloudflare';
   notifier?: Notifier;
   logging?: Config["logging"];
   store?: Store;
