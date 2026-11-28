@@ -1,4 +1,4 @@
-import { canonicalJson, decode, encode, suite } from './crypto/index.ts';
+import { canonicalJson, decode, encode, jwk, suite } from './crypto/index.ts';
 import type { ContentKey } from './crypto/index.ts';
 import { MAX_ENVELOPE, MAX_OPENED } from './http.ts';
 export { MAX_OPENED, TRANSIT_REQUEST_BYTES } from './http.ts';
@@ -51,7 +51,7 @@ async function decrypt(value: string, binding: TransitBinding, keys: readonly Co
     const [version, kid, nonce, enc, ct, extra] = typeof value === 'string' && value.length <= MAX_ENVELOPE ? value.split('.') : [];
     const key = keys.find((k) => k.kid === kid);
     if (version !== 'mt1' || extra !== undefined || !key?.d || decode(nonce).byteLength !== 16) throw new Error();
-    const recipientKey = await suite.kem.importKey('jwk', key, false);
+    const recipientKey = await suite.kem.importKey('jwk', jwk(key), false);
     const plain = await suite.open({ recipientKey, enc: decode(enc), info }, decode(ct), aad(binding, nonce));
     const body = JSON.parse(new TextDecoder().decode(plain));
     if (body?.op !== binding.op || body.messageId !== (binding.messageId ?? null) || body.nonce !== nonce || !Number.isSafeInteger(body.exp) ||

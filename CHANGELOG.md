@@ -14,6 +14,12 @@ All notable changes to mailstack are documented here.
 - `npm install` leaves `package-lock.json` unchanged (#67).
 - Node startup names a missing sender setting; `keys init --backup-verified` for a key file
   that does not exist yet explains the first step (#66).
+- Log archive and transit envelopes use the native WebCrypto X25519 KEM from
+  `@hpke/core` instead of the pure-JS `@hpke/dhkem-x25519` (now a test-only
+  dependency). Same HPKE suite and envelope format: archives written before and
+  after open with the same keys. Several times less CPU per send. Runtimes without
+  WebCrypto X25519 (Node < 24, browsers older than Chrome 133 or Firefox 130,
+  Safari builds from before 2025) fail with "Unable to seal/open content".
 
 ## [1.2.5] - 2026-11-26
 

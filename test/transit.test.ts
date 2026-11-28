@@ -34,6 +34,12 @@ beforeAll(async () => {
 });
 
 describe('transit envelope', () => {
+  it('opens with private keys carrying JWK export metadata', async () => {
+    const value = await sealTransit({ ok: 1 }, replay, publicKey, now);
+    const keys = privateKeys.map((k) => ({ ...k, ext: false, key_ops: ['deriveBits'], use: 'enc' }));
+    expect(await openTransit(value, replay, keys, memoryStore(), now + 1000)).toEqual({ ok: 1 });
+  });
+
   it('opens what it sealed for the same audience, operation and message', async () => {
     const value = await sealTransit({ replay: 'body' }, replay, publicKey, now);
     expect(value).toMatch(/^mt1\.t1\./);
