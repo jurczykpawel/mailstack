@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { loadEnv } from "./env.ts";
 
@@ -8,11 +9,18 @@ export const PRODUCTION_WORKER = "mailstack";
 /** True unless MAILSTACK_WORKER_NAME names another Worker (same default and trimming as gen-wrangler). */
 export const isProductionWorker = (name) => ((name || "").trim() || PRODUCTION_WORKER) === PRODUCTION_WORKER;
 
-/** Clean tree always; production additionally requires HEAD == origin/main or a tag reachable from it. */
+/** Clean tree always; production additionally requires HEAD == origin/main or a tag reachable from it.
+ * A directory that is not the top of a git checkout (an unpacked archive) deploys only under another Worker name, as commit `dev`. */
 export function checkRepository(cwd = process.cwd(), { production = true } = {}) {
   const git = (...args) => execFileSync("git", args, {
     cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+  let top;
+  try { top = realpathSync(git("rev-parse", "--show-toplevel")); } catch {}
+  if (top !== realpathSync(cwd)) {
+    if (production) throw new Error("Not a git checkout: the production Worker name deploys only from a clone of origin/main. Set MAILSTACK_WORKER_NAME in .env to your own Worker name.");
+    return "dev";
+  }
   if (git("status", "--porcelain", "--untracked-files=all")) {
     throw new Error("Working tree must be clean before deploy.");
   }

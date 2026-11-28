@@ -20,6 +20,8 @@ import { smtpFromEnv } from '../adapters/sender/smtp';
 import type { Env } from '../types';
 import { tombstoneRegistry } from '../core/offsite';
 
+/** Startup refusal whose message names a missing setting and contains no secret values; printed as is. */
+export class StartupError extends Error {}
 type Fetch = (req: Request, env: Env, ctx: Pick<ExecutionContext, 'waitUntil'>) => Promise<Response>;
 async function latestBackup(dir: string): Promise<number> {
   try {
@@ -104,7 +106,9 @@ async function main() {
   if (env.PANEL_ASSERTION_KEYS) { parseIndexKeys(env.PANEL_ASSERTION_KEYS); if (!env.PANEL_AUDIENCE) throw new Error('PANEL_AUDIENCE required'); }
   if (env.CONTENT_PUBLIC_KEYS || env.INDEX_KEYS || effectivePolicies(config).some(p => p.policy.level !== 'none' && p.policy.requireLog)) parseKeyring(env);
   const provider = config.sender?.type ?? 'ses';
-  if (provider === 'ses' && (!env.SES_ACCESS_KEY_ID || !env.SES_SECRET_ACCESS_KEY)) throw new Error('SES configuration required');
+  if (provider === 'cloudflare') throw new StartupError('Cloudflare Email Service needs the Worker runtime; select "sender": {"type": "smtp"} or "ses" for Node');
+  if (provider === 'ses' && (!env.SES_ACCESS_KEY_ID || !env.SES_SECRET_ACCESS_KEY))
+    throw new StartupError('SES configuration required: set SES_ACCESS_KEY_ID and SES_SECRET_ACCESS_KEY, or select "sender": {"type": "smtp"} with SMTP_URL');
   const sender = provider === 'smtp' ? smtpFromEnv(process.env) : sendEmail;
   await mkdir('/data', { recursive: true, mode: 0o700 });
   const database = new Database('/data/mailstack.db');
@@ -130,5 +134,5 @@ async function main() {
   } catch (error) { await store.db.destroy(); throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(error => { console.error(error instanceof Error && /^\$\.(?:extensions|clients|logging)\b/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
+  main().catch(error => { console.error(error instanceof StartupError || error instanceof Error && /^\$\.(?:extensions|clients|logging)\b/.test(error.message) ? error.message : 'Node API startup failed'); process.exitCode = 1; });
 }

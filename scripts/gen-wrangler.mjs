@@ -43,9 +43,12 @@ if (panelAudience && internal && panelAudience !== internal) throw new Error("MA
 const egress = (env.MAILSTACK_EGRESS_URL || "").trim();
 if (egress && !/^https:\/\/[a-z0-9.-]+$/i.test(egress)) throw new Error("MAILSTACK_EGRESS_URL must be an https origin (https://host)");
 // With a custom domain the workers.dev and preview URLs stay off, so only the listed hosts reach the Worker.
+// Without one, workers.dev serves the Worker and preview URLs stay off (no unlisted per-version hosts).
 const routesBlock = route
   ? `workers_dev = false\npreview_urls = false\nroutes = [\n${[route, internal].filter(Boolean).map((pattern) => `  { pattern = "${pattern}", custom_domain = true },\n`).join("")}]`
-  : "# No custom domain set (MAILSTACK_ROUTE empty) — using the default *.workers.dev URL.";
+  : "# No custom domain set (MAILSTACK_ROUTE empty) — using the default *.workers.dev URL.\npreview_urls = false";
+// Cloudflare Email Service sender: the send_email binding the Worker sends through (env.EMAIL).
+const sendEmailBlock = JSON.parse(CONFIG_JSON).sender?.type === "cloudflare" ? `\n[[send_email]]\nname = "EMAIL"\n` : "";
 
 const out = readFileSync(resolve(root, "wrangler.template.toml"), "utf8")
   .replace("__ROUTES__", routesBlock + (proSchema ? `\n\n# Mailstack Pro resolves the core and zod from this checkout.\n[alias]\nmailstack = ${JSON.stringify(root)}\nzod = ${JSON.stringify(resolve(root, "node_modules/zod"))}` : ""))
@@ -81,7 +84,7 @@ for (const m of extension ? await compileMigrations(extension.name, extension.mi
   writeFileSync(resolve(root, ".wrangler/migrations", m.file), migrationFile(m));
 const pro = resolve(root, ".wrangler/migrations/0003_pro_license_cache.sql");
 if (proSchema) writeFileSync(pro, proSchema); else rmSync(pro, { force: true });
-writeFileSync(resolve(root, "wrangler.toml"), out);
+writeFileSync(resolve(root, "wrangler.toml"), out + sendEmailBlock);
 
 const placeholder = d1Id.startsWith("PLACEHOLDER");
 console.log(

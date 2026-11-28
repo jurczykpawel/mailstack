@@ -49,6 +49,11 @@ try {
   const [command, path, ...extra] = args;
   if (extra.length) throw new Error();
   if (command === 'init' && path) {
+    if (copy && !await stat(path).catch(() => undefined)) {
+      process.stderr.write(`${path} does not exist yet. Create it first with:\nnpm run --silent keys -- init ${path}\n` +
+        'then copy it to offline storage and rerun with --backup-verified <path-of-copy>.\n');
+      process.exit(1);
+    }
     if (!copy) copy = await writePrivate(path).then(() => askForCopy(path));
     if (!copy) {
       process.stderr.write(`Offline copy not verified; no keys were printed. Copy ${path} to offline storage, then run:\n` +

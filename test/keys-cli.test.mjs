@@ -87,7 +87,7 @@ it.each([
 
 it('refuses the private file itself and a flag without generated keys', () => {
   const { dir, path } = initialized();
-  for (const args of [['init', path, '--backup-verified', path], ['init', join(dir, 'absent.json'), '--backup-verified', path],
+  for (const args of [['init', path, '--backup-verified', path],
     ['init', path, '--backup-verified'], ['init', join(dir, 'absent.json'), '--backup-verified'],
     ['rotate-index', '--backup-verified', path]]) {
     const result = run(args);
@@ -118,4 +118,12 @@ it.each([
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe('Unable to manage keys\n');
+});
+
+it('#66: a verified copy for a keyring that does not exist yet names the missing first step', () => {
+  const dir = tempDir(), path = join(dir, 'content.json');
+  const result = run(['init', path, '--backup-verified', join(dir, 'copy.json')]);
+  refused(result);
+  expect(result.stderr).toContain(`npm run --silent keys -- init ${path}`);
+  expect(existsSync(path)).toBe(false);
 });

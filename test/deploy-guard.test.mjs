@@ -113,6 +113,24 @@ describe("non-production Worker", () => {
   });
 });
 
+describe("installation without git (#67)", () => {
+  const unpacked = () => { const dir = join(root, "zip"); mkdirSync(join(dir, "nested"), { recursive: true }); return dir; };
+  it("deploys an unpacked archive under its own Worker name with commit dev", async () => {
+    const dir = unpacked(), opts = { cwd: dir, workerName: "mailstack-acme", healthUrl: "", runWrangler: vi.fn(), log: vi.fn() };
+    expect(checkRepositories(dir, undefined, "mailstack-acme")).toEqual({ sha: "dev", pro: undefined });
+    await deploy(opts);
+    expect(opts.runWrangler).toHaveBeenCalledWith(["deploy", "--var", "BUILD_COMMIT:dev"]);
+  });
+  it.each([undefined, "mailstack"])("keeps the production Worker (name %j) on a git checkout of origin/main", (name) => {
+    expect(() => checkRepositories(unpacked(), undefined, name)).toThrow(/MAILSTACK_WORKER_NAME/);
+  });
+  it("treats a directory inside another repository as not being a checkout", () => {
+    const dir = join(cwd, "unpacked"); mkdirSync(dir);
+    expect(() => checkRepositories(dir, undefined, "mailstack")).toThrow(/MAILSTACK_WORKER_NAME/);
+    expect(checkRepositories(dir, undefined, "mailstack-acme").sha).toBe("dev");
+  });
+});
+
 describe("deploy execution", () => {
   const options = () => ({ cwd, healthUrl: "https://mail.example.com/health", runWrangler: vi.fn(), fetchHealth: vi.fn(), log: vi.fn(), sleep: vi.fn() });
   it("passes HEAD to Wrangler and checks health after success", async () => {

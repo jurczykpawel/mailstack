@@ -13,7 +13,8 @@ import { BUILD_CONFIG_SHA, config, findBrandByOrigin, getBrand } from "./core/co
 import { corsHeaders, isOriginAllowed } from "./cors";
 import { handleSend } from "./send";
 import { handleSourceHook } from "./sources";
-import { sendEmail } from "./ses";
+import { sendEmail as sendSes } from "./ses";
+import { sendCloudflare } from "./adapters/sender/cloudflare";
 import { verifyTurnstile } from "./turnstile";
 import { createChallenge, createNonce, verifyAltcha } from "./altcha";
 import { LOGO_PNG_BASE64 } from "./assets/logo";
@@ -32,11 +33,15 @@ const verifySns = createVerifier();
 // D1 queries per invocation (Free 50, Paid 1000; D1 limits), minus room for calls the meter does not see (license refresh, DoH).
 const INVOCATION_OPS = cloudflarePlan(config) === "paid" ? 990 : 40;
 
+// The Worker sends through SES or the Cloudflare Email Service binding; SMTP is Node only (validated at setup).
+const provider = config.sender?.type === "cloudflare" ? "cloudflare" : "ses";
+const sendEmail = provider === "cloudflare" ? sendCloudflare : sendSes;
 const defaultDeps: SendDeps = {
   logging: config.logging,
   verifyTurnstile,
   verifyAltcha,
   sendEmail,
+  provider,
   now: () => new Date(),
 };
 
@@ -71,11 +76,11 @@ export function createApp(overrides: Omit<Partial<SendDeps>, "store"> & { store?
   let jobEnv: object = {};
   // The host resolves resend owners through the keys this isolate loaded for its requests (`fetch` awaits them before routing).
   const hostKeys: KeyProvider = { authenticate: async (...args) => (await keys)?.authenticate(...args) ?? null, client: id => (overrides.keys ?? loaded)?.client(id) };
-  // Extensions come only from the static Pro build; keys stay with `pro` above (license cache in D1). Resend sends through SES like `/v1/send`.
+  // Extensions come only from the static Pro build; keys stay with `pro` above (license cache in D1). Resend sends through the same provider as `/v1/send`.
   const extensions = (store: KyselyStore) => host ??= createExtensionHost(config, store, async module => {
     if (module === "mailstack-pro" && extension) return { default: extension };
     throw new Error("Extension not built into the Worker");
-  }, { keys: hostKeys, kickJobs: true, platform: "worker", registry: () => tombstoneRegistry(jobEnv), delivery: { sendEmail: overrides.sendEmail ?? sendEmail, provider: "ses" } });
+  }, { keys: hostKeys, kickJobs: true, platform: "worker", registry: () => tombstoneRegistry(jobEnv), delivery: { sendEmail: overrides.sendEmail ?? sendEmail, provider: overrides.provider ?? provider } });
   const app = {
     scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): void {
       if (!env.DB) throw new Error("Scheduled storage unavailable");

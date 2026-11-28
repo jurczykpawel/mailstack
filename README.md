@@ -14,6 +14,52 @@ VPS. It includes Workers Free limits, cron completion, egress, keys and recovery
 The operator panel, scoped keys, outbound webhooks and resend require Mailstack Pro;
 the core API works independently.
 
+## Quick start in 15 minutes
+
+A contact form on your own domain, free, without an AWS account: `npm run init` sets up
+one brand on a Cloudflare Worker with D1 and sends through **Cloudflare Email Service**.
+
+You need Node.js 24+, a free Cloudflare account and a domain whose DNS is on Cloudflare.
+
+```bash
+git clone https://github.com/jurczykpawel/mailstack.git && cd mailstack   # or Download ZIP and unpack it
+npm ci
+npm run init
+```
+
+The wizard logs you in to Cloudflare (`wrangler login`) and asks for the brand name, the
+website address, the inbox that receives messages, the sender (Cloudflare Email Service
+or Amazon SES) and the From address. It then:
+
+- enables Email Sending for the From domain and adds your inbox as a verified destination
+  address (Cloudflare emails a confirmation link; click it when asked);
+- creates the D1 databases, writes `.env` and a one-brand configuration to
+  `~/.config/mailstack/<worker>.json` (ALTCHA spam check, no auto-reply, no webhook sources);
+- deploys with `npm run release`, uploads random `API_KEY` and `ALTCHA_HMAC_KEY` secrets
+  (the API key is saved next to the configuration, mode 0600, never printed);
+- checks `/health` and prints a ready HTML form to paste into your site.
+
+Log level `none` is the default: Mailstack keeps no message records, so there are no
+encryption keys and no offline key copy to manage; idempotency still works. Choose
+`meta` for encrypted delivery metadata; the wizard then creates the key file and asks
+for its offline copy.
+
+**Cloudflare Email Service on Workers Free** (open beta) sends only to **verified destination
+addresses** in your account. A contact form to your own inbox works; mail to visitors or
+customers (auto-reply, payment and license emails) needs Workers Paid or the SES sender.
+A refused send returns `502 send_failed`; `npx wrangler tail <worker>` shows the reason, for example
+`Cloudflare Email Service refused: E_RECIPIENT_PLAN_RESTRICTED - recipient is not a verified
+destination address`. Reply-To and attachments are supported. SES configuration sets, message
+tags and the `/v1/events/ses` delivery events do not apply: a message counts as sent when Cloudflare
+accepts it, and bounces or complaints are not recorded. Node/Docker cannot use this sender
+(use SMTP or SES there). To switch an existing Worker, set `"sender": {"type": "cloudflare"}`
+and run `npm run release` (setup adds the `send_email` binding).
+
+A ZIP download has no git history: it deploys only under its own Worker name (the wizard
+proposes `mailstack-<brand>`), and `/health` reports `commit: "dev"`. Deployments without a
+custom domain keep `preview_urls = false`. The step-by-step setup below is the advanced path
+with Amazon SES, Turnstile and full control over every setting.
+
 ## Run with Docker (Node + SQLite)
 
 Requires Docker Compose and Node 24+ for key generation. Prepare the local files once:
@@ -26,6 +72,10 @@ chmod 700 secrets
 npm run --silent keys -- init secrets/panel-private.json > .env
 chmod 600 .env
 ```
+
+Without a terminal prompt the key command stops after creating the file and prints nothing
+into `.env`. Copy `secrets/panel-private.json` to offline storage, then run it again with the
+copy: `npm run --silent keys -- init secrets/panel-private.json --backup-verified <path-of-copy> > .env`.
 
 Keep `secrets/panel-private.json` separately from the data volume and its backups; the API
 only needs the public key and index key printed into `.env`. Keys are never baked into the image.
@@ -42,6 +92,8 @@ For SMTP append `SMTP_URL=smtps://user:password@smtp.example.com:465`, or use
 (default false). With credentials and `secure=false`, STARTTLS is required;
 certificate verification remains enabled. Without credentials, STARTTLS remains opportunistic. URL credentials must be percent-encoded.
 For SES set `SES_REGION`, `SES_ACCESS_KEY_ID` and `SES_SECRET_ACCESS_KEY` instead.
+The sender settings are required before the first start; a missing one stops startup with a
+log line naming it. The Cloudflare Email Service sender works only on the Worker.
 Public forms also need `TURNSTILE_SECRET` or `ALTCHA_HMAC_KEY` for their configured captcha.
 
 Start the API with one command:
@@ -172,11 +224,12 @@ The Worker path needs the following accounts; provider usage limits and charges 
 
 ### 1) Install Node.js and get the code
 - Install **Node.js** (the "LTS" version) from [nodejs.org](https://nodejs.org).
-- Get this project: on GitHub click **Code → Download ZIP** (or run `git clone <repo-url>`),
-  unzip it, and open a **terminal** in that folder.
-- Install the project's bits:
+- Get this project with `git clone <repo-url>` (or **Code → Download ZIP** and unzip it;
+  a ZIP deploys only under your own `MAILSTACK_WORKER_NAME`, see step 8), and open a
+  **terminal** in that folder.
+- Install the project's bits exactly as locked:
   ```bash
-  npm install
+  npm ci
   ```
 
 ### 2) Create a free Cloudflare account
@@ -186,7 +239,7 @@ The Worker path needs the following accounts; provider usage limits and charges 
   npx wrangler login
   ```
   This opens your browser — click **Allow**. (`wrangler` is Cloudflare's command-line tool; it
-  was installed by `npm install`.)
+  was installed by `npm ci`.)
 
 ### 3) Set up Amazon SES — this is what actually sends the emails
 SES (Simple Email Service) is Amazon's email service. We use it so your emails reach inboxes
@@ -284,12 +337,14 @@ Need a random `API_KEY`? Run `openssl rand -hex 32` and paste the result.
 Use a clean checkout at `origin/main`, or a tag reachable from it. The deploy guard
 fetches origin before setup and passes HEAD to Wrangler as `BUILD_COMMIT`. A Worker whose
 `MAILSTACK_WORKER_NAME` is not `mailstack` (for example staging) may deploy a clean local HEAD
-of any branch; its SHA is still reported in `/health`.
+of any branch; its SHA is still reported in `/health`. A folder that is not a git checkout
+(an unpacked ZIP) deploys only under such a name and reports `commit: "dev"`.
 ```bash
 export MAILSTACK_HEALTH_URL=https://mail.example.com/health
 npm run release
 ```
-With `MAILSTACK_ROUTE` set, setup disables `workers.dev` and preview URLs.
+With `MAILSTACK_ROUTE` set, setup disables `workers.dev` and preview URLs; without it
+`workers.dev` stays on and preview URLs stay off.
 Profiles (a)/(b) use a custom hostname; configure it before deploying, then check it:
 ```bash
 curl https://mail.example.com/health
