@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
 it('passes the optional SES configuration set through generated vars', () => {
   const env = { ...process.env, MAILSTACK_ROUTE: '', MAILSTACK_INTERNAL_ROUTE: '', SELLF_DEFAULT_BRAND: 'acme', MAILSTACK_D1_ID: 'PLACEHOLDER_D1_ID', MAILSTACK_D1_PREVIEW_ID: 'PLACEHOLDER_D1_PREVIEW_ID' };
@@ -70,3 +72,17 @@ it('names the Worker and its database and sets the SES region from the environme
       expect(() => gen(bad)).toThrow();
   } finally { writeFileSync('wrangler.toml', previous); }
 });
+it('#67: workers.dev keeps preview URLs off; the Cloudflare sender adds the send_email binding', () => {
+  const previous = readFileSync('wrangler.toml', 'utf8'), env = { ...process.env, MAILSTACK_ROUTE: '', MAILSTACK_INTERNAL_ROUTE: '' };
+  const gen = (extra = {}) => { execFileSync(process.execPath, ['scripts/gen-wrangler.mjs'], { env: { ...env, ...extra }, stdio: 'pipe' }); return readFileSync('wrangler.toml', 'utf8'); };
+  try {
+    const out = gen();
+    expect(out).toContain('preview_urls = false'); expect(out).not.toContain('workers_dev = false'); expect(out).not.toContain('send_email');
+    const dir = mkdtempSync(join(tmpdir(), 'mailstack-sender-')), config = join(dir, 'mailstack.json');
+    writeFileSync(config, JSON.stringify({ ...JSON.parse(readFileSync('config/mailstack.example.json', 'utf8')), sender: { type: 'cloudflare' } }));
+    try {
+      execFileSync(process.execPath, ['scripts/bundle-config.ts'], { env: { ...env, MAILSTACK_CONFIG: config }, stdio: 'pipe' });
+      expect(gen()).toMatch(/\[\[send_email\]\]\nname = "EMAIL"/);
+    } finally { rmSync(dir, { recursive: true }); execFileSync(process.execPath, ['scripts/bundle-config.ts', '--example'], { stdio: 'pipe' }); }
+  } finally { writeFileSync('wrangler.toml', previous); }
+}, 20000);
