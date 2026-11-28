@@ -4,6 +4,17 @@ All notable changes to mailstack are documented here.
 
 ## [Unreleased]
 
+- `npm run init` sets up one brand with a contact form on Workers + D1: D1, `.env`,
+  configuration, secrets, deployment and a ready HTML form (ALTCHA, log `none` by default).
+- Cloudflare Email Service sender (`"sender": {"type": "cloudflare"}`, Worker only): the
+  `send_email` binding is added by setup; coded refusals are explicit failures with a readable
+  reason in the Worker log. Workers Free sends only to verified destination addresses.
+- An unpacked ZIP (no git checkout) deploys under a Worker name other than `mailstack` and
+  reports `commit: "dev"`; workers.dev deployments keep preview URLs off (#67).
+- `npm install` leaves `package-lock.json` unchanged (#67).
+- Node startup names a missing sender setting; `keys init --backup-verified` for a key file
+  that does not exist yet explains the first step (#66).
+
 ## [1.2.5] - 2026-11-26
 
 - `npm run config:push` deploys a changed configuration with the deployed code:
